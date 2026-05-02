@@ -1,0 +1,47 @@
+.loc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.chart-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow .2s, border-color .2s;
+}
+.chart-card:hover { box-shadow: 0 2px 14px rgba(59,130,246,.08); border-color: var(--primary-mid); }
+
+.cc-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2);
+}
+.cc-title { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.cc-tag {
+  font-size: 9px; font-family: 'DM Mono',monospace; padding: 2px 7px;
+  border-radius: 4px; background: var(--primary-pale); color: var(--accent); border: 1px solid var(--primary-mid);
+}
+.cc-body { padding: 10px 14px; }
+
+.loc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.loc-table th {
+  padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 600;
+  color: var(--text3); border-bottom: 1.5px solid var(--border); background: var(--surface2);
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.loc-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text2); }
+.loc-table tr:hover td { background: var(--primary-pale); }
+
+.risk-badge {
+  font-size: 9px; padding: 2px 7px; border-radius: 3px;
+  font-weight: 600; font-family: 'DM Mono',monospace;
+}
+.risk-badge.high { background: var(--bad-bg);  color: var(--bad); }
+.risk-badge.med  { background: var(--warn-bg); color: var(--warn); }
+.risk-badge.low  { background: var(--good-bg); color: var(--good); }

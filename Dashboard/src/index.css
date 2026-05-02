@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --primary:       #1E3A5F;
+  --primary-light: #2A5298;
+  --primary-pale:  #EFF6FF;
+  --primary-mid:   #BFDBFE;
+  --accent:        #3B82F6;
+  --accent-light:  #60A5FA;
+
+  --bg:            #F8FAFC;
+  --surface:       #FFFFFF;
+  --surface2:      #F1F5F9;
+  --border:        #E2E8F0;
+  --border2:       #CBD5E1;
+
+  --text:          #1E293B;
+  --text2:         #475569;
+  --text3:         #94A3B8;
+
+  --good:          #22C55E;
+  --good-bg:       #F0FDF4;
+  --good-border:   #BBF7D0;
+  --bad:           #EF4444;
+  --bad-bg:        #FEF2F2;
+  --bad-border:    #FECACA;
+  --warn:          #F97316;
+  --warn-bg:       #FFF7ED;
+  --warn-border:   #FED7AA;
+
+  --sidebar-w:     220px;
+  --topbar-h:      54px;
+  --chatbot-w:     340px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+#root { height: 100vh; display: flex; flex-direction: column; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
