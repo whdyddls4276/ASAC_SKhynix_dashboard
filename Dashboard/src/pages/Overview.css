@@ -98,13 +98,6 @@
   margin-top: 3px;
 }
 
-/* 파이차트 행 */
-.pie-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
 /* 공통 차트 카드 */
 .chart-card {
   background: var(--surface);
@@ -187,6 +180,65 @@
 .rank { font-weight: 700; color: var(--text3); font-family: 'DM Mono', monospace; }
 .unit-id { font-family: 'DM Mono', monospace; font-weight: 600; color: var(--text); }
 .pred-val { font-family: 'DM Mono', monospace; color: var(--bad); font-weight: 600; }
+
+/* 미니 더미 플레이스홀더 */
+.mini-trend-dummy {
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+
+.mtd-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.mtd-sub {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.mini-wafer-dummy {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mwd-circle {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--border);
+  background: var(--surface2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+
+.mwd-circle:hover { border-color: var(--accent); }
+
+.mwd-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.mwd-sub {
+  font-size: 10px;
+  color: var(--text3);
+}
 
 .unit-detail {
   margin-top: 10px;

@@ -97,39 +97,7 @@ function useOofData() {
         })
     }
 
-    // lot-level defect rate per split (group by serial // 1000)
-    const lotMap = {}
-    for (const u of units) {
-      const num = parseInt(u.id.replace(/\D/g, ''), 10)
-      const lot = `L${String((Math.floor(num / 1000) % 99) + 1).padStart(2, '0')}`
-      const key = `${lot}|${u.split}`
-      if (!lotMap[key]) lotMap[key] = { lot, split: u.split, total: 0, defect: 0 }
-      lotMap[key].total += 1
-      if (u.maxP >= THRESH) lotMap[key].defect += 1
-    }
-    const lotDefect = {}
-    for (const sp of ['train', 'val', 'test']) {
-      lotDefect[sp] = Object.values(lotMap)
-        .filter(l => l.split === sp && l.total >= 3)
-        .map(l => ({ lot: l.lot, rate: parseFloat((l.defect / l.total * 100).toFixed(1)) }))
-        .sort((a, b) => b.rate - a.rate)
-        .slice(0, 10)
-    }
-
-    // trend: lot index → defect rate for each split
-    const allLots = [...new Set(Object.values(lotMap).map(l => l.lot))].sort()
-    const makeSeriesData = (sp) =>
-      allLots.map(lot => {
-        const key = `${lot}|${sp}`
-        const d = lotMap[key]
-        return d && d.total >= 3 ? parseFloat((d.defect / d.total * 100).toFixed(1)) : null
-      })
-
-    return { kpi, topUnits, lotDefect, allLots, trendSeries: {
-      train: makeSeriesData('train'),
-      val: makeSeriesData('val'),
-      test: makeSeriesData('test'),
-    }}
+    return { kpi, topUnits }
   }, [data])
 
   return { derived, loading }
@@ -148,89 +116,6 @@ export default function Overview() {
 
   const d = derived.kpi[sp] || { defect: 0, total: 0, normal: 0 }
   const defectRate = d.total ? ((d.defect / d.total) * 100).toFixed(1) : '0.0'
-
-  const pieOpt1 = {
-    tooltip: { trigger:'item', formatter:'{b}: {c}건 ({d}%)' },
-    legend: { bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
-    series: [{ type:'pie', radius:['45%','70%'], center:['50%','45%'],
-      data:[
-        { value:d.normal, name:'정상', itemStyle:{ color:'#22C55E' } },
-        { value:d.defect, name:'불량', itemStyle:{ color:'#EF4444' } },
-      ],
-      label:{ show:false },
-      emphasis:{ label:{ show:true, fontSize:13, fontWeight:'bold' } },
-    }]
-  }
-
-  const pieOpt2 = {
-    tooltip: { trigger:'item', formatter:'{b}: {c}건 ({d}%)' },
-    legend: { bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
-    series: [{ type:'pie', radius:['45%','70%'], center:['50%','45%'],
-      data:[
-        { value:Math.round(d.defect*0.28), name:'High',   itemStyle:{ color:'#EF4444' } },
-        { value:Math.round(d.defect*0.47), name:'Medium', itemStyle:{ color:'#F97316' } },
-        { value:Math.round(d.defect*0.25), name:'Low',    itemStyle:{ color:'#EAB308' } },
-      ],
-      label:{ show:false },
-      emphasis:{ label:{ show:true, fontSize:13, fontWeight:'bold' } },
-    }]
-  }
-
-  const pieOpt3 = {
-    tooltip: { trigger:'item', formatter:'{b}: {c}건 ({d}%)' },
-    legend: { bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
-    series: [{ type:'pie', radius:['45%','70%'], center:['50%','45%'],
-      data:[
-        { value:derived.kpi.train.defect, name:'Train', itemStyle:{ color:'#3B82F6' } },
-        { value:derived.kpi.val.defect,   name:'Val',   itemStyle:{ color:'#8B5CF6' } },
-        { value:derived.kpi.test.defect,  name:'Test',  itemStyle:{ color:'#06B6D4' } },
-      ],
-      label:{ show:false },
-      emphasis:{ label:{ show:true, fontSize:13, fontWeight:'bold' } },
-    }]
-  }
-
-  const trendOpt = {
-    tooltip: {
-      trigger:'axis',
-      formatter: params => params.filter(p => p.value != null).map(p => `${p.seriesName}: ${p.value}%`).join('<br/>')
-    },
-    legend: { data:['Train','Val','Test'], bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
-    grid: { top:16, left:44, right:20, bottom:40 },
-    xAxis: { type:'category', data:derived.allLots, axisLabel:{ fontSize:9, color:'#94A3B8', interval: Math.floor(derived.allLots.length / 12) }, axisLine:{ lineStyle:{ color:'#E2E8F0' } } },
-    yAxis: { type:'value', axisLabel:{ fontSize:10, color:'#94A3B8', formatter:'{value}%' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    series: [
-      { name:'Train', type:'line', data:derived.trendSeries.train, smooth:true, connectNulls:false, symbol:'none',
-        lineStyle:{ color:'#3B82F6', width:2 }, itemStyle:{ color:'#3B82F6' }, areaStyle:{ color:'rgba(59,130,246,.1)' } },
-      { name:'Val', type:'line', data:derived.trendSeries.val, smooth:true, connectNulls:false, symbol:'none',
-        lineStyle:{ color:'#8B5CF6', width:2, type:'dashed' }, itemStyle:{ color:'#8B5CF6' } },
-      { name:'Test', type:'line', data:derived.trendSeries.test, smooth:true, connectNulls:false, symbol:'none',
-        lineStyle:{ color:'#06B6D4', width:2, type:'dotted' }, itemStyle:{ color:'#06B6D4' } },
-    ],
-  }
-
-  const lots = derived.lotDefect[sp] || []
-  const lotOpt = {
-    tooltip: { trigger:'axis', formatter: p => `${p[0].name}: ${p[0].value}%` },
-    grid: { top:10, left:52, right:30, bottom:10 },
-    xAxis: { type:'value', axisLabel:{ fontSize:10, color:'#94A3B8', formatter:'{value}%' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    yAxis: { type:'category', data:lots.map(l=>l.lot).reverse(), axisLabel:{ fontSize:10, color:'#94A3B8' } },
-    series: [{
-      type:'bar', data: lots.map(l=>l.rate).reverse(),
-      barMaxWidth: 18,
-      itemStyle: {
-        color: params => {
-          const v = params.value
-          if (v >= 30) return '#EF4444'
-          if (v >= 20) return '#F97316'
-          return '#3B82F6'
-        },
-        borderRadius:[0,4,4,0],
-      },
-      label: { show:true, position:'right', fontSize:10, formatter:'{c}%', color:'#475569' },
-    }],
-  }
-
   const topUnits = derived.topUnits[sp] || []
 
   return (
@@ -260,20 +145,21 @@ export default function Overview() {
         <KpiCard label="정상 Unit"       value={d.normal.toLocaleString()}                        sub={`정상률 ${(100-parseFloat(defectRate)).toFixed(1)}%`} color="#22C55E" icon="✅" />
       </div>
 
-      {/* 파이차트 */}
-      <div className="pie-row">
-        <ChartCard title="정상 vs 불량"     tag={mode}><ReactECharts option={pieOpt1} style={{ height:200 }} /></ChartCard>
-        <ChartCard title="위험 등급별"       tag={mode}><ReactECharts option={pieOpt2} style={{ height:200 }} /></ChartCard>
-        <ChartCard title="Split별 불량 분포" tag="전체"><ReactECharts option={pieOpt3} style={{ height:200 }} /></ChartCard>
-      </div>
-
-      {/* 트렌드 + Lot 바차트 */}
+      {/* 트렌드 + 미니 웨이퍼맵 */}
       <div className="two-col">
-        <ChartCard title="📈 Lot별 불량률 트렌드" tag="Train / Val / Test">
-          <ReactECharts option={trendOpt} style={{ height:220 }} />
+        <ChartCard title="📈 불량률 트렌드" tag={mode}>
+          <div className="mini-trend-dummy">
+            <div className="mtd-label">트렌드 차트 (구현 예정)</div>
+            <div className="mtd-sub">Lot별 불량률 추이</div>
+          </div>
         </ChartCard>
-        <ChartCard title="📊 Lot별 불량률 Top-10" tag={mode}>
-          <ReactECharts option={lotOpt} style={{ height:220 }} />
+        <ChartCard title="🗺 웨이퍼맵 미리보기" tag="클릭 시 상세 이동">
+          <div className="mini-wafer-dummy">
+            <div className="mwd-circle">
+              <div className="mwd-label">웨이퍼맵</div>
+              <div className="mwd-sub">구현 예정</div>
+            </div>
+          </div>
         </ChartCard>
       </div>
 
