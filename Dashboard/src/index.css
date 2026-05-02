@@ -1,50 +1,56 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --primary:       #1E3A5F;
-  --primary-light: #2A5298;
-  --primary-pale:  #EFF6FF;
-  --primary-mid:   #BFDBFE;
-  --accent:        #3B82F6;
-  --accent-light:  #60A5FA;
+  --accent:        #6366F1;
+  --accent-light:  #818CF8;
+  --accent-pale:   #EEF2FF;
+  --accent-mid:    #C7D2FE;
 
-  --bg:            #F8FAFC;
+  --bg:            #F4F6F9;
   --surface:       #FFFFFF;
-  --surface2:      #F1F5F9;
-  --border:        #E2E8F0;
-  --border2:       #CBD5E1;
+  --surface2:      #F8FAFC;
+  --border:        #E8ECF0;
+  --border2:       #D1D9E0;
 
-  --text:          #1E293B;
-  --text2:         #475569;
-  --text3:         #94A3B8;
+  --text:          #111827;
+  --text2:         #4B5563;
+  --text3:         #9CA3AF;
 
-  --good:          #22C55E;
-  --good-bg:       #F0FDF4;
-  --good-border:   #BBF7D0;
+  --good:          #10B981;
+  --good-bg:       #ECFDF5;
+  --good-border:   #A7F3D0;
   --bad:           #EF4444;
   --bad-bg:        #FEF2F2;
   --bad-border:    #FECACA;
-  --warn:          #F97316;
-  --warn-bg:       #FFF7ED;
-  --warn-border:   #FED7AA;
+  --warn:          #F59E0B;
+  --warn-bg:       #FFFBEB;
+  --warn-border:   #FDE68A;
 
-  --sidebar-w:     220px;
-  --topbar-h:      54px;
-  --chatbot-w:     340px;
+  --sidebar-w:     224px;
+  --topbar-h:      58px;
+  --chatbot-w:     360px;
+
+  --shadow-sm:     0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:     0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg:     0 10px 24px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.06);
+  --radius:        10px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Noto Sans KR', sans-serif;
+  font-family: 'Inter', 'Noto Sans KR', sans-serif;
   background: var(--bg);
   color: var(--text);
   height: 100vh;
   overflow: hidden;
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root { height: 100vh; display: flex; flex-direction: column; }
 
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-mid); }
