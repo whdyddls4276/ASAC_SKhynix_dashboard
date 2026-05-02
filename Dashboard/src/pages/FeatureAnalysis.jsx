@@ -171,6 +171,23 @@ export function ShapPage() {
   )
 }
 
+/* ── 분포 비교 ── */
+export function DistPage() {
+  return (
+    <div className="feat-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📉 분포 비교</div>
+      <div style={{ fontSize: 13, color: 'var(--text3)' }}>불량/정상 그룹별 feature 분포를 밀도 곡선으로 비교합니다.</div>
+      <div style={{ padding: '48px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+        📊 불량/정상 밀도 곡선 (구현 예정)<br/>
+        <span style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
+          feature 선택 → 불량 그룹(빨강) / 정상 그룹(초록) 분포 오버레이<br/>
+          KDE(커널 밀도 추정) 기반 시각화
+        </span>
+      </div>
+    </div>
+  )
+}
+
 /* ── Feature 개별 분포 ── */
 export function ImportancePage() {
   const { top, loading } = useFeatureData(30)

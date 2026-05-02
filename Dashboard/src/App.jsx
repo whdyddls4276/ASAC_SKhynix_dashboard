@@ -3,25 +3,24 @@ import TopBar from './components/TopBar'
 import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
 import Overview from './pages/Overview'
-import { PositionPage, UnitMapPage, WaferZonePage } from './pages/LocationAnalysis'
-import { ShapPage, ImportancePage } from './pages/FeatureAnalysis'
-import ModelPerformance from './pages/ModelPerformance'
-import { DailyPage, MonthlyPage, YearlyPage } from './pages/DateAnalysis'
+import WaferMap from './pages/WaferMap'
+import { PositionPage, LotPage, WaferPage } from './pages/LocationAnalysis'
+import { ShapPage, ImportancePage, DistPage } from './pages/FeatureAnalysis'
+import GroupCompare from './pages/GroupCompare'
 import DataTablePage from './pages/DataTable'
 import './App.css'
 
 function renderPage(page) {
   switch (page) {
     case 'overview':        return <Overview />
-    case 'date-daily':      return <DailyPage />
-    case 'date-monthly':    return <MonthlyPage />
-    case 'date-yearly':     return <YearlyPage />
+    case 'wafer-map':       return <WaferMap />
     case 'loc-position':    return <PositionPage />
-    case 'loc-unit':        return <UnitMapPage />
-    case 'loc-zone':        return <WaferZonePage />
+    case 'loc-lot':         return <LotPage />
+    case 'loc-wafer':       return <WaferPage />
     case 'feat-shap':       return <ShapPage />
     case 'feat-importance': return <ImportancePage />
-    case 'model':           return <ModelPerformance />
+    case 'feat-dist':       return <DistPage />
+    case 'group-compare':   return <GroupCompare />
     case 'data-table':      return <DataTablePage />
     default:                return <Overview />
   }

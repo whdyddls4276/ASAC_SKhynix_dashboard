@@ -2,44 +2,33 @@ import { useState } from 'react'
 import './Sidebar.css'
 
 const MENU = [
-  { id: 'overview', icon: '📊', label: '상세' },
-  { id: 'data-table', icon: '🗃', label: '데이터 테이블' },
+  { id: 'overview',       icon: '📊', label: 'Overview' },
+  { id: 'wafer-map',      icon: '🗺', label: '웨이퍼맵' },
   {
-    id: 'date', icon: '📅', label: '날짜',
-    children: [
-      { id: 'date-daily',   label: '일별' },
-      { id: 'date-monthly', label: '월별' },
-      { id: 'date-yearly',  label: 'Split 비교' },
-    ]
-  },
-  {
-    id: 'location', icon: '📍', label: '위치',
+    id: 'location', icon: '📍', label: '위치 분석',
     children: [
       { id: 'loc-position', label: 'Position별' },
-      { id: 'loc-unit', label: 'Unit별' },
-      { id: 'loc-zone', label: 'Zone별' },
+      { id: 'loc-lot',      label: 'Lot별' },
+      { id: 'loc-wafer',    label: 'Wafer별' },
     ]
   },
   {
-    id: 'feature', icon: '🔬', label: '피처 분석',
+    id: 'feature', icon: '🔬', label: '변수 분석',
     children: [
-      { id: 'feat-shap', label: 'SHAP 분석' },
-      { id: 'feat-importance', label: '임포턴스' },
+      { id: 'feat-shap',       label: 'SHAP 분석' },
+      { id: 'feat-importance', label: 'Feature Importance' },
+      { id: 'feat-dist',       label: '분포 비교' },
     ]
   },
-  { id: 'model', icon: '⚙️', label: '모델 성능' },
+  { id: 'group-compare',  icon: '📈', label: '그룹 비교' },
+  { id: 'data-table',     icon: '📋', label: '데이터 테이블' },
 ]
 
 export default function Sidebar({ activePage, setActivePage }) {
   const [openTree, setOpenTree] = useState(null)
 
-  function handleNav(id) {
-    setActivePage(id)
-  }
-
-  function toggleTree(id) {
-    setOpenTree(prev => prev === id ? null : id)
-  }
+  function handleNav(id) { setActivePage(id) }
+  function toggleTree(id) { setOpenTree(prev => prev === id ? null : id) }
 
   return (
     <nav className="sidebar">
@@ -53,9 +42,7 @@ export default function Sidebar({ activePage, setActivePage }) {
           >
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>
-            {item.children && (
-              <span className="nav-arrow">▶</span>
-            )}
+            {item.children && <span className="nav-arrow">▶</span>}
           </div>
 
           {item.children && (
@@ -73,17 +60,6 @@ export default function Sidebar({ activePage, setActivePage }) {
           )}
         </div>
       ))}
-
-      <div className="sidebar-divider" />
-      <div className="sidebar-label">설정</div>
-
-      <div
-        className={`nav-item ${activePage === 'model' ? 'active' : ''}`}
-        onClick={() => handleNav('model')}
-      >
-        <span className="nav-icon">⚙️</span>
-        <span className="nav-label">모델 성능</span>
-      </div>
     </nav>
   )
 }

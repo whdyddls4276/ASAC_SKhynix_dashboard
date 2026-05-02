@@ -46,6 +46,32 @@
 
 .cb-close:hover { border-color: var(--bad); color: var(--bad); }
 
+.cb-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.cb-tab {
+  flex: 1;
+  padding: 9px 0;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+
+.cb-tab:hover { color: var(--text); }
+
+.cb-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 .cb-messages {
   flex: 1;
   overflow-y: auto;

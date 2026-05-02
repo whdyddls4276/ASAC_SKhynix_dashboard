@@ -105,6 +105,40 @@ export function PositionPage() {
   )
 }
 
+/* ── Lot별 ── */
+export function LotPage() {
+  return (
+    <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📦 Lot별 분석</div>
+      <div style={{ fontSize: 13, color: 'var(--text3)' }}>Lot별 위험 unit 수 및 불량률을 비교합니다.</div>
+      <div style={{ padding: '48px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+        📊 Lot별 바차트 (구현 예정)<br/>
+        <span style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
+          lot별 불량 unit 수 / 불량률 바차트<br/>
+          선택한 lot → wafer별 드릴다운
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/* ── Wafer별 ── */
+export function WaferPage() {
+  return (
+    <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>🧿 Wafer별 분석</div>
+      <div style={{ fontSize: 13, color: 'var(--text3)' }}>Wafer별 불량 분포 및 Position 드릴다운을 제공합니다.</div>
+      <div style={{ padding: '48px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+        📊 Wafer별 히트맵 (구현 예정)<br/>
+        <span style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
+          wafer별 불량률 히트맵<br/>
+          선택한 wafer → position별 드릴다운
+        </span>
+      </div>
+    </div>
+  )
+}
+
 /* ── Unit별 웨이퍼맵 (실데이터 기반 die 좌표 분포) ── */
 export function UnitMapPage() {
   const { data, loading } = useOof()
