@@ -255,35 +255,18 @@ export function ImportancePage() {
 
 /* ── SHAP 분석 ── */
 export function ShapPage() {
-  const { data: barData, loading: barLoading } = useCSV('/shap_bar.csv')
-  const { data: beeData, loading: beeLoading } = useCSV('/shap_beeswarm.csv')
+  const { data: barData } = useCSV('/shap_bar.csv')        // 전체 피처 수 stat용
+  const { data: shapRaw, loading } = useCSV('/shap_data.csv')
 
-  const topBar = useMemo(() => {
-    if (!barData.length) return []
-    return [...barData]
-      .sort((a, b) => parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap))
-      .slice(0, 20)
-      .map(r => ({
-        feature: r.feature,
-        shap: parseFloat(r.mean_abs_shap) || 0,
-        rank: parseInt(r.rank) || 0,
-      }))
-  }, [barData])
+  // |effect_norm| 내림차순 정렬
+  const sorted = useMemo(() => {
+    if (!shapRaw.length) return []
+    return [...shapRaw]
+      .map(r => ({ feature: r.feature, value: parseFloat(r.effect_norm) || 0 }))
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+  }, [shapRaw])
 
-  const beeswarmData = useMemo(() => {
-    if (!beeData.length || !topBar.length) return []
-    const top10Names = new Set(topBar.slice(0, 10).map(d => d.feature))
-    return beeData
-      .filter(r => top10Names.has(r.feature))
-      .map(r => ({
-        feature: r.feature,
-        shap_value: parseFloat(r.shap_value) || 0,
-        feat_norm: parseFloat(r.feat_norm) || 0,
-        rank: parseInt(r.rank) || 0,
-      }))
-  }, [beeData, topBar])
-
-  if (barLoading || beeLoading) {
+  if (loading) {
     return (
       <div className="feat-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:14 }}>
         데이터 로딩 중…
@@ -291,89 +274,69 @@ export function ShapPage() {
     )
   }
 
-  // SHAP Bar — Top-20 가로 막대
-  const barNames = topBar.map(d => d.feature)
-  const barVals  = topBar.map(d => d.shap)
+  // ECharts: 위에서부터 순위 1→N이 되도록 reverse
+  const featureNames = sorted.map(d => d.feature).reverse()
+
   const shapBarOpt = {
-    tooltip: { trigger:'axis', formatter: p => `${p[0].name}<br/>mean |SHAP|: ${topBar[topBar.length-1-p[0].dataIndex].shap.toFixed(5)}` },
-    grid: { top:10, left:80, right:70, bottom:10 },
-    xAxis: { type:'value', axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    yAxis: { type:'category', data:[...barNames].reverse(), axisLabel:{ fontSize:10, color:'#475569', fontFamily:'DM Mono,monospace' } },
+    tooltip: {
+      trigger: 'axis',
+      formatter: p => {
+        const val = p[0].value
+        const sign = val >= 0 ? '+' : ''
+        return `${p[0].name}<br/>${sign}${val.toFixed(4)}<br/>${val >= 0 ? '🔴 위험 증가 기여' : '🔵 위험 감소 기여'}`
+      }
+    },
+    grid: { top: 8, left: 85, right: 185, bottom: 8 },
+    xAxis: {
+      type: 'value',
+      axisLabel: { fontSize: 9, color: '#94A3B8' },
+      splitLine: { lineStyle: { color: '#F1F5F9' } },
+    },
+    yAxis: {
+      type: 'category',
+      data: featureNames,
+      axisLabel: { fontSize: 10, color: '#475569', fontFamily: 'DM Mono,monospace' },
+    },
     series: [{
-      type:'bar', data:[...barVals].reverse(), barMaxWidth:16,
-      itemStyle: {
-        color: p => {
-          const colors = ['#7C3AED','#7C3AED','#8B5CF6','#8B5CF6','#A78BFA','#A78BFA','#C4B5FD','#C4B5FD','#DDD6FE','#DDD6FE',
-                          '#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE']
-          return colors[p.dataIndex] || '#EDE9FE'
+      type: 'bar',
+      barMaxWidth: 16,
+      data: sorted.map(d => ({
+        value: d.value,
+        itemStyle: {
+          color: d.value >= 0 ? '#EF4444' : '#3B82F6',
+          borderRadius: d.value >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
         },
-        borderRadius:[0,4,4,0],
-      },
-      label:{ show:true, position:'right', fontSize:9, formatter: p => p.value.toExponential(2), color:'#475569' },
+        label: {
+          show: true,
+          position: d.value >= 0 ? 'right' : 'left',
+          formatter: `${d.value >= 0 ? '+' : ''}${d.value.toFixed(4)}  ${d.value >= 0 ? '위험 증가 기여' : '위험 감소 기여'}`,
+          fontSize: 10,
+          color: '#475569',
+        },
+      })).reverse(),
     }],
   }
 
-  // Beeswarm 대체 — 피처별 SHAP 분포 scatter
-  // x: shap_value, y: feature(rank 기준), color: feat_norm(피처값 크기)
-  const top10Names = topBar.slice(0, 10).map(d => d.feature)
-  const scatterSeries = top10Names.map((feat, i) => {
-    const pts = beeswarmData.filter(d => d.feature === feat)
-    return {
-      name: feat,
-      type: 'scatter',
-      symbolSize: 4,
-      data: pts.map(d => [d.shap_value, i, d.feat_norm]),
-      itemStyle: {
-        color: p => {
-          const norm = p.data[2]
-          if (norm > 0.66) return '#EF4444'
-          if (norm > 0.33) return '#F97316'
-          return '#3B82F6'
-        },
-        opacity: 0.6,
-      },
-    }
-  })
-
-  const beeOpt = {
-    tooltip: {
-      formatter: p => `${top10Names[p.data[1]]}<br/>SHAP: ${p.data[0].toFixed(4)}<br/>피처값(정규화): ${p.data[2].toFixed(2)}`
-    },
-    legend: { show: false },
-    grid: { top:10, left:90, right:30, bottom:30 },
-    xAxis: {
-      type:'value', name:'SHAP value', nameTextStyle:{ fontSize:10, color:'#94A3B8' },
-      axisLabel:{ fontSize:9, color:'#94A3B8' },
-      splitLine:{ lineStyle:{ color:'#F1F5F9' } },
-      axisLine:{ lineStyle:{ color:'#E2E8F0' } },
-    },
-    yAxis: {
-      type:'value', min:-0.5, max:top10Names.length-0.5,
-      axisLabel:{
-        fontSize:10, color:'#475569', fontFamily:'DM Mono,monospace',
-        formatter: v => top10Names[Math.round(v)] || '',
-      },
-      splitLine:{ show:false },
-      axisTick:{ show:false },
-    },
-    series: scatterSeries,
-  }
+  const RANK_COLORS = ['#7C3AED', '#8B5CF6', '#A78BFA']
 
   return (
     <div className="feat-page">
       <div className="two-col" style={{ alignItems:'start' }}>
-        <ChartCard title="📊 SHAP Bar — Top-20" tag="mean |SHAP| 기준">
+        <ChartCard title="📊 SHAP 분석 — TreeSHAP · LightGBM · TOP 20" tag="effect_norm 기준">
           <div style={{ fontSize:11, color:'#64748B', marginBottom:6 }}>
-            값이 클수록 health 예측을 크게 움직이는 WT 항목입니다.
+            <span style={{ color:'#EF4444', fontWeight:600 }}>빨강</span> = 위험 증가 기여 &nbsp;·&nbsp;
+            <span style={{ color:'#3B82F6', fontWeight:600 }}>파랑</span> = 위험 감소 기여 &nbsp;·&nbsp;
+            절댓값이 클수록 health 예측에 강하게 기여합니다.
           </div>
-          <ReactECharts option={shapBarOpt} style={{ height:300 }} />
+          <ReactECharts option={shapBarOpt} style={{ height: 420 }} />
         </ChartCard>
+
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           <div style={{ display:'flex', gap:10 }}>
             {[
-              { label:'분석 피처 수', value: barData.length, color:'#7C3AED' },
-              { label:'Top-1 피처', value: topBar[0]?.feature ?? '-', color:'#7C3AED' },
-              { label:'mean|SHAP|', value: topBar[0]?.shap.toFixed(4) ?? '-', color:'#7C3AED' },
+              { label:'분석 피처 수',  value: barData.length || sorted.length, color:'#7C3AED' },
+              { label:'Top-1 피처',   value: sorted[0]?.feature ?? '-',        color:'#7C3AED' },
+              { label:'최대|effect|', value: sorted[0] ? Math.abs(sorted[0].value).toFixed(4) : '-', color:'#7C3AED' },
             ].map((s, i) => (
               <div key={i} className="stat-card-feat" style={{ borderTop:`3px solid ${s.color}`, flex:1 }}>
                 <div style={{ fontSize:i===1?12:18, fontWeight:700, fontFamily:'DM Mono,monospace', color:s.color }}>{s.value}</div>
@@ -381,13 +344,43 @@ export function ShapPage() {
               </div>
             ))}
           </div>
-          <ChartCard title="🐝 Beeswarm — Top-10 피처별 분포" tag="unit별 기여도">
-            <div style={{ fontSize:11, color:'#64748B', marginBottom:4 }}>
-              <span style={{ color:'#EF4444' }}>●</span> 피처값 높음 &nbsp;
-              <span style={{ color:'#3B82F6' }}>●</span> 낮음 &nbsp;
-              오른쪽(+) = health↑, 왼쪽(-) = health↓
+
+          <ChartCard title="📋 Top-20 SHAP 순위" tag="|effect_norm| 기준">
+            <div style={{ overflowY:'auto', maxHeight:370 }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                <thead>
+                  <tr style={{ borderBottom:'2px solid #E2E8F0', position:'sticky', top:0, background:'var(--surface)' }}>
+                    <th style={{ textAlign:'left', padding:'5px 8px', color:'#64748B', fontWeight:600, width:44 }}>순위</th>
+                    <th style={{ textAlign:'left', padding:'5px 8px', color:'#64748B', fontWeight:600 }}>피처</th>
+                    <th style={{ textAlign:'right', padding:'5px 8px', color:'#64748B', fontWeight:600 }}>effect</th>
+                    <th style={{ textAlign:'right', padding:'5px 8px', color:'#64748B', fontWeight:600 }}>방향</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((d, i) => {
+                    const rankColor = RANK_COLORS[i] ?? '#94A3B8'
+                    return (
+                      <tr key={i} style={{ borderBottom:'1px solid #F1F5F9', background: i < 3 ? 'rgba(124,58,237,0.04)' : 'transparent' }}>
+                        <td style={{ padding:'5px 8px', fontFamily:'DM Mono,monospace', color:rankColor, fontWeight:i<3?700:400 }}>#{i+1}</td>
+                        <td style={{ padding:'5px 8px', fontFamily:'DM Mono,monospace', color:'#1E293B', fontWeight:i<3?600:400 }}>{d.feature}</td>
+                        <td style={{ padding:'5px 8px', fontFamily:'DM Mono,monospace', textAlign:'right', fontWeight:600, color: d.value >= 0 ? '#EF4444' : '#3B82F6' }}>
+                          {d.value >= 0 ? '+' : ''}{d.value.toFixed(4)}
+                        </td>
+                        <td style={{ padding:'5px 8px', textAlign:'right' }}>
+                          <span style={{
+                            fontSize:9, fontWeight:600, padding:'2px 6px', borderRadius:4,
+                            background: d.value >= 0 ? 'rgba(239,68,68,.1)' : 'rgba(59,130,246,.1)',
+                            color: d.value >= 0 ? '#EF4444' : '#3B82F6',
+                          }}>
+                            {d.value >= 0 ? '위험 증가' : '위험 감소'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
-            <ReactECharts option={beeOpt} style={{ height:240 }} />
           </ChartCard>
         </div>
       </div>

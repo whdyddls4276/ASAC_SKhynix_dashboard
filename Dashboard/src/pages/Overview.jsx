@@ -150,7 +150,7 @@ export default function Overview() {
         })
         return html
       }},
-      legend: { data: ['예측 수율(val)', '실제 수율(train)'], top: 4, textStyle: { fontSize: 11 } },
+      legend: { data: ['예측 수율', '실제 수율'], top: 4, textStyle: { fontSize: 11 } },
       dataZoom: [
         { type: 'slider', bottom: 0, height: 20, start: 0, end: 100, fillerColor: 'rgba(59,130,246,0.1)', borderColor: '#E2E8F0' },
         { type: 'inside' },
@@ -171,7 +171,7 @@ export default function Overview() {
       },
       series: [
         {
-          name: '예측 수율(val)',
+          name: '예측 수율',
           type: 'line',
           data: predYield,
           smooth: true,
@@ -180,11 +180,11 @@ export default function Overview() {
           symbol: 'none',
           markLine: boundaryDate ? {
             silent: true,
-            data: [{ xAxis: boundaryDate, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 }, label: { formatter: 'val 시작', fontSize: 10, color: '#64748B' } }]
+            data: [{ xAxis: boundaryDate, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 }, label: { formatter: '예측 시작', fontSize: 10, color: '#64748B' } }]
           } : undefined,
         },
         {
-          name: '실제 수율(train)',
+          name: '실제 수율',
           type: 'line',
           data: trueYield,
           smooth: true,
