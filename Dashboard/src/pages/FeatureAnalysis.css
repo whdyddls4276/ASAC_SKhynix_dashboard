@@ -18,6 +18,11 @@
 }
 .chart-card:hover { box-shadow: 0 2px 14px rgba(59,130,246,.08); border-color: var(--primary-mid); }
 
+.feat-left-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .cc-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2);

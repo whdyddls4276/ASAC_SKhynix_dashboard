@@ -7,12 +7,10 @@ const MENU = [
   {
     id: 'feature', icon: '🔬', label: '변수 분석',
     children: [
-      { id: 'feat-shap',       label: 'SHAP 분석' },
       { id: 'feat-importance', label: 'Feature Importance' },
-      { id: 'feat-dist',       label: '분포 비교' },
+      { id: 'feat-shap',       label: 'SHAP 분석' },
     ]
   },
-  { id: 'group-compare',  icon: '📈', label: '그룹 비교' },
   { id: 'data-table',     icon: '📋', label: '데이터 테이블' },
 ]
 
@@ -34,6 +32,7 @@ export default function Sidebar({ activePage, setActivePage }) {
           >
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>
+            {item.dummy && <span className="dummy-badge">🚧</span>}
             {item.children && <span className="nav-arrow">▶</span>}
           </div>
 
@@ -46,6 +45,7 @@ export default function Sidebar({ activePage, setActivePage }) {
                   onClick={() => handleNav(child.id)}
                 >
                   {child.label}
+                  {child.dummy && <span className="dummy-badge">🚧</span>}
                 </div>
               ))}
             </div>

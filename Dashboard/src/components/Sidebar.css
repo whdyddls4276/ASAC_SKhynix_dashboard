@@ -130,6 +130,14 @@
 .sub-item.active::before { background: var(--accent-light); }
 .sub-item.active { color: #A5B4FC; font-weight: 500; }
 
+.dummy-badge {
+  font-size: 11px;
+  line-height: 1;
+  margin-left: 2px;
+  opacity: .85;
+  flex-shrink: 0;
+}
+
 .sidebar-divider { height: 1px; background: rgba(255,255,255,.06); margin: 10px 16px; }
 
 .sidebar-bottom {

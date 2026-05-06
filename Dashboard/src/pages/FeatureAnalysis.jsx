@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useCSV } from '../hooks/useCSV'
 import './FeatureAnalysis.css'
@@ -39,9 +39,146 @@ function useFeatureData(topN = 20) {
   return { top, loading }
 }
 
-/* ── SHAP / Importance 분석 ── */
-export function ShapPage() {
+/* ── Feature Importance ── */
+export function ImportancePage() {
   const { top, loading } = useFeatureData(15)
+  const { data: distData } = useCSV('/feature_dist.csv')
+  const { data: unitData } = useCSV('/dashboard_units.csv')
+  const [selectedFeat, setSelectedFeat] = useState(null)
+
+  const topNames = useMemo(() => top.map(d => d.feature), [top])
+  const lgbmVals = useMemo(() => top.map(d => d.lgbm), [top])
+
+  // ufs_serial → risk 매핑 (예측값 기준 HIGH/MED/LOW)
+  const riskMap = useMemo(() => {
+    if (!unitData.length) return {}
+    return Object.fromEntries(unitData.map(r => [r.ufs_serial, r.risk]))
+  }, [unitData])
+
+  // 박스플롯 통계 계산 (min, Q1, median, Q3, max)
+  function boxStats(arr) {
+    if (!arr.length) return null
+    const s = [...arr].sort((a, b) => a - b)
+    const n = s.length
+    const q = p => {
+      const idx = p * (n - 1)
+      const lo = Math.floor(idx), hi = Math.ceil(idx)
+      return s[lo] + (s[hi] - s[lo]) * (idx - lo)
+    }
+    return [s[0], q(0.25), q(0.5), q(0.75), s[n - 1]]
+  }
+
+  // 박스플롯 옵션
+  const boxOpt = useMemo(() => {
+    if (!distData.length || !selectedFeat || !Object.keys(riskMap).length) return null
+    const high  = distData.filter(r => riskMap[r.ufs_serial] === 'HIGH').map(r => parseFloat(r[selectedFeat])).filter(v => !isNaN(v))
+    const other = distData.filter(r => riskMap[r.ufs_serial] !== 'HIGH').map(r => parseFloat(r[selectedFeat])).filter(v => !isNaN(v))
+    const bHigh  = boxStats(high)
+    const bOther = boxStats(other)
+    if (!bHigh || !bOther) return null
+
+    return {
+      tooltip: {
+        trigger: 'item',
+        formatter: p => {
+          const [mn, q1, med, q3, mx] = p.data
+          return `${p.seriesName}<br/>최솟값: ${mn.toFixed(4)}<br/>Q1: ${q1.toFixed(4)}<br/>중앙값: ${med.toFixed(4)}<br/>Q3: ${q3.toFixed(4)}<br/>최댓값: ${mx.toFixed(4)}`
+        }
+      },
+      grid: { top: 16, left: 70, right: 16, bottom: 24 },
+      xAxis: { type: 'value', axisLabel: { fontSize: 9, color: '#94A3B8' }, splitLine: { lineStyle: { color: '#F1F5F9' } } },
+      yAxis: { type: 'category', data: ['저위험', '고위험'], axisLabel: { fontSize: 11, color: '#475569' } },
+      series: [
+        {
+          name: '저위험(MED/LOW)', type: 'boxplot',
+          data: [bOther],
+          itemStyle: { color: 'rgba(59,130,246,.2)', borderColor: 'rgba(59,130,246,.9)', borderWidth: 2 },
+        },
+        {
+          name: '고위험(HIGH)', type: 'boxplot',
+          data: [bHigh],
+          itemStyle: { color: 'rgba(239,68,68,.2)', borderColor: 'rgba(239,68,68,.9)', borderWidth: 2 },
+        },
+      ],
+    }
+  }, [distData, riskMap, selectedFeat])
+
+  // 선택된 피처의 고위험/저위험 분포 (예측값 기준)
+  const distOpt = useMemo(() => {
+    if (!distData.length || !selectedFeat || !Object.keys(riskMap).length) return null
+    const high = distData.filter(r => riskMap[r.ufs_serial] === 'HIGH').map(r => parseFloat(r[selectedFeat])).filter(v => !isNaN(v))
+    const other = distData.filter(r => riskMap[r.ufs_serial] !== 'HIGH').map(r => parseFloat(r[selectedFeat])).filter(v => !isNaN(v))
+    if (!high.length || !other.length) return null
+
+    // 히스토그램 bin 생성
+    const allVals = [...high, ...other]
+    const mn = Math.min(...allVals), mx = Math.max(...allVals)
+    const BINS = 30
+    const step = (mx - mn) / BINS || 1
+    const bins = Array.from({ length: BINS }, (_, i) => mn + i * step)
+
+    function toBins(arr) {
+      const counts = new Array(BINS).fill(0)
+      arr.forEach(v => {
+        const idx = Math.min(Math.floor((v - mn) / step), BINS - 1)
+        counts[idx]++
+      })
+      return counts.map(c => +(c / arr.length * 100).toFixed(2))
+    }
+
+    return {
+      tooltip: { trigger:'axis', formatter: p => `${selectedFeat} = ${p[0].name}<br/>고위험(HIGH): ${p[0].value}%<br/>저위험(MED/LOW): ${p[1]?.value ?? 0}%` },
+      legend: { data:['고위험(HIGH)','저위험(MED/LOW)'], bottom:0, textStyle:{ fontSize:10 } },
+      grid: { top:10, left:44, right:16, bottom:36 },
+      xAxis: { type:'category', data: bins.map(b => b.toFixed(1)), axisLabel:{ fontSize:8, color:'#94A3B8', rotate:30 }, boundaryGap: false },
+      yAxis: { type:'value', name:'비율(%)', nameTextStyle:{ fontSize:9, color:'#94A3B8' }, axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
+      series: [
+        {
+          name:'고위험(HIGH)', type:'line', data: toBins(high),
+          smooth: true, symbol:'none',
+          lineStyle:{ color:'rgba(239,68,68,.9)', width:2 },
+          areaStyle:{ color:'rgba(239,68,68,.15)' },
+        },
+        {
+          name:'저위험(MED/LOW)', type:'line', data: toBins(other),
+          smooth: true, symbol:'none',
+          lineStyle:{ color:'rgba(59,130,246,.9)', width:2 },
+          areaStyle:{ color:'rgba(59,130,246,.15)' },
+        },
+      ],
+    }
+  }, [distData, unitData, riskMap, selectedFeat])
+
+  const reversedTopNames = useMemo(() => [...topNames].reverse(), [topNames])
+  const reversedLgbmVals = useMemo(() => [...lgbmVals].reverse(), [lgbmVals])
+
+  const BAR_COLORS = ['#3B82F6','#3B82F6','#3B82F6','#60A5FA','#60A5FA','#93C5FD','#93C5FD','#BFDBFE','#BFDBFE','#BFDBFE','#DBEAFE','#DBEAFE','#EFF6FF','#EFF6FF','#EFF6FF']
+
+  const hbarOpt = useMemo(() => ({
+    tooltip: { trigger:'item', formatter: p => `${p.name}<br/>LGBM Gain: ${Number(p.value).toExponential(3)}<br/>클릭하면 분포 확인` },
+    grid: { top:10, left:66, right:60, bottom:10 },
+    xAxis: { type:'value', axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
+    yAxis: { type:'category', data: reversedTopNames, axisLabel:{ fontSize:10, color:'#475569', fontFamily:'DM Mono,monospace' } },
+    series: [{
+      type:'bar',
+      data: reversedLgbmVals.map((v, i) => {
+        const feat = reversedTopNames[i]
+        const isSelected = feat === selectedFeat
+        return {
+          value: v,
+          itemStyle: {
+            color: isSelected ? '#2563EB' : (BAR_COLORS[i] || '#DBEAFE'),
+            borderColor: isSelected ? '#1E293B' : 'transparent',
+            borderWidth: isSelected ? 2 : 0,
+            borderRadius: [0,4,4,0],
+          }
+        }
+      }),
+      barMaxWidth:16,
+      label:{ show:true, position:'right', fontSize:9, formatter: p => Number(p.value).toExponential(2), color:'#475569' },
+    }],
+  }), [reversedTopNames, reversedLgbmVals, selectedFeat])
+
 
   if (loading || !top.length) {
     return (
@@ -51,66 +188,124 @@ export function ShapPage() {
     )
   }
 
-  // LGBM Gain 기준 Top-15
-  const topNames = top.map(d => d.feature)
-  const lgbmVals = top.map(d => d.lgbm)
-  const etVals   = top.map(d => d.et)
-  const enetVals = top.map(d => d.enet)
+  const BOX_H = 140
+  const HIST_H = 300
 
-  // normalize for display (max=1 scale per model)
-  const maxLgbm = Math.max(...lgbmVals) || 1
-  const maxEt   = Math.max(...etVals) || 1
-  const maxEnet = Math.max(...enetVals) || 1
+  return (
+    <div className="feat-page">
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, alignItems:'stretch' }}>
 
-  const importanceOpt = {
-    tooltip: {
-      trigger: 'axis',
-      formatter: params => {
-        const idx = params[0].dataIndex
-        const d = top[idx]
-        return `<b>${d.feature}</b><br/>LGBM Gain: ${d.lgbm.toFixed(5)}<br/>ET Impurity: ${d.et.toFixed(5)}<br/>ElasticNet Coef: ${d.enet.toFixed(5)}`
-      }
-    },
-    legend: { data:['LGBM Gain','ET Impurity','ElasticNet'], bottom:0, textStyle:{ fontSize:10, color:'#475569' } },
-    grid: { top:10, left:66, right:20, bottom:44 },
-    xAxis: { type:'category', data:topNames, axisLabel:{ fontSize:9, color:'#475569', fontFamily:'DM Mono,monospace', rotate:30 } },
-    yAxis: { type:'value', name:'정규화 중요도', nameTextStyle:{ fontSize:9, color:'#94A3B8' }, axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    series: [
-      { name:'LGBM Gain',   type:'bar', data:lgbmVals.map(v=>+(v/maxLgbm).toFixed(4)), barGap:'5%', barMaxWidth:14, itemStyle:{ color:'rgba(59,130,246,.85)', borderRadius:[3,3,0,0] } },
-      { name:'ET Impurity', type:'bar', data:etVals.map(v=>+(v/maxEt).toFixed(4)),      barMaxWidth:14, itemStyle:{ color:'rgba(34,197,94,.75)', borderRadius:[3,3,0,0] } },
-      { name:'ElasticNet',  type:'bar', data:enetVals.map(v=>+(v/maxEnet).toFixed(4)),  barMaxWidth:14, itemStyle:{ color:'rgba(249,115,22,.75)', borderRadius:[3,3,0,0] } },
-    ],
+        {/* 왼쪽: 막대차트 — 오른쪽 높이에 맞춰 늘어남 */}
+        <div className="chart-card feat-left-card">
+          <div className="cc-header">
+            <div className="cc-title">🏆 LGBM Gain Top-15<span className="cc-tag">피처 클릭 → 분포 확인</span></div>
+          </div>
+          <div className="cc-body" style={{ display:'flex', flexDirection:'column', flex:1 }}>
+            <div style={{ fontSize:11, color:'#64748B', marginBottom:6 }}>
+              막대를 클릭하면 해당 피처의 <b>고위험/저위험 그룹 분포</b>를 오른쪽에서 확인할 수 있습니다.
+            </div>
+            <div style={{ flex:1, minHeight: HIST_H }}>
+              <ReactECharts
+                option={hbarOpt}
+                style={{ height: '100%', minHeight: HIST_H }}
+                onEvents={{
+                  click: p => {
+                    const feat = reversedTopNames[p.dataIndex]
+                    if (feat) setSelectedFeat(feat)
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 오른쪽: 히스토그램 + 박스플롯 */}
+        {selectedFeat && distOpt ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            <ChartCard title={`📉 ${selectedFeat} — 고위험 vs 저위험 분포`} tag="히스토그램">
+              <div style={{ fontSize:11, color:'#64748B', marginBottom:6 }}>
+                <span style={{ color:'#EF4444', fontWeight:600 }}>빨강</span> = 고위험(예측 HIGH) &nbsp;
+                <span style={{ color:'#3B82F6', fontWeight:600 }}>파랑</span> = 저위험(예측 MED/LOW) &nbsp;
+                — 두 분포가 벌어질수록 이 피처값이 위험도를 가르는 핵심 인자입니다.
+              </div>
+              <ReactECharts option={distOpt} style={{ height: HIST_H }} />
+            </ChartCard>
+
+            {boxOpt && (
+              <ChartCard title="📦 박스플롯 비교" tag="중앙값·IQR">
+                <ReactECharts option={boxOpt} style={{ height: BOX_H }} />
+              </ChartCard>
+            )}
+          </div>
+        ) : (
+          <div style={{
+            display:'flex', alignItems:'center', justifyContent:'center',
+            borderRadius:10, border:'2px dashed #E2E8F0',
+            flexDirection:'column', gap:8, color:'#94A3B8', fontSize:12,
+            minHeight: HIST_H,
+          }}>
+            <div style={{ fontSize:24 }}>👆</div>
+            왼쪽 막대를 클릭하면<br/>분포가 여기에 표시됩니다
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── SHAP 분석 ── */
+export function ShapPage() {
+  const { data: barData, loading: barLoading } = useCSV('/shap_bar.csv')
+  const { data: beeData, loading: beeLoading } = useCSV('/shap_beeswarm.csv')
+
+  const topBar = useMemo(() => {
+    if (!barData.length) return []
+    return [...barData]
+      .sort((a, b) => parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap))
+      .slice(0, 20)
+      .map(r => ({
+        feature: r.feature,
+        shap: parseFloat(r.mean_abs_shap) || 0,
+        rank: parseInt(r.rank) || 0,
+      }))
+  }, [barData])
+
+  const beeswarmData = useMemo(() => {
+    if (!beeData.length || !topBar.length) return []
+    const top10Names = new Set(topBar.slice(0, 10).map(d => d.feature))
+    return beeData
+      .filter(r => top10Names.has(r.feature))
+      .map(r => ({
+        feature: r.feature,
+        shap_value: parseFloat(r.shap_value) || 0,
+        feat_norm: parseFloat(r.feat_norm) || 0,
+        rank: parseInt(r.rank) || 0,
+      }))
+  }, [beeData, topBar])
+
+  if (barLoading || beeLoading) {
+    return (
+      <div className="feat-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:14 }}>
+        데이터 로딩 중…
+      </div>
+    )
   }
 
-  // 순위 비교 (radar) — top 7
-  const top7 = top.slice(0, 7)
-  const radarIndicator = top7.map(d => ({ name: d.feature, max: Math.max(d.lgbm_rank, d.et_rank, d.enet_rank, 10) + 5 }))
-  const radarOpt = {
-    tooltip: {},
-    legend: { data:['LGBM 순위','ET 순위','ElasticNet 순위'], bottom:0, textStyle:{ fontSize:10, color:'#475569' } },
-    radar: { indicator: radarIndicator, radius:'58%' },
-    series: [{
-      type:'radar',
-      data: [
-        { value: top7.map(d => d.lgbm_rank),  name:'LGBM 순위',      areaStyle:{ color:'rgba(59,130,246,.1)' },  lineStyle:{ color:'#3B82F6' }, itemStyle:{ color:'#3B82F6' } },
-        { value: top7.map(d => d.et_rank),    name:'ET 순위',         areaStyle:{ color:'rgba(34,197,94,.1)' },   lineStyle:{ color:'#22C55E' }, itemStyle:{ color:'#22C55E' } },
-        { value: top7.map(d => d.enet_rank),  name:'ElasticNet 순위', areaStyle:{ color:'rgba(249,115,22,.1)' },  lineStyle:{ color:'#F97316' }, itemStyle:{ color:'#F97316' } },
-      ],
-    }],
-  }
-
-  // 수평 바 — LGBM Gain Top 15 (상세 순위)
-  const hbarOpt = {
-    tooltip: { trigger:'axis', formatter: p => `${p[0].name}<br/>LGBM Gain: ${top[top.length-1-p[0].dataIndex].lgbm.toExponential(3)}` },
-    grid: { top:10, left:66, right:60, bottom:10 },
+  // SHAP Bar — Top-20 가로 막대
+  const barNames = topBar.map(d => d.feature)
+  const barVals  = topBar.map(d => d.shap)
+  const shapBarOpt = {
+    tooltip: { trigger:'axis', formatter: p => `${p[0].name}<br/>mean |SHAP|: ${topBar[topBar.length-1-p[0].dataIndex].shap.toFixed(5)}` },
+    grid: { top:10, left:80, right:70, bottom:10 },
     xAxis: { type:'value', axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    yAxis: { type:'category', data:[...topNames].reverse(), axisLabel:{ fontSize:10, color:'#475569', fontFamily:'DM Mono,monospace' } },
+    yAxis: { type:'category', data:[...barNames].reverse(), axisLabel:{ fontSize:10, color:'#475569', fontFamily:'DM Mono,monospace' } },
     series: [{
-      type:'bar', data:[...lgbmVals].reverse(), barMaxWidth:16,
+      type:'bar', data:[...barVals].reverse(), barMaxWidth:16,
       itemStyle: {
         color: p => {
-          const colors = ['#3B82F6','#3B82F6','#3B82F6','#60A5FA','#60A5FA','#93C5FD','#93C5FD','#BFDBFE','#BFDBFE','#BFDBFE','#DBEAFE','#DBEAFE','#EFF6FF','#EFF6FF','#EFF6FF']
-          return colors[p.dataIndex] || '#DBEAFE'
+          const colors = ['#7C3AED','#7C3AED','#8B5CF6','#8B5CF6','#A78BFA','#A78BFA','#C4B5FD','#C4B5FD','#DDD6FE','#DDD6FE',
+                          '#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE','#EDE9FE']
+          return colors[p.dataIndex] || '#EDE9FE'
         },
         borderRadius:[0,4,4,0],
       },
@@ -118,208 +313,84 @@ export function ShapPage() {
     }],
   }
 
-  return (
-    <div className="feat-page">
-      <div style={{
-        padding: '7px 14px',
-        background: '#FFFBEB',
-        border: '1.5px solid #F59E0B',
-        borderRadius: 6,
-        fontSize: 11,
-        color: '#92400E',
-        marginBottom: 4,
-      }}>
-        🟡 <b>페이지명 주의</b> — 이 탭은 "SHAP 분석"으로 표시되지만 실제로는 <b>feature_importance.csv</b> 기반 Feature Importance 시각화입니다. 실제 SHAP 값(shap_summary.csv) 연결 시 교체 필요.
-      </div>
-      <div className="two-col">
-        <ChartCard title="📊 Feature Importance — 3종 모델 비교" tag="정규화 기준">
-          <ReactECharts option={importanceOpt} style={{ height:260 }} />
-        </ChartCard>
-        <ChartCard title="📡 Top-7 순위 레이더" tag="모델별 rank">
-          <ReactECharts option={radarOpt} style={{ height:260 }} />
-        </ChartCard>
-      </div>
-      <ChartCard title="🏆 LGBM Gain Top-15 (상세)" tag="내림차순">
-        <ReactECharts option={hbarOpt} style={{ height:320 }} />
-      </ChartCard>
-      <ChartCard title="📋 Feature 상세 테이블" tag="Top-15">
-        <table className="feat-table">
-          <thead>
-            <tr>
-              <th>Feature</th>
-              <th>LGBM Gain</th><th>LGBM Rank</th>
-              <th>ET Impurity</th><th>ET Rank</th>
-              <th>ElasticNet</th><th>Enet Rank</th>
-              <th>상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            {top.slice(0, 15).map((d, i) => {
-              const good = !d.lgbm_weak && !d.et_weak && !d.enet_zero
-              return (
-                <tr key={i}>
-                  <td style={{ fontFamily:'DM Mono,monospace', fontWeight:600 }}>{d.feature}</td>
-                  <td style={{ fontFamily:'DM Mono,monospace', color:'#3B82F6' }}>{d.lgbm.toExponential(3)}</td>
-                  <td style={{ fontFamily:'DM Mono,monospace' }}>#{Math.round(d.lgbm_rank)}</td>
-                  <td style={{ fontFamily:'DM Mono,monospace', color:'#22C55E' }}>{d.et.toExponential(3)}</td>
-                  <td style={{ fontFamily:'DM Mono,monospace' }}>#{Math.round(d.et_rank)}</td>
-                  <td style={{ fontFamily:'DM Mono,monospace', color:'#F97316' }}>{d.enet.toExponential(3)}</td>
-                  <td style={{ fontFamily:'DM Mono,monospace' }}>#{Math.round(d.enet_rank)}</td>
-                  <td>
-                    <span style={{ fontSize:9, padding:'2px 6px', borderRadius:3, fontWeight:600,
-                      background: good ? '#F0FDF4' : '#FEF2F2',
-                      color: good ? '#22C55E' : '#EF4444' }}>
-                      {good ? 'STRONG' : 'WEAK'}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </ChartCard>
-    </div>
-  )
-}
+  // Beeswarm 대체 — 피처별 SHAP 분포 scatter
+  // x: shap_value, y: feature(rank 기준), color: feat_norm(피처값 크기)
+  const top10Names = topBar.slice(0, 10).map(d => d.feature)
+  const scatterSeries = top10Names.map((feat, i) => {
+    const pts = beeswarmData.filter(d => d.feature === feat)
+    return {
+      name: feat,
+      type: 'scatter',
+      symbolSize: 4,
+      data: pts.map(d => [d.shap_value, i, d.feat_norm]),
+      itemStyle: {
+        color: p => {
+          const norm = p.data[2]
+          if (norm > 0.66) return '#EF4444'
+          if (norm > 0.33) return '#F97316'
+          return '#3B82F6'
+        },
+        opacity: 0.6,
+      },
+    }
+  })
 
-/* ── 분포 비교 ── */
-export function DistPage() {
-  return (
-    <div className="feat-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📉 분포 비교</div>
-      <div style={{ fontSize: 13, color: 'var(--text3)' }}>불량/정상 그룹별 feature 분포를 밀도 곡선으로 비교합니다.</div>
-
-      <div style={{
-        padding: '10px 16px',
-        background: '#FEF2F2',
-        border: '2px solid #EF4444',
-        borderRadius: 8,
-        fontSize: 12,
-        color: '#B91C1C',
-        fontWeight: 600,
-      }}>
-        🔴 이 페이지 전체가 더미입니다 — feature별 분포 데이터(shap_summary.csv 또는 원본 피처 CSV) 연결 후 구현 필요합니다.
-      </div>
-
-      <div style={{
-        padding: '48px 24px',
-        background: '#FEF2F2',
-        border: '2px solid #EF4444',
-        borderRadius: 12,
-        textAlign: 'center',
-        color: '#B91C1C',
-        fontSize: 13,
-      }}>
-        🔴 불량/정상 밀도 곡선 (구현 예정)<br/>
-        <span style={{ fontSize: 11, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
-          feature 선택 → 불량 그룹(빨강) / 정상 그룹(초록) 분포 오버레이<br/>
-          KDE(커널 밀도 추정) 기반 시각화
-        </span>
-      </div>
-    </div>
-  )
-}
-
-/* ── Feature 개별 분포 ── */
-export function ImportancePage() {
-  const { top, loading } = useFeatureData(30)
-
-  if (loading || !top.length) {
-    return (
-      <div className="feat-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:14 }}>
-        데이터 로딩 중…
-      </div>
-    )
-  }
-
-  // 모델 간 순위 일치도 scatter (lgbm_rank vs et_rank)
-  const rankScatterOpt = {
-    tooltip: { formatter: p => `${p.data[2]}<br/>LGBM rank: #${Math.round(p.data[0])}<br/>ET rank: #${Math.round(p.data[1])}` },
-    grid: { top:20, left:52, right:20, bottom:40 },
-    xAxis: { type:'value', name:'LGBM Rank', nameTextStyle:{ fontSize:10, color:'#94A3B8' }, axisLabel:{ fontSize:10, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    yAxis: { type:'value', name:'ET Rank', nameTextStyle:{ fontSize:10, color:'#94A3B8' }, axisLabel:{ fontSize:10, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    series: [{
-      type:'scatter', symbolSize:6,
-      data: top.map(d => [d.lgbm_rank, d.et_rank, d.feature]),
-      itemStyle:{ color: p => {
-        const diff = Math.abs(p.data[0] - p.data[1])
-        if (diff < 20) return '#22C55E'
-        if (diff < 60) return '#3B82F6'
-        return '#EF4444'
-      }, opacity:0.75 },
-    }],
-  }
-
-  // LGBM Gain vs ET Impurity scatter
-  const gainImpScatterOpt = {
-    tooltip: { formatter: p => `${p.data[2]}<br/>LGBM Gain: ${p.data[0].toExponential(3)}<br/>ET Impurity: ${p.data[1].toExponential(3)}` },
-    grid: { top:20, left:60, right:20, bottom:40 },
-    xAxis: { type:'value', name:'LGBM Gain', nameTextStyle:{ fontSize:10, color:'#94A3B8' }, axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    yAxis: { type:'value', name:'ET Impurity', nameTextStyle:{ fontSize:10, color:'#94A3B8' }, axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
-    series: [{
-      type:'scatter', symbolSize:5,
-      data: top.map(d => [d.lgbm, d.et, d.feature]),
-      itemStyle:{ color:'rgba(59,130,246,.6)' },
-    }],
-  }
-
-  // 3모델 모두 강한 피처 카운트
-  const allStrong = top.filter(d => !d.lgbm_weak && !d.et_weak && !d.enet_zero).length
-  const twoStrong = top.filter(d => {
-    const weak = [d.lgbm_weak, d.et_weak, d.enet_zero].filter(Boolean).length
-    return weak === 1
-  }).length
-  const oneOrLess = top.length - allStrong - twoStrong
-
-  const consensusPie = {
-    tooltip: { trigger:'item', formatter:'{b}: {c}개 ({d}%)' },
-    legend: { bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
-    series: [{
-      type:'pie', radius:['40%','68%'], center:['50%','45%'],
-      data:[
-        { value:allStrong, name:'3모델 합의', itemStyle:{ color:'#22C55E' } },
-        { value:twoStrong, name:'2모델 합의', itemStyle:{ color:'#F97316' } },
-        { value:oneOrLess, name:'1모델 이하', itemStyle:{ color:'#EF4444' } },
-      ],
-      label:{ show:false },
-      emphasis:{ label:{ show:true, fontSize:12, fontWeight:'bold' } },
-    }],
+  const beeOpt = {
+    tooltip: {
+      formatter: p => `${top10Names[p.data[1]]}<br/>SHAP: ${p.data[0].toFixed(4)}<br/>피처값(정규화): ${p.data[2].toFixed(2)}`
+    },
+    legend: { show: false },
+    grid: { top:10, left:90, right:30, bottom:30 },
+    xAxis: {
+      type:'value', name:'SHAP value', nameTextStyle:{ fontSize:10, color:'#94A3B8' },
+      axisLabel:{ fontSize:9, color:'#94A3B8' },
+      splitLine:{ lineStyle:{ color:'#F1F5F9' } },
+      axisLine:{ lineStyle:{ color:'#E2E8F0' } },
+    },
+    yAxis: {
+      type:'value', min:-0.5, max:top10Names.length-0.5,
+      axisLabel:{
+        fontSize:10, color:'#475569', fontFamily:'DM Mono,monospace',
+        formatter: v => top10Names[Math.round(v)] || '',
+      },
+      splitLine:{ show:false },
+      axisTick:{ show:false },
+    },
+    series: scatterSeries,
   }
 
   return (
     <div className="feat-page">
-      <div className="stat-row-feat">
-        {[
-          { label:'분석 피처 수', value:top.length, color:'#3B82F6' },
-          { label:'3모델 합의 Strong', value:allStrong, color:'#22C55E' },
-          { label:'2모델 합의', value:twoStrong, color:'#F97316' },
-          { label:'약신호 (1모델↓)', value:oneOrLess, color:'#EF4444' },
-        ].map((s, i) => (
-          <div key={i} className="stat-card-feat" style={{ borderTop:`3px solid ${s.color}` }}>
-            <div style={{ fontSize:22, fontWeight:700, fontFamily:'DM Mono,monospace', color:s.color }}>{s.value}</div>
-            <div style={{ fontSize:11, color:'#64748B', marginTop:3 }}>{s.label}</div>
+      <div className="two-col" style={{ alignItems:'start' }}>
+        <ChartCard title="📊 SHAP Bar — Top-20" tag="mean |SHAP| 기준">
+          <div style={{ fontSize:11, color:'#64748B', marginBottom:6 }}>
+            값이 클수록 health 예측을 크게 움직이는 WT 항목입니다.
           </div>
-        ))}
-      </div>
-      <div className="two-col">
-        <ChartCard title="🎯 모델 간 순위 일치도" tag="LGBM rank vs ET rank">
-          <div style={{ fontSize:11, color:'#94A3B8', marginBottom:6 }}>
-            <span style={{ color:'#22C55E' }}>●</span> 순위 차 &lt;20 (일치) &nbsp;
-            <span style={{ color:'#3B82F6' }}>●</span> 20-60 &nbsp;
-            <span style={{ color:'#EF4444' }}>●</span> 60 이상 (불일치)
+          <ReactECharts option={shapBarOpt} style={{ height:300 }} />
+        </ChartCard>
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <div style={{ display:'flex', gap:10 }}>
+            {[
+              { label:'분석 피처 수', value: barData.length, color:'#7C3AED' },
+              { label:'Top-1 피처', value: topBar[0]?.feature ?? '-', color:'#7C3AED' },
+              { label:'mean|SHAP|', value: topBar[0]?.shap.toFixed(4) ?? '-', color:'#7C3AED' },
+            ].map((s, i) => (
+              <div key={i} className="stat-card-feat" style={{ borderTop:`3px solid ${s.color}`, flex:1 }}>
+                <div style={{ fontSize:i===1?12:18, fontWeight:700, fontFamily:'DM Mono,monospace', color:s.color }}>{s.value}</div>
+                <div style={{ fontSize:10, color:'#64748B', marginTop:3 }}>{s.label}</div>
+              </div>
+            ))}
           </div>
-          <ReactECharts option={rankScatterOpt} style={{ height:240 }} />
-        </ChartCard>
-        <ChartCard title="📊 3모델 합의 현황" tag={`Top-${top.length} 피처`}>
-          <ReactECharts option={consensusPie} style={{ height:240 }} />
-        </ChartCard>
-      </div>
-      <ChartCard title="🔵 LGBM Gain vs ET Impurity 상관" tag="scatter">
-        <div style={{ fontSize:11, color:'#94A3B8', marginBottom:6 }}>
-          두 모델이 공통으로 높게 평가하는 피처일수록 우상단에 위치 → 더 신뢰할 수 있는 중요 피처
+          <ChartCard title="🐝 Beeswarm — Top-10 피처별 분포" tag="unit별 기여도">
+            <div style={{ fontSize:11, color:'#64748B', marginBottom:4 }}>
+              <span style={{ color:'#EF4444' }}>●</span> 피처값 높음 &nbsp;
+              <span style={{ color:'#3B82F6' }}>●</span> 낮음 &nbsp;
+              오른쪽(+) = health↑, 왼쪽(-) = health↓
+            </div>
+            <ReactECharts option={beeOpt} style={{ height:240 }} />
+          </ChartCard>
         </div>
-        <ReactECharts option={gainImpScatterOpt} style={{ height:240 }} />
-      </ChartCard>
+      </div>
     </div>
   )
 }

@@ -4,9 +4,7 @@ import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
 import Overview from './pages/Overview'
 import WaferMap from './pages/WaferMap'
-import { PositionPage, LotPage, WaferPage } from './pages/LocationAnalysis'
-import { ShapPage, ImportancePage, DistPage } from './pages/FeatureAnalysis'
-import GroupCompare from './pages/GroupCompare'
+import { ShapPage, ImportancePage } from './pages/FeatureAnalysis'
 import DataTablePage from './pages/DataTable'
 import './App.css'
 
@@ -19,13 +17,8 @@ export default function App() {
     switch (page) {
       case 'overview':        return <Overview />
       case 'wafer-map':       return <WaferMap />
-      case 'loc-position':    return <PositionPage />
-      case 'loc-lot':         return <LotPage />
-      case 'loc-wafer':       return <WaferPage />
-      case 'feat-shap':       return <ShapPage />
       case 'feat-importance': return <ImportancePage />
-      case 'feat-dist':       return <DistPage />
-      case 'group-compare':   return <GroupCompare />
+      case 'feat-shap':       return <ShapPage />
       case 'data-table':      return <DataTablePage />
       default:                return <Overview />
     }
@@ -46,8 +39,8 @@ export default function App() {
       </div>
 
       {!chatOpen && (
-        <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI 어시스턴트">
-          🤖
+        <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI 어시스턴트 (더미)">
+          🤖<span className="fab-dummy-badge">🚧</span>
         </button>
       )}
 
