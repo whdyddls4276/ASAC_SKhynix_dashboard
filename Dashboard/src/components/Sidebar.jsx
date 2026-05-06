@@ -5,14 +5,6 @@ const MENU = [
   { id: 'overview',       icon: '📊', label: 'Overview' },
   { id: 'wafer-map',      icon: '🗺', label: '웨이퍼맵' },
   {
-    id: 'location', icon: '📍', label: '위치 분석',
-    children: [
-      { id: 'loc-position', label: 'Position별' },
-      { id: 'loc-lot',      label: 'Lot별' },
-      { id: 'loc-wafer',    label: 'Wafer별' },
-    ]
-  },
-  {
     id: 'feature', icon: '🔬', label: '변수 분석',
     children: [
       { id: 'feat-shap',       label: 'SHAP 분석' },

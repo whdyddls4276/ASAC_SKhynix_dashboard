@@ -120,6 +120,17 @@ export function ShapPage() {
 
   return (
     <div className="feat-page">
+      <div style={{
+        padding: '7px 14px',
+        background: '#FFFBEB',
+        border: '1.5px solid #F59E0B',
+        borderRadius: 6,
+        fontSize: 11,
+        color: '#92400E',
+        marginBottom: 4,
+      }}>
+        🟡 <b>페이지명 주의</b> — 이 탭은 "SHAP 분석"으로 표시되지만 실제로는 <b>feature_importance.csv</b> 기반 Feature Importance 시각화입니다. 실제 SHAP 값(shap_summary.csv) 연결 시 교체 필요.
+      </div>
       <div className="two-col">
         <ChartCard title="📊 Feature Importance — 3종 모델 비교" tag="정규화 기준">
           <ReactECharts option={importanceOpt} style={{ height:260 }} />
@@ -177,9 +188,30 @@ export function DistPage() {
     <div className="feat-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📉 분포 비교</div>
       <div style={{ fontSize: 13, color: 'var(--text3)' }}>불량/정상 그룹별 feature 분포를 밀도 곡선으로 비교합니다.</div>
-      <div style={{ padding: '48px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-        📊 불량/정상 밀도 곡선 (구현 예정)<br/>
-        <span style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
+
+      <div style={{
+        padding: '10px 16px',
+        background: '#FEF2F2',
+        border: '2px solid #EF4444',
+        borderRadius: 8,
+        fontSize: 12,
+        color: '#B91C1C',
+        fontWeight: 600,
+      }}>
+        🔴 이 페이지 전체가 더미입니다 — feature별 분포 데이터(shap_summary.csv 또는 원본 피처 CSV) 연결 후 구현 필요합니다.
+      </div>
+
+      <div style={{
+        padding: '48px 24px',
+        background: '#FEF2F2',
+        border: '2px solid #EF4444',
+        borderRadius: 12,
+        textAlign: 'center',
+        color: '#B91C1C',
+        fontSize: 13,
+      }}>
+        🔴 불량/정상 밀도 곡선 (구현 예정)<br/>
+        <span style={{ fontSize: 11, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
           feature 선택 → 불량 그룹(빨강) / 정상 그룹(초록) 분포 오버레이<br/>
           KDE(커널 밀도 추정) 기반 시각화
         </span>

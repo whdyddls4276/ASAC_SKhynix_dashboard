@@ -20,10 +20,12 @@ const DUMMY_AGENT = [
 export default function ChatBot({ open, onClose }) {
   const [activeTab, setActiveTab] = useState('assistant')
   const [assistantMsgs, setAssistantMsgs] = useState([
-    { role: 'bot', text: '안녕하세요! 불량 예측 AI 어시스턴트입니다. 용어나 지표에 대해 궁금한 점을 물어보세요.' }
+    { role: 'bot', text: '안녕하세요! 불량 예측 AI 어시스턴트입니다. 용어나 지표에 대해 궁금한 점을 물어보세요.' },
+    { role: 'bot', text: '🔴 현재 더미 응답 모드입니다 — Claude API 또는 OpenAI API 연결 전까지 랜덤 고정 답변이 반환됩니다.', dummy: true },
   ])
   const [agentMsgs, setAgentMsgs] = useState([
-    { role: 'bot', text: '안녕하세요! AI Agent입니다. 원인 분석, 패턴 비교, 보고서 생성 등을 요청해보세요.' }
+    { role: 'bot', text: '안녕하세요! AI Agent입니다. 원인 분석, 패턴 비교, 보고서 생성 등을 요청해보세요.' },
+    { role: 'bot', text: '🔴 현재 더미 응답 모드입니다 — 실제 LLM API 연결 전까지 랜덤 고정 답변이 반환됩니다.', dummy: true },
   ])
   const [input, setInput] = useState('')
   const bottomRef = useRef(null)
@@ -78,7 +80,17 @@ export default function ChatBot({ open, onClose }) {
         {messages.map((m, i) => (
           <div key={i} className={`cb-msg ${m.role}`}>
             {m.role === 'bot' && <div className="cb-avatar">AI</div>}
-            <div className="cb-bubble">{m.text}</div>
+            <div
+              className="cb-bubble"
+              style={m.dummy ? {
+                background: '#FEF2F2',
+                border: '1.5px solid #EF4444',
+                color: '#B91C1C',
+                fontSize: 11,
+              } : undefined}
+            >
+              {m.text}
+            </div>
           </div>
         ))}
         <div ref={bottomRef} />

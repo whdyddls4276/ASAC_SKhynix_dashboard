@@ -70,6 +70,19 @@ export default function DataTablePage() {
 
   return (
     <div className="dt-page">
+      {/* 데이터 연결 상태 안내 */}
+      <div style={{
+        padding: '8px 14px',
+        background: '#FFFBEB',
+        border: '1.5px solid #F59E0B',
+        borderRadius: 6,
+        fontSize: 11,
+        color: '#92400E',
+        marginBottom: 8,
+      }}>
+        🟡 <b>val/test의 health 컬럼은 실제 미공개</b> — 0으로 표시되는 값은 의미 없습니다. clf_proba 기준으로 위험 판단하세요.
+        &nbsp;|&nbsp; <b>날짜(date) 컬럼</b>은 dashboard_units.csv에 없으면 "—"로 표시됩니다.
+      </div>
       {/* 요약 카드 */}
       {summary && (
         <div className="dt-summary">
@@ -119,15 +132,10 @@ export default function DataTablePage() {
             <tr>
               <th onClick={() => handleSort('ufs_serial')} className="sortable">Unit ID <SortIcon col="ufs_serial" /></th>
               <th>Split</th>
-              <th>날짜</th>
               <th onClick={() => handleSort('clf_proba')} className="sortable">clf_proba <SortIcon col="clf_proba" /></th>
-              <th onClick={() => handleSort('health')} className="sortable">health <SortIcon col="health" /></th>
+              <th onClick={() => handleSort('reg_pred')} className="sortable">reg_pred <SortIcon col="reg_pred" /></th>
+              <th onClick={() => handleSort('health')} className="sortable">health(실제) <SortIcon col="health" /></th>
               <th>위험</th>
-              {featureCols.slice(0, 5).map(c => (
-                <th key={c} onClick={() => handleSort(c)} className="sortable">
-                  {c.replace('_mean', '')} <SortIcon col={c} />
-                </th>
-              ))}
             </tr>
           </thead>
           <tbody>
@@ -137,19 +145,16 @@ export default function DataTablePage() {
                 <td>
                   <span className={`split-badge split-${r.split}`}>{r.split}</span>
                 </td>
-                <td className="mono" style={{ color:'#94A3B8' }}>{r.date || '—'}</td>
-                <td className="mono" style={{ color: parseFloat(r.clf_proba) >= 0.65 ? '#EF4444' : parseFloat(r.clf_proba) >= 0.5 ? '#F97316' : '#22C55E', fontWeight:600 }}>
-                  {parseFloat(r.clf_proba).toFixed(4)}
+                <td className="mono" style={{ color: parseFloat(r.clf_proba) >= 0.5 ? '#EF4444' : parseFloat(r.clf_proba) >= 0.35 ? '#F97316' : '#22C55E', fontWeight:600 }}>
+                  {parseFloat(r.clf_proba || 0).toFixed(4)}
                 </td>
-                <td className="mono" style={{ color: parseFloat(r.health) > 0 ? '#EF4444' : '#22C55E' }}>
-                  {parseFloat(r.health).toFixed(6)}
+                <td className="mono" style={{ color: parseFloat(r.reg_pred) > 0.005 ? '#EF4444' : parseFloat(r.reg_pred) > 0.002 ? '#F97316' : '#64748B', fontWeight: parseFloat(r.reg_pred) > 0.005 ? 600 : 400 }}>
+                  {parseFloat(r.reg_pred || 0).toFixed(6)}
+                </td>
+                <td className="mono" style={{ color: parseFloat(r.health) > 0 ? '#EF4444' : '#94A3B8' }}>
+                  {r.split === 'train' ? parseFloat(r.health || 0).toFixed(6) : <span style={{ color:'#CBD5E1' }}>미공개</span>}
                 </td>
                 <td><RiskBadge level={r.risk} /></td>
-                {featureCols.slice(0, 5).map(c => (
-                  <td key={c} className="mono" style={{ color:'#64748B' }}>
-                    {parseFloat(r[c] || 0).toFixed(3)}
-                  </td>
-                ))}
               </tr>
             ))}
           </tbody>

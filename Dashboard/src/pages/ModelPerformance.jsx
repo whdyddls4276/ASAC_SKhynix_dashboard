@@ -33,30 +33,45 @@ export default function ModelPerformance() {
   // metrics 파싱
   const metrics = useMemo(() => {
     if (!metricsRaw.length) return null
-    const get = (model, split) => {
-      const row = metricsRaw.find(r => r.model === model && r.split === split)
+    const get = (stage, model, split, metric = 'rmse') => {
+      const row = metricsRaw.find(r => r.stage === stage && r.model === model && r.split === split && r.metric === metric)
       return row ? parseFloat(row.value) : null
     }
     return {
-      lgbm_val:     get('lgbm', 'val'),
-      lgbm_test:    get('lgbm', 'test'),
-      et_val:       get('et', 'val'),
-      et_test:      get('et', 'test'),
-      enet_val:     get('enet', 'val'),
-      enet_test:    get('enet', 'test'),
-      ensemble_oof: get('ensemble', 'oof'),
-      ensemble_val: get('ensemble', 'val'),
+      lgbm_val:       get('reg', 'lgbm', 'val'),
+      lgbm_test:      get('reg', 'lgbm', 'test'),
+      et_val:         get('reg', 'et', 'val'),
+      et_test:        get('reg', 'et', 'test'),
+      enet_val:       get('reg', 'enet', 'val'),
+      enet_test:      get('reg', 'enet', 'test'),
+      ensemble_oof:   get('reg', 'ensemble', 'oof'),
+      ensemble_val:   get('reg', 'ensemble', 'val'),
+      // clf 지표 (새로 추가)
+      clf_auc_val:    get('clf', 'soft_vote', 'val', 'auc'),
+      clf_auc_test:   get('clf', 'soft_vote', 'test', 'auc'),
+      clf_recall_val: get('clf', 'soft_vote', 'val', 'recall'),
+      clf_ap_val:     get('clf', 'soft_vote', 'val', 'ap'),
+      lgbm_auc_val:   get('clf', 'lgbm', 'val', 'auc'),
+      et_auc_val:     get('clf', 'et', 'val', 'auc'),
+      enet_auc_val:   get('clf', 'logreg_enet', 'val', 'auc'),
     }
   }, [metricsRaw])
 
-  // scatter 데이터
+  // scatter 데이터 — split별 분리
   const scatterData = useMemo(() => {
-    if (!scatterRaw.length) return []
-    return scatterRaw.map(r => [
-      parseFloat(r.health) || 0,
-      parseFloat(r.reg_pred) || 0,
-    ])
+    if (!scatterRaw.length) return { train: [], val: [], test: [] }
+    const result = { train: [], val: [], test: [] }
+    for (const r of scatterRaw) {
+      const sp = r.split || 'train'
+      if (result[sp]) result[sp].push([
+        parseFloat(r.health) || 0,
+        parseFloat(r.reg_pred) || 0,
+      ])
+    }
+    return result
   }, [scatterRaw])
+
+  const allScatter = [...scatterData.train, ...scatterData.val, ...scatterData.test]
 
   if (mLoading || sLoading || !metrics) {
     return <div className="model-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8' }}>데이터 로딩 중…</div>
@@ -101,9 +116,10 @@ export default function ModelPerformance() {
   }
 
   // 실제 vs 예측 scatter
-  const maxVal = Math.max(...scatterData.map(d => Math.max(d[0], d[1])), 0.01)
+  const maxVal = Math.max(...allScatter.map(d => Math.max(d[0], d[1])), 0.01)
   const scatterOpt = {
-    tooltip: { formatter: p => `실제: ${p.data[0].toFixed(6)}<br/>예측: ${p.data[1].toFixed(6)}` },
+    tooltip: { formatter: p => `실제: ${p.data[0].toFixed(6)}<br/>예측: ${p.data[1].toFixed(6)}<br/>Split: ${p.seriesName}` },
+    legend: { data:['Train(Y>0)','Train(Y=0)','Val','Test'], bottom:0, textStyle:{ fontSize:10, color:'#475569' } },
     grid: { top:20, left:60, right:20, bottom:44 },
     xAxis: { type:'value', name:'실제값 (health)', nameTextStyle:{ fontSize:10, color:'#94A3B8' },
       axisLabel:{ fontSize:9, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } }, max: maxVal },
@@ -112,13 +128,19 @@ export default function ModelPerformance() {
     series: [
       { type:'line', data:[[0,0],[maxVal,maxVal]],
         lineStyle:{ color:'#94A3B8', type:'dashed', width:1 }, symbol:'none', silent:true },
-      { name:'예측', type:'scatter', data:scatterData, symbolSize:5,
-        itemStyle:{ color: p => p.data[0] > 0 ? 'rgba(239,68,68,.6)' : 'rgba(59,130,246,.3)' } },
+      { name:'Train(Y>0)', type:'scatter', data:scatterData.train.filter(d=>d[0]>0), symbolSize:5,
+        itemStyle:{ color:'rgba(239,68,68,.6)' } },
+      { name:'Train(Y=0)', type:'scatter', data:scatterData.train.filter(d=>d[0]===0), symbolSize:4,
+        itemStyle:{ color:'rgba(59,130,246,.25)' } },
+      { name:'Val', type:'scatter', data:scatterData.val, symbolSize:5,
+        itemStyle:{ color:'rgba(139,92,246,.7)' } },
+      { name:'Test', type:'scatter', data:scatterData.test, symbolSize:5,
+        itemStyle:{ color:'rgba(6,182,212,.7)' } },
     ],
   }
 
   // 예측값 분포 히스토그램
-  const predVals = scatterData.map(d => d[1])
+  const predVals = allScatter.map(d => d[1])
   const maxPred  = Math.max(...predVals)
   const BIN_N    = 24
   const binSize  = maxPred / BIN_N
@@ -154,6 +176,33 @@ export default function ModelPerformance() {
           sub={beatBase ? `기준 ${BASELINE_RMSE} 달성 ✓` : '사내 최우수 기준'}
         />
       </div>
+
+      {/* Stage 1 clf 지표 */}
+      {metrics.clf_auc_val != null && (
+        <ChartCard title="🎯 Stage 1 분류 성능" tag="clf_proba — soft_vote val 기준">
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:4 }}>
+            {[
+              { label:'AUC (Val)',    value: metrics.clf_auc_val?.toFixed(4),    color:'#3B82F6' },
+              { label:'AUC (Test)',   value: metrics.clf_auc_test?.toFixed(4),   color:'#06B6D4' },
+              { label:'Recall (Val)', value: metrics.clf_recall_val?.toFixed(4), color:'#EF4444',
+                note: metrics.clf_recall_val < 0.1 ? '⚠ 매우 낮음' : undefined },
+              { label:'AP (Val)',     value: metrics.clf_ap_val?.toFixed(4),     color:'#F97316' },
+            ].map((s,i) => (
+              <div key={i} style={{ padding:'12px 14px', background:'#F8FAFC', borderRadius:8,
+                border:`1.5px solid ${s.color}33`, borderTop:`3px solid ${s.color}` }}>
+                <div style={{ fontSize:18, fontWeight:700, fontFamily:'DM Mono,monospace', color:s.color }}>{s.value ?? '—'}</div>
+                <div style={{ fontSize:11, color:'#64748B', marginTop:2 }}>{s.label}</div>
+                {s.note && <div style={{ fontSize:10, color:'#EF4444', fontWeight:600, marginTop:2 }}>{s.note}</div>}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:11, color:'#92400E', background:'#FFFBEB', border:'1px solid #FDE68A',
+            borderRadius:6, padding:'7px 12px' }}>
+            💡 Recall이 낮을수록 Stage 1이 실제 불량 unit을 잘 못 잡는다는 의미 → Two-Stage의 한계.
+            AUC {metrics.clf_auc_val?.toFixed(3)} = {metrics.clf_auc_val > 0.65 ? '양호' : metrics.clf_auc_val > 0.58 ? '보통' : '랜덤에 가까움'}
+          </div>
+        </ChartCard>
+      )}
 
       {/* 모델 비교 바 + scatter */}
       <div className="two-col">

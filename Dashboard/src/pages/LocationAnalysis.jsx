@@ -111,10 +111,32 @@ export function LotPage() {
     <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📦 Lot별 분석</div>
       <div style={{ fontSize: 13, color: 'var(--text3)' }}>Lot별 위험 unit 수 및 불량률을 비교합니다.</div>
-      <div style={{ padding: '48px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-        📊 Lot별 바차트 (구현 예정)<br/>
-        <span style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
-          lot별 불량 unit 수 / 불량률 바차트<br/>
+
+      {/* 전체 페이지 더미 표시 */}
+      <div style={{
+        padding: '10px 16px',
+        background: '#FEF2F2',
+        border: '2px solid #EF4444',
+        borderRadius: 8,
+        fontSize: 12,
+        color: '#B91C1C',
+        fontWeight: 600,
+      }}>
+        🔴 이 페이지 전체가 더미입니다 — run_wf_xy 파싱 후 실제 Lot ID를 연결해야 구현 가능합니다.
+      </div>
+
+      <div style={{
+        padding: '48px 24px',
+        background: '#FEF2F2',
+        border: '2px solid #EF4444',
+        borderRadius: 12,
+        textAlign: 'center',
+        color: '#B91C1C',
+        fontSize: 13,
+      }}>
+        🔴 Lot별 바차트 (구현 예정)<br/>
+        <span style={{ fontSize: 11, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
+          run_wf_xy → Lot ID 파싱 → lot별 불량 unit 수 / 불량률 바차트<br/>
           선택한 lot → wafer별 드릴다운
         </span>
       </div>
@@ -128,10 +150,32 @@ export function WaferPage() {
     <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>🧿 Wafer별 분석</div>
       <div style={{ fontSize: 13, color: 'var(--text3)' }}>Wafer별 불량 분포 및 Position 드릴다운을 제공합니다.</div>
-      <div style={{ padding: '48px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-        📊 Wafer별 히트맵 (구현 예정)<br/>
-        <span style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
-          wafer별 불량률 히트맵<br/>
+
+      {/* 전체 페이지 더미 표시 */}
+      <div style={{
+        padding: '10px 16px',
+        background: '#FEF2F2',
+        border: '2px solid #EF4444',
+        borderRadius: 8,
+        fontSize: 12,
+        color: '#B91C1C',
+        fontWeight: 600,
+      }}>
+        🔴 이 페이지 전체가 더미입니다 — run_wf_xy 파싱 후 실제 Wafer 번호를 연결해야 구현 가능합니다.
+      </div>
+
+      <div style={{
+        padding: '48px 24px',
+        background: '#FEF2F2',
+        border: '2px solid #EF4444',
+        borderRadius: 12,
+        textAlign: 'center',
+        color: '#B91C1C',
+        fontSize: 13,
+      }}>
+        🔴 Wafer별 히트맵 (구현 예정)<br/>
+        <span style={{ fontSize: 11, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
+          run_wf_xy → Wafer 번호 파싱 → wafer별 불량률 히트맵<br/>
           선택한 wafer → position별 드릴다운
         </span>
       </div>
@@ -139,7 +183,7 @@ export function WaferPage() {
   )
 }
 
-/* ── Unit별 웨이퍼맵 (실데이터 기반 die 좌표 분포) ── */
+/* ── Unit별 웨이퍼맵 (position 기반 근사 — die_x/die_y 실좌표 아님) ── */
 export function UnitMapPage() {
   const { data, loading } = useOof()
 
@@ -249,6 +293,17 @@ export function UnitMapPage() {
   return (
     <div className="loc-page">
       <ChartCard title="🗺 웨이퍼맵 — Position별 불량 확률 분포" tag="clf_proba_mean 기반">
+        <div style={{
+          padding: '7px 12px',
+          background: '#FFFBEB',
+          border: '1.5px solid #F59E0B',
+          borderRadius: 6,
+          fontSize: 11,
+          color: '#92400E',
+          marginBottom: 10,
+        }}>
+          🟡 <b>근사 시각화</b> — die_x/die_y 실좌표 없음. position(1~4)을 4분면에 매핑하고 노이즈를 추가한 근사치입니다. 실제 웨이퍼 좌표 데이터 연결 시 교체 필요.
+        </div>
         <div style={{ fontSize:11, color:'#94A3B8', marginBottom:8, display:'flex', gap:16, flexWrap:'wrap' }}>
           {posSummary.map(s => (
             <span key={s.pos}>
@@ -419,6 +474,17 @@ export function WaferZonePage() {
   return (
     <div className="loc-page">
       <ChartCard title="📊 Wafer × Position 불량 히트맵" tag="clf_proba_mean 평균">
+        <div style={{
+          padding: '7px 12px',
+          background: '#FFFBEB',
+          border: '1.5px solid #F59E0B',
+          borderRadius: 6,
+          fontSize: 11,
+          color: '#92400E',
+          marginBottom: 10,
+        }}>
+          🟡 <b>Wafer 그룹이 가짜</b> — ufs_serial 숫자를 100으로 나눈 나머지로 W01~W12를 임의 추정한 값입니다. run_wf_xy 실데이터 연결 시 교체 필요.
+        </div>
         <ReactECharts option={waferOpt} style={{ height:320 }} />
       </ChartCard>
       <ChartCard title="🎯 Serial 구간별 불량 분포" tag="구간별 불량 unit 수">

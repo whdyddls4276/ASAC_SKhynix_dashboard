@@ -16,12 +16,20 @@ export default function GroupCompare() {
         <div className="gc-desc">불량/정상 그룹 간 feature 평균값 차이를 비교합니다.</div>
       </div>
 
-      <div className="gc-dummy-note">
-        ⚠ 현재 더미 데이터입니다. shap_summary.csv 연결 후 실제 값으로 교체됩니다.
+      <div style={{
+        padding: '10px 16px',
+        background: '#FEF2F2',
+        border: '2px solid #EF4444',
+        borderRadius: 8,
+        fontSize: 12,
+        color: '#B91C1C',
+        fontWeight: 600,
+      }}>
+        🔴 이 페이지 전체가 <b>하드코딩 더미 데이터</b>입니다 — X739, X1083 등 수치는 임의 작성된 값입니다. shap_summary.csv 또는 group_stats.csv 연결 후 실제 값으로 교체 필요.
       </div>
 
-      <div className="gc-card">
-        <div className="gc-card-title">🔴 vs 🟢 그룹 평균값 비교 (상위 N feature)</div>
+      <div className="gc-card" style={{ border: '2px solid #EF4444' }}>
+        <div className="gc-card-title">🔴 vs 🟢 그룹 평균값 비교 (상위 N feature) <span style={{ fontSize: 11, color: '#B91C1C', fontWeight: 700 }}>— 🔴 더미값</span></div>
         <div className="gc-bar-list">
           {dummyRows.map((r, i) => (
             <div key={i} className="gc-bar-row">
@@ -47,8 +55,8 @@ export default function GroupCompare() {
         </div>
       </div>
 
-      <div className="gc-card">
-        <div className="gc-card-title">📋 상세 수치 테이블</div>
+      <div className="gc-card" style={{ border: '2px solid #EF4444' }}>
+        <div className="gc-card-title">📋 상세 수치 테이블 <span style={{ fontSize: 11, color: '#B91C1C', fontWeight: 700 }}>— 🔴 더미값</span></div>
         <table className="gc-table">
           <thead>
             <tr>

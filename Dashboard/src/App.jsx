@@ -10,26 +10,26 @@ import GroupCompare from './pages/GroupCompare'
 import DataTablePage from './pages/DataTable'
 import './App.css'
 
-function renderPage(page) {
-  switch (page) {
-    case 'overview':        return <Overview />
-    case 'wafer-map':       return <WaferMap />
-    case 'loc-position':    return <PositionPage />
-    case 'loc-lot':         return <LotPage />
-    case 'loc-wafer':       return <WaferPage />
-    case 'feat-shap':       return <ShapPage />
-    case 'feat-importance': return <ImportancePage />
-    case 'feat-dist':       return <DistPage />
-    case 'group-compare':   return <GroupCompare />
-    case 'data-table':      return <DataTablePage />
-    default:                return <Overview />
-  }
-}
 
 export default function App() {
   const [activePage, setActivePage] = useState('overview')
   const [notifOpen, setNotifOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  function renderPageWithProps(page) {
+    switch (page) {
+      case 'overview':        return <Overview />
+      case 'wafer-map':       return <WaferMap />
+      case 'loc-position':    return <PositionPage />
+      case 'loc-lot':         return <LotPage />
+      case 'loc-wafer':       return <WaferPage />
+      case 'feat-shap':       return <ShapPage />
+      case 'feat-importance': return <ImportancePage />
+      case 'feat-dist':       return <DistPage />
+      case 'group-compare':   return <GroupCompare />
+      case 'data-table':      return <DataTablePage />
+      default:                return <Overview />
+    }
+  }
 
   return (
     <div className="app">
@@ -39,7 +39,7 @@ export default function App() {
         <Sidebar activePage={activePage} setActivePage={setActivePage} />
 
         <main className="main-content">
-          {renderPage(activePage)}
+          {renderPageWithProps(activePage)}
         </main>
 
         <ChatBot open={chatOpen} onClose={() => setChatOpen(false)} />
@@ -56,6 +56,18 @@ export default function App() {
         <div className="np-header">
           <div className="np-title">🔔 위험 감지 알림</div>
           <button className="np-close" onClick={() => setNotifOpen(false)}>✕</button>
+        </div>
+        <div style={{
+          margin: '8px 12px',
+          padding: '7px 12px',
+          background: '#FEF2F2',
+          border: '1.5px solid #EF4444',
+          borderRadius: 6,
+          fontSize: 11,
+          color: '#B91C1C',
+          fontWeight: 600,
+        }}>
+          🔴 더미 알림 — 실제 예측 결과 기반 알림 로직 미구현
         </div>
         <div className="np-list">
           {[
