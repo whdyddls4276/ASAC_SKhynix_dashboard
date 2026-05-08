@@ -20,6 +20,7 @@
   transition: box-shadow .2s;
 }
 .dt-stat:hover { box-shadow: 0 2px 12px rgba(59,130,246,.1); }
+.dt-stat > div:last-child { font-size: 13px !important; }
 
 .dt-filterbar {
   display: flex;
@@ -70,13 +71,13 @@
 .dt-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 .dt-table th {
-  padding: 9px 12px;
+  padding: 10px 14px;
   text-align: left;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   color: var(--text3);
   border-bottom: 1.5px solid var(--border);
   background: var(--surface2);

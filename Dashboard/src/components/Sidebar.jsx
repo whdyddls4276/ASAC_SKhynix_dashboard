@@ -11,7 +11,7 @@ const MENU = [
       { id: 'feat-shap',       label: 'SHAP 분석' },
     ]
   },
-  { id: 'data-table',     icon: '📋', label: '데이터 테이블' },
+{ id: 'data-table',     icon: '📋', label: '데이터 테이블' },
 ]
 
 export default function Sidebar({ activePage, setActivePage }) {

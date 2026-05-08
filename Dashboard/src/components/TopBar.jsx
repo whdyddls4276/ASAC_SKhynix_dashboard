@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react'
 import './TopBar.css'
 
+const FIXED_DATE = '2026-06-11'
+
 export default function TopBar({ notifOpen, setNotifOpen }) {
   const [profileOpen, setProfileOpen] = useState(false)
-  const [now, setNow] = useState(new Date())
+  const [timeStr, setTimeStr] = useState('')
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000)
+    const update = () => {
+      setTimeStr(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }))
+    }
+    update()
+    const timer = setInterval(update, 1000)
     return () => clearInterval(timer)
   }, [])
-
-  const dateStr = now.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
-    .replace(/\. /g, '-').replace('.', '')
-  const timeStr = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 
   return (
     <header className="topbar">
@@ -23,7 +25,7 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
       </div>
 
       <div className="topbar-right">
-        <div className="date-pill">{dateStr} · {timeStr}</div>
+        <div className="date-pill">{FIXED_DATE} · {timeStr}</div>
 
         <button
           className="icon-btn"

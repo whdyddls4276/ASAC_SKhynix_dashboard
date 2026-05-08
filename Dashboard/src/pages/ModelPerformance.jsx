@@ -28,7 +28,7 @@ const BASELINE_RMSE = 0.0150  // 사내 최우수 기준
 
 export default function ModelPerformance() {
   const { data: metricsRaw, loading: mLoading } = useCSV('/metrics.csv')
-  const { data: scatterRaw, loading: sLoading }  = useCSV('/model_scatter.csv')
+  const { data: scatterRaw, loading: sLoading }  = useCSV('/dashboard_units.csv')
 
   // metrics 파싱
   const metrics = useMemo(() => {
@@ -57,18 +57,20 @@ export default function ModelPerformance() {
     }
   }, [metricsRaw])
 
-  // scatter 데이터 — split별 분리
+  // scatter 데이터 — split별 분리 + 샘플링 (train 500, val 300, test 200)
   const scatterData = useMemo(() => {
     if (!scatterRaw.length) return { train: [], val: [], test: [] }
-    const result = { train: [], val: [], test: [] }
+    const buckets = { train: [], val: [], test: [] }
     for (const r of scatterRaw) {
       const sp = r.split || 'train'
-      if (result[sp]) result[sp].push([
-        parseFloat(r.health) || 0,
-        parseFloat(r.reg_pred) || 0,
-      ])
+      if (buckets[sp]) buckets[sp].push([parseFloat(r.health) || 0, parseFloat(r.reg_pred) || 0])
     }
-    return result
+    const sample = (arr, n) => arr.length <= n ? arr : arr.filter((_, i) => i % Math.ceil(arr.length / n) === 0).slice(0, n)
+    return {
+      train: sample(buckets.train, 500),
+      val:   sample(buckets.val,   300),
+      test:  sample(buckets.test,  200),
+    }
   }, [scatterRaw])
 
   const allScatter = [...scatterData.train, ...scatterData.val, ...scatterData.test]

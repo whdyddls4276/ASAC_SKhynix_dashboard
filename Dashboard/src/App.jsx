@@ -19,7 +19,7 @@ export default function App() {
       case 'wafer-map':       return <WaferMap />
       case 'feat-importance': return <ImportancePage />
       case 'feat-shap':       return <ShapPage />
-      case 'data-table':      return <DataTablePage />
+case 'data-table':      return <DataTablePage />
       default:                return <Overview />
     }
   }

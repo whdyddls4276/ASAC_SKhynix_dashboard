@@ -22,9 +22,9 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2);
 }
-.cc-title { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.cc-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
 .cc-tag {
-  font-size: 9px; font-family: 'DM Mono',monospace; padding: 2px 7px;
+  font-size: 10px; font-family: 'DM Mono',monospace; padding: 2px 8px;
   border-radius: 4px; background: var(--primary-pale); color: var(--accent); border: 1px solid var(--primary-mid);
 }
 .cc-body { padding: 10px 14px; }

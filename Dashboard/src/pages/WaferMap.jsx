@@ -6,7 +6,15 @@ import './WaferMap.css'
 function lotToDate(lot) {
   const n = Math.round(parseFloat(lot))
   let base, offset
-  if (n <= 28) {
+  if (n >= 201) {
+    // 합성 lot: 201~326 → 2026-05-28 ~ 2026-06-10 (하루 9개)
+    base = new Date('2026-05-28')
+    offset = Math.floor((n - 201) / 9)
+  } else if (n >= 101) {
+    // 합성 lot: 101~156 → 2026-04-11 ~ 2026-06-05
+    base = new Date('2026-04-11')
+    offset = n - 101
+  } else if (n <= 28) {
     base = new Date('2026-03-27')
     offset = Math.round((n - 1) * (45 / 27))
   } else if (n <= 56) {
@@ -21,32 +29,35 @@ function lotToDate(lot) {
   return d.toISOString().slice(0, 10)
 }
 
-const WAFER_CX = 39, WAFER_CY = 21.5, WAFER_R = 27
+// 실제 데이터 범위에서 정규화된 좌표계로 변환 (정사각형 그리드)
+// die_x: 12~66 (중심 39, 반경 27), die_y: 11~32 (중심 21.5, 반경 10.5)
+// 정규화: x_norm = (die_x - 39) / 27, y_norm = (die_y - 21.5) / 10.5
+// → 둘 다 [-1, 1] 범위, 원형 웨이퍼 경계 = x_norm² + y_norm² ≤ 1
+const WAFER_CX = 39, WAFER_CY = 21.5, WAFER_RX = 27, WAFER_RY = 10.5
+const NORM_R = 1.0
+
+function normX(x) { return (x - WAFER_CX) / WAFER_RX }
+function normY(y) { return (y - WAFER_CY) / WAFER_RY }
+
+const DANGER_THRESH = 0.003412
+const CARD = { background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }
 
 export default function WaferMap() {
   const { data: dies, loading } = useCSV('/wafer_map.csv')
 
-  const [selLot, setSelLot] = useState(null)
-  const [selWafer, setSelWafer] = useState(null)
+  const [selDate, setSelDate]   = useState(null)   // 'YYYY-MM-DD'
+  const [selLot,  setSelLot]    = useState(null)   // number
+  const [selWafer, setSelWafer] = useState(null)   // number
   const waferChartRef = useRef(null)
 
   const drawCircle = useCallback(() => {
     const chart = waferChartRef.current?.getEchartsInstance?.()
     if (!chart) return
-    const center = chart.convertToPixel('grid', [WAFER_CX, WAFER_CY])
-    const edgeX = chart.convertToPixel('grid', [WAFER_CX + WAFER_R, WAFER_CY])
-    const edgeY = chart.convertToPixel('grid', [WAFER_CX, WAFER_CY + WAFER_R])
+    const center = chart.convertToPixel('grid', [0, 0])
+    const edgeX  = chart.convertToPixel('grid', [NORM_R, 0])
     const rx = Math.abs(edgeX[0] - center[0])
-    const ry = Math.abs(edgeY[1] - center[1])
     if (!rx || isNaN(rx)) return
-    chart.setOption({
-      graphic: [{
-        type: 'ellipse',
-        shape: { cx: center[0], cy: center[1], rx, ry },
-        style: { fill: 'none', stroke: '#94A3B8', lineWidth: 2 },
-        z: 100,
-      }]
-    })
+    chart.setOption({ graphic: [{ type: 'circle', shape: { cx: center[0], cy: center[1], r: rx }, style: { fill: 'none', stroke: '#94A3B8', lineWidth: 2.5 }, z: 100 }] })
   }, [])
 
   useEffect(() => {
@@ -55,63 +66,78 @@ export default function WaferMap() {
     return () => clearTimeout(t)
   }, [selLot, selWafer, drawCircle])
 
-  // lot 목록 + lot별 wafer 목록 + lot별 위험 unit 수
-  const { lots, wafersByLot } = useMemo(() => {
-    if (!dies.length) return { lots: [], wafersByLot: {} }
-    const wbl = {}
-    dies.forEach(d => {
-      const lot = Math.round(parseFloat(d.run_id))
-      const wafer = Math.round(parseFloat(d.wafer_no))
-      if (!wbl[lot]) wbl[lot] = new Set()
-      wbl[lot].add(wafer)
-    })
-    const lots = Object.keys(wbl).map(Number).sort((a, b) => a - b)
-    const wafersByLot = {}
-    lots.forEach(lot => { wafersByLot[lot] = [...wbl[lot]].sort((a, b) => a - b) })
-    return { lots, wafersByLot }
-  }, [dies])
-
-  // Lot별 위험 unit 수 바차트 (val 전체)
-  const lotBarOption = useMemo(() => {
+  // 최근 2주 날짜 목록 + 날짜별 위험 unit 수
+  const dateBarOption = useMemo(() => {
     if (!dies.length) return null
-    const valDies = dies.filter(d => d.split === 'val')
-    const lotMap = {}
-    valDies.forEach(d => {
+    // 날짜 목록 (val + 합성 lot만, train/test 제외)
+    const dateMap = {}
+    dies.filter(d => {
       const lot = Math.round(parseFloat(d.run_id))
-      if (!lotMap[lot]) lotMap[lot] = { danger: 0, total: 0 }
-      lotMap[lot].total++
-      if (parseFloat(d.pred) > 0.003412) lotMap[lot].danger++
+      return d.split === 'val' || lot >= 101
+    }).forEach(d => {
+      const dateStr = lotToDate(Math.round(parseFloat(d.run_id)))
+      if (!dateMap[dateStr]) dateMap[dateStr] = { danger: 0, total: 0 }
+      dateMap[dateStr].total++
+      if (parseFloat(d.pred) > DANGER_THRESH) dateMap[dateStr].danger++
     })
-    const sorted = Object.entries(lotMap).sort((a, b) => a[0] - b[0])
+    // 최근 14개 날짜만
+    const sorted = Object.entries(dateMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-14)
     return {
       tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>위험 unit: ${p[0].value}개` },
-      grid: { top: 10, bottom: 50, left: 50, right: 10 },
-      xAxis: { type: 'category', data: sorted.map(([lot]) => lotToDate(lot)), axisLabel: { fontSize: 9, rotate: 35 } },
+      grid: { top: 10, bottom: 55, left: 50, right: 10 },
+      xAxis: { type: 'category', data: sorted.map(([d]) => d), axisLabel: { fontSize: 9, rotate: 35 } },
       yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
       series: [{
         type: 'bar',
-        data: sorted.map(([lot, d]) => ({
-          value: d.danger,
-          lot: parseFloat(lot),
-          itemStyle: { color: parseFloat(lot) === selLot ? '#6366F1' : '#EF4444', borderRadius: [3, 3, 0, 0] },
+        data: sorted.map(([d, v]) => ({
+          value: v.danger, date: d,
+          itemStyle: { color: d === selDate ? '#6366F1' : '#EF4444', borderRadius: [3, 3, 0, 0] },
         })),
-        barMaxWidth: 24,
+        barMaxWidth: 28,
       }],
     }
-  }, [dies, selLot])
+  }, [dies, selDate])
 
-  // 선택 Lot의 Wafer별 위험 unit 수 바차트
+  // 선택 날짜의 로트별 위험 unit 수
+  const lotBarOption = useMemo(() => {
+    if (!selDate || !dies.length) return null
+    const dayDies = dies.filter(d => lotToDate(Math.round(parseFloat(d.run_id))) === selDate)
+    const lotMap = {}
+    dayDies.forEach(d => {
+      const lot = Math.round(parseFloat(d.run_id))
+      if (!lotMap[lot]) lotMap[lot] = { danger: 0, total: 0 }
+      lotMap[lot].total++
+      if (parseFloat(d.pred) > DANGER_THRESH) lotMap[lot].danger++
+    })
+    const sorted = Object.entries(lotMap).sort((a, b) => Number(a[0]) - Number(b[0]))
+    return {
+      tooltip: { trigger: 'axis', formatter: p => `Lot ${p[0].axisValue}<br/>위험 unit: ${p[0].value}개` },
+      grid: { top: 10, bottom: 40, left: 50, right: 10 },
+      xAxis: { type: 'category', data: sorted.map(([lot]) => `L${lot}`), axisLabel: { fontSize: 10 } },
+      yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+      series: [{
+        type: 'bar',
+        data: sorted.map(([lot, v]) => ({
+          value: v.danger, lot: parseFloat(lot),
+          itemStyle: { color: parseFloat(lot) === selLot ? '#6366F1' : '#F97316', borderRadius: [3, 3, 0, 0] },
+        })),
+        barMaxWidth: 36,
+      }],
+    }
+  }, [dies, selDate, selLot])
+
+  // 선택 로트의 웨이퍼별 위험 unit 수
   const waferBarOption = useMemo(() => {
     if (!selLot || !dies.length) return null
-    const lotDies = dies.filter(d => d.split === 'val' && Math.round(parseFloat(d.run_id)) === selLot)
+    const lotDies = dies.filter(d => Math.round(parseFloat(d.run_id)) === selLot)
     const waferMap = {}
     lotDies.forEach(d => {
       const w = Math.round(parseFloat(d.wafer_no))
       if (!waferMap[w]) waferMap[w] = { danger: 0, total: 0 }
       waferMap[w].total++
-      if (parseFloat(d.pred) > 0.003412) waferMap[w].danger++
+      if (parseFloat(d.pred) > DANGER_THRESH) waferMap[w].danger++
     })
-    const sorted = Object.entries(waferMap).sort((a, b) => a[0] - b[0])
+    const sorted = Object.entries(waferMap).sort((a, b) => Number(a[0]) - Number(b[0]))
     return {
       tooltip: { trigger: 'axis', formatter: p => `Wafer ${p[0].axisValue}<br/>위험 unit: ${p[0].value}개` },
       grid: { top: 10, bottom: 40, left: 50, right: 10 },
@@ -119,9 +145,8 @@ export default function WaferMap() {
       yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
       series: [{
         type: 'bar',
-        data: sorted.map(([w, d]) => ({
-          value: d.danger,
-          wafer: parseFloat(w),
+        data: sorted.map(([w, v]) => ({
+          value: v.danger, wafer: parseFloat(w),
           itemStyle: { color: parseFloat(w) === selWafer ? '#6366F1' : '#F97316', borderRadius: [3, 3, 0, 0] },
         })),
         barMaxWidth: 28,
@@ -129,7 +154,7 @@ export default function WaferMap() {
     }
   }, [dies, selLot, selWafer])
 
-  // 선택 Wafer의 웨이퍼맵 scatter — 원형 (중심 39,21.5 / 반지름 27)
+  // 웨이퍼맵
   const waferMapOption = useMemo(() => {
     if (!selLot || !selWafer || !dies.length) return null
     const raw = dies.filter(d =>
@@ -137,35 +162,20 @@ export default function WaferMap() {
       Math.round(parseFloat(d.wafer_no)) === selWafer
     )
     if (!raw.length) return null
-    // 원형 영역 안 die만
-    const filtered = raw.filter(d => {
-      const dx = parseFloat(d.die_x) - WAFER_CX
-      const dy = parseFloat(d.die_y) - WAFER_CY
-      return Math.sqrt(dx * dx + dy * dy) <= WAFER_R
-    })
+    const filtered = raw
+    if (!filtered.length) return null
     const maxPred = Math.max(...filtered.map(d => parseFloat(d.pred)))
+    const PAD = 0.08
     return {
-      tooltip: { formatter: p => `die(${p.data[0]}, ${p.data[1]})<br/>예측 불량지수: ${p.data[2].toFixed(6)}` },
-      visualMap: {
-        min: 0, max: maxPred || 0.01,
-        calculable: true, orient: 'horizontal', left: 'center', bottom: 8,
-        inRange: { color: ['#22C55E', '#FCD34D', '#EF4444'] },
-        textStyle: { fontSize: 10 },
-      },
+      tooltip: { formatter: p => `die(${p.data.origX}, ${p.data.origY})<br/>예측 불량지수: ${parseFloat(p.data.value[2]).toFixed(6)}` },
+      visualMap: { min: 0, max: maxPred || 0.01, dimension: 2, calculable: true, orient: 'horizontal', left: 'center', bottom: 8, inRange: { color: ['#22C55E', '#FCD34D', '#EF4444'] }, textStyle: { fontSize: 10 } },
       grid: { top: 10, bottom: 60, left: 10, right: 10, containLabel: false },
-      xAxis: {
-        type: 'value', min: WAFER_CX - WAFER_R - 1, max: WAFER_CX + WAFER_R + 1,
-        show: false, splitLine: { show: false },
-      },
-      yAxis: {
-        type: 'value', min: WAFER_CY - WAFER_R - 1, max: WAFER_CY + WAFER_R + 1,
-        show: false, splitLine: { show: false },
-      },
+      xAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
+      yAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
       series: [{
         type: 'scatter',
-        data: filtered.map(d => [parseFloat(d.die_x), parseFloat(d.die_y), parseFloat(d.pred)]),
-        symbolSize: 10,
-        emphasis: { scale: 1.5 },
+        data: filtered.map(d => ({ value: [normX(parseFloat(d.die_x)), normY(parseFloat(d.die_y)), parseFloat(d.pred)], origX: parseFloat(d.die_x), origY: parseFloat(d.die_y) })),
+        symbol: 'rect', symbolSize: [8, 20], emphasis: { scale: false },
       }],
     }
   }, [dies, selLot, selWafer])
@@ -180,33 +190,48 @@ export default function WaferMap() {
     <div className="wafermap-page">
       <div className="wm-header">
         <div className="wm-title">🗺 웨이퍼맵</div>
-        <div className="wm-desc">Lot 막대 클릭 → Wafer 선택 → 웨이퍼맵 순으로 드릴다운합니다.</div>
+        <div className="wm-desc">날짜 → 로트 → 웨이퍼 → 웨이퍼맵 순으로 드릴다운합니다.</div>
       </div>
 
-      {/* Step 1: Lot별 위험 unit 수 */}
-      <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }}>
+      {/* Step 1: 최근 2주 날짜별 위험 unit 수 */}
+      <div style={CARD}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
-          📅 Lot별 위험 unit 수 — 막대 클릭 시 Wafer 상세
-          {selLot && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Lot {selLot} ({lotToDate(selLot)})</span>}
+          📅 최근 2주 날짜별 위험 unit 수 — 막대 클릭 시 로트 상세
+          {selDate && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: {selDate}</span>}
         </div>
-        <ReactECharts
-          option={lotBarOption}
-          style={{ height: 220 }}
-          onEvents={{ click: p => { setSelLot(p.data.lot); setSelWafer(null) } }}
-        />
+        {dateBarOption
+          ? <ReactECharts option={dateBarOption} style={{ height: 220 }}
+              onEvents={{ click: p => { setSelDate(p.data.date); setSelLot(null); setSelWafer(null) } }}
+            />
+          : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
+        }
       </div>
 
-      {/* Step 2: Wafer별 위험 unit 수 */}
-      {selLot && (
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }}>
+      {/* Step 2: 로트별 위험 unit 수 */}
+      {selDate && (
+        <div style={CARD}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
-            🏭 Lot {selLot} ({lotToDate(selLot)}) — Wafer별 위험 unit 수 — 막대 클릭 시 웨이퍼맵
+            🏭 {selDate} — 로트별 위험 unit 수 — 막대 클릭 시 웨이퍼 상세
+            {selLot && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Lot {selLot}</span>}
+          </div>
+          {lotBarOption
+            ? <ReactECharts option={lotBarOption} style={{ height: 220 }}
+                onEvents={{ click: p => { setSelLot(p.data.lot); setSelWafer(null) } }}
+              />
+            : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
+          }
+        </div>
+      )}
+
+      {/* Step 3: 웨이퍼별 위험 unit 수 */}
+      {selLot && (
+        <div style={CARD}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
+            🏭 Lot {selLot} ({selDate}) — 웨이퍼별 위험 unit 수 — 막대 클릭 시 웨이퍼맵
             {selWafer && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Wafer {selWafer}</span>}
           </div>
           {waferBarOption
-            ? <ReactECharts
-                option={waferBarOption}
-                style={{ height: 220 }}
+            ? <ReactECharts option={waferBarOption} style={{ height: 220 }}
                 onEvents={{ click: p => setSelWafer(p.data.wafer) }}
               />
             : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
@@ -214,21 +239,16 @@ export default function WaferMap() {
         </div>
       )}
 
-      {/* Step 3: 웨이퍼맵 히트맵 */}
+      {/* Step 4: 웨이퍼맵 */}
       {selLot && selWafer && (
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+        <div style={{ ...CARD, marginBottom: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
-            🗺 Lot {selLot} ({lotToDate(selLot)}) — Wafer {selWafer} 웨이퍼맵
+            🗺 Lot {selLot} — Wafer {selWafer} 웨이퍼맵
             <span style={{ marginLeft: 8, fontSize: 11, color: '#64748B', fontWeight: 400 }}>색상: 예측 불량지수 (초록→노랑→빨강)</span>
           </div>
           {waferMapOption
             ? <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <ReactECharts
-                  ref={waferChartRef}
-                  option={waferMapOption}
-                  style={{ width: 500, height: 500 }}
-                  onChartReady={drawCircle}
-                />
+                <ReactECharts ref={waferChartRef} option={waferMapOption} style={{ width: 500, height: 500 }} onChartReady={drawCircle} />
               </div>
             : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
           }
