@@ -78,6 +78,7 @@ function ChartCard({ title, children }) {
 
 export default function Overview() {
   const { data: units, loading: loadingUnits } = useCSV('/dashboard_units.csv')
+  const { data: trendData, loading: loadingTrend } = useCSV('/trend_data.csv')
 
   const { defectThresh, highThresh, latestLot } = useMemo(() => {
     if (!units.length) return { defectThresh: 0, highThresh: 0, latestLot: null }
@@ -107,39 +108,24 @@ export default function Overview() {
     })
     const topWafer = Object.entries(waferCount).sort((a, b) => b[1] - a[1])[0]
     const topWaferLabel = topWafer ? `Wafer ${Math.round(topWafer[0])}` : '-'
-    const latestDate = lotToDate(latestLot)
+    const latestDate = '2026-05-07'
 
     return { total, danger, rate, topWaferLabel, highAvg, latestDate }
   }, [units, defectThresh, highThresh, latestLot])
 
-  // 트렌드: lot별 수율 비교
-  // train → health > 0 기준 불량률, val → reg_pred >= defectThresh 기준 불량률
+  // 트렌드: trend_data.csv 기반 (4개월치 일별 수율)
   const trendOption = useMemo(() => {
-    if (!units.length || defectThresh === 0) return null
+    if (!trendData.length) return null
 
-    // lot별 집계 (train + val만, test 제외)
-    const lotMap = {}
-    units.filter(u => u.split !== 'test').forEach(u => {
-      const lot = Math.round(parseFloat(u.run_id))
-      if (!lotMap[lot]) lotMap[lot] = { split: u.split, total: 0, trainDefect: 0, predDefect: 0 }
-      lotMap[lot].total++
-      if (u.split === 'train' && parseFloat(u.health) > 0) lotMap[lot].trainDefect++
-      if (parseFloat(u.reg_pred) >= defectThresh) lotMap[lot].predDefect++
-    })
-
-    const sorted = Object.entries(lotMap).sort((a, b) => a[0] - b[0])
-    const xData = sorted.map(([lot]) => lotToDate(lot))
-
-    // 수율 = (1 - 불량률) × 100
-    const trueYield = sorted.map(([, d]) =>
-      d.split === 'train' ? (100 - (d.trainDefect / d.total * 100)).toFixed(1) : null
-    )
-    const predYield = sorted.map(([, d]) =>
-      (100 - (d.predDefect / d.total * 100)).toFixed(1)
+    const xData      = trendData.map(r => r.date)
+    const predYield  = trendData.map(r => r.y_pred)
+    const trueYield  = trendData.map(r =>
+      (r.y_true == null || r.y_true === '') ? null : r.y_true
     )
 
-    const firstValIdx = sorted.findIndex(([, d]) => d.split === 'val')
-    const boundaryDate = firstValIdx > 0 ? xData[firstValIdx] : null
+    // y_true가 처음 null이 되는 날짜 = 구간 경계 (2개월 전)
+    const boundaryIdx  = trueYield.findIndex(v => v === null)
+    const boundaryDate = boundaryIdx > 0 ? xData[boundaryIdx] : null
 
     return {
       tooltip: { trigger: 'axis', formatter: (p) => {
@@ -158,13 +144,13 @@ export default function Overview() {
       grid: { top: 36, bottom: 110, left: 56, right: 20 },
       xAxis: {
         type: 'category', data: xData,
-        axisLabel: { fontSize: 9, rotate: 35, interval: 2, margin: 8 },
+        axisLabel: { fontSize: 9, rotate: 35, interval: 6, margin: 8 },
         axisLine: { lineStyle: { color: '#E2E8F0' } },
       },
       yAxis: {
         type: 'value',
         name: '수율(%)',
-        min: 0, max: 100,
+        min: 50, max: 100,
         nameTextStyle: { fontSize: 10 },
         axisLabel: { fontSize: 10, formatter: '{value}%' },
         splitLine: { lineStyle: { color: '#F1F5F9' } },
@@ -180,7 +166,7 @@ export default function Overview() {
           symbol: 'none',
           markLine: boundaryDate ? {
             silent: true,
-            data: [{ xAxis: boundaryDate, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 }, label: { formatter: '예측 시작', fontSize: 10, color: '#64748B' } }]
+            data: [{ xAxis: boundaryDate, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 }, label: { formatter: '예측 전용 구간', fontSize: 10, color: '#64748B' } }]
           } : undefined,
         },
         {
@@ -188,6 +174,7 @@ export default function Overview() {
           type: 'line',
           data: trueYield,
           smooth: true,
+          connectNulls: false,
           areaStyle: { color: 'rgba(239,68,68,0.10)' },
           lineStyle: { color: '#EF4444', width: 1.5 },
           itemStyle: { color: '#EF4444' },
@@ -195,7 +182,7 @@ export default function Overview() {
         },
       ],
     }
-  }, [units, defectThresh])
+  }, [trendData])
 
   // 최신 lot 하루치 Wafer별 위험 unit 수
   const waferBarOption = useMemo(() => {
@@ -258,7 +245,7 @@ export default function Overview() {
     }
   }, [units, defectThresh, highThresh, latestLot])
 
-  if (loadingUnits || !kpi) {
+  if (loadingUnits || loadingTrend || !kpi) {
     return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:14 }}>데이터 로딩 중…</div>
   }
 
@@ -266,7 +253,7 @@ export default function Overview() {
     <div className="overview">
       {/* KPI — 최신 lot(어제 하루치) 기준 */}
       <div style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
-        📅 기준일: {kpi.latestDate} (Lot {latestLot}) — 어제 WT 완료분
+        📅 기준일: {kpi.latestDate} — 최근 WT 완료분 기준
       </div>
       <div className="kpi-row">
         <KpiCard

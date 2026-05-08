@@ -3,21 +3,13 @@ import ReactECharts from 'echarts-for-react'
 import { useCSV } from '../hooks/useCSV'
 import './WaferMap.css'
 
-function lotToDate(lot) {
-  const n = Math.round(parseFloat(lot))
-  let base, offset
-  if (n <= 28) {
-    base = new Date('2026-03-27')
-    offset = Math.round((n - 1) * (45 / 27))
-  } else if (n <= 56) {
-    base = new Date('2026-05-12')
-    offset = n - 29
-  } else {
-    base = new Date('2026-06-11')
-    offset = n - 57
-  }
-  const d = new Date(base)
-  d.setDate(d.getDate() + offset)
+// 실제 날짜(wafer_map.csv date 컬럼) → 트렌드 기준 표시 날짜 (159일 shift)
+// 실제 최신: 2025-11-29 → 표시 오늘: 2026-05-07
+const DATE_OFFSET_MS = 159 * 24 * 60 * 60 * 1000
+function shiftDate(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  d.setTime(d.getTime() + DATE_OFFSET_MS)
   return d.toISOString().slice(0, 10)
 }
 
@@ -56,7 +48,7 @@ export default function WaferMap() {
   }, [selLot, selWafer, drawCircle])
 
   // lot 목록 + lot별 wafer 목록 + lot별 위험 unit 수
-  const { lots, wafersByLot } = useMemo(() => {
+  const { lots, wafersByLot, lotDateMap } = useMemo(() => {
     if (!dies.length) return { lots: [], wafersByLot: {} }
     const wbl = {}
     dies.forEach(d => {
@@ -68,8 +60,28 @@ export default function WaferMap() {
     const lots = Object.keys(wbl).map(Number).sort((a, b) => a - b)
     const wafersByLot = {}
     lots.forEach(lot => { wafersByLot[lot] = [...wbl[lot]].sort((a, b) => a - b) })
-    return { lots, wafersByLot }
+
+    // lot → 표시 날짜 매핑 (date 컬럼 max + 159일 shift)
+    const lotDateMap = {}
+    dies.forEach(d => {
+      const lot = Math.round(parseFloat(d.run_id))
+      if (!lotDateMap[lot] || d.date > lotDateMap[lot]) lotDateMap[lot] = d.date
+    })
+    Object.keys(lotDateMap).forEach(lot => {
+      lotDateMap[lot] = shiftDate(lotDateMap[lot])
+    })
+
+    return { lots, wafersByLot, lotDateMap }
   }, [dies])
+
+  // 데이터 로드 후 최신 val lot 자동 선택
+  useEffect(() => {
+    if (!dies.length || selLot !== null) return
+    const valDies = dies.filter(d => d.split === 'val')
+    if (!valDies.length) return
+    const maxLot = Math.max(...valDies.map(d => Math.round(parseFloat(d.run_id))))
+    setSelLot(maxLot)
+  }, [dies, selLot])
 
   // Lot별 위험 unit 수 바차트 (val 전체)
   const lotBarOption = useMemo(() => {
@@ -86,7 +98,7 @@ export default function WaferMap() {
     return {
       tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>위험 unit: ${p[0].value}개` },
       grid: { top: 10, bottom: 50, left: 50, right: 10 },
-      xAxis: { type: 'category', data: sorted.map(([lot]) => lotToDate(lot)), axisLabel: { fontSize: 9, rotate: 35 } },
+      xAxis: { type: 'category', data: sorted.map(([lot]) => lotDateMap[lot] ?? lot), axisLabel: { fontSize: 9, rotate: 35 } },
       yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
       series: [{
         type: 'bar',
@@ -98,7 +110,7 @@ export default function WaferMap() {
         barMaxWidth: 24,
       }],
     }
-  }, [dies, selLot])
+  }, [dies, selLot, lotDateMap])
 
   // 선택 Lot의 Wafer별 위험 unit 수 바차트
   const waferBarOption = useMemo(() => {
@@ -182,12 +194,15 @@ export default function WaferMap() {
         <div className="wm-title">🗺 웨이퍼맵</div>
         <div className="wm-desc">Lot 막대 클릭 → Wafer 선택 → 웨이퍼맵 순으로 드릴다운합니다.</div>
       </div>
+      <div style={{ fontSize:11, color:'#64748B', marginBottom:8 }}>
+        📅 기준일: 2026-05-07 — 최근 WT 완료분 기준 (Lot {Math.max(...(lots.filter(l => l <= 56)))})
+      </div>
 
       {/* Step 1: Lot별 위험 unit 수 */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
           📅 Lot별 위험 unit 수 — 막대 클릭 시 Wafer 상세
-          {selLot && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Lot {selLot} ({lotToDate(selLot)})</span>}
+          {selLot && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Lot {selLot} ({lotDateMap[selLot] ?? selLot})</span>}
         </div>
         <ReactECharts
           option={lotBarOption}
@@ -200,7 +215,7 @@ export default function WaferMap() {
       {selLot && (
         <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
-            🏭 Lot {selLot} ({lotToDate(selLot)}) — Wafer별 위험 unit 수 — 막대 클릭 시 웨이퍼맵
+            🏭 Lot {selLot} ({lotDateMap[selLot] ?? selLot}) — Wafer별 위험 unit 수 — 막대 클릭 시 웨이퍼맵
             {selWafer && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Wafer {selWafer}</span>}
           </div>
           {waferBarOption
@@ -218,7 +233,7 @@ export default function WaferMap() {
       {selLot && selWafer && (
         <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
-            🗺 Lot {selLot} ({lotToDate(selLot)}) — Wafer {selWafer} 웨이퍼맵
+            🗺 Lot {selLot} ({lotDateMap[selLot] ?? selLot}) — Wafer {selWafer} 웨이퍼맵
             <span style={{ marginLeft: 8, fontSize: 11, color: '#64748B', fontWeight: 400 }}>색상: 예측 불량지수 (초록→노랑→빨강)</span>
           </div>
           {waferMapOption

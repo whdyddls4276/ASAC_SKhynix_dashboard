@@ -44,6 +44,7 @@ export function ImportancePage() {
   const { top, loading } = useFeatureData(15)
   const { data: distData } = useCSV('/feature_dist.csv')
   const { data: unitData } = useCSV('/dashboard_units.csv')
+  const { data: shapRaw } = useCSV('/shap_data.csv')
   const [selectedFeat, setSelectedFeat] = useState(null)
 
   const topNames = useMemo(() => top.map(d => d.feature), [top])
@@ -152,6 +153,65 @@ export function ImportancePage() {
   const reversedTopNames = useMemo(() => [...topNames].reverse(), [topNames])
   const reversedLgbmVals = useMemo(() => [...lgbmVals].reverse(), [lgbmVals])
 
+  // SHAP 데이터: |effect_norm| 내림차순 정렬
+  const shapSorted = useMemo(() => {
+    if (!shapRaw.length) return []
+    return [...shapRaw]
+      .map(r => ({ feature: r.feature, value: parseFloat(r.effect_norm) || 0 }))
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+  }, [shapRaw])
+
+  // 선택된 피처의 SHAP 정보 (rank, value)
+  const shapInfo = useMemo(() => {
+    if (!selectedFeat || !shapSorted.length) return null
+    const idx = shapSorted.findIndex(d => d.feature === selectedFeat)
+    if (idx === -1) return null
+    return { feature: shapSorted[idx].feature, value: shapSorted[idx].value, rank: idx + 1 }
+  }, [selectedFeat, shapSorted])
+
+  // SHAP 바차트 옵션 — 선택 피처 보라색 하이라이트
+  const shapChartOpt = useMemo(() => {
+    if (!shapSorted.length || !selectedFeat) return null
+    const reversed = [...shapSorted].reverse()
+    return {
+      tooltip: {
+        trigger: 'axis',
+        formatter: p => {
+          const val = p[0].value
+          const isSelected = p[0].name === selectedFeat
+          return `${p[0].name}${isSelected ? '  ← 선택된 피처' : ''}<br/>${val >= 0 ? '+' : ''}${val.toFixed(4)}<br/>${val >= 0 ? '🔴 위험 증가 기여' : '🔵 위험 감소 기여'}`
+        }
+      },
+      grid: { top: 8, left: 80, right: 110, bottom: 8 },
+      xAxis: { type: 'value', axisLabel: { fontSize: 9, color: '#94A3B8' }, splitLine: { lineStyle: { color: '#F1F5F9' } } },
+      yAxis: { type: 'category', data: reversed.map(d => d.feature), axisLabel: { fontSize: 10, color: '#475569', fontFamily: 'DM Mono,monospace' } },
+      series: [{
+        type: 'bar',
+        barMaxWidth: 16,
+        data: reversed.map(d => {
+          const isSel = d.feature === selectedFeat
+          return {
+            value: d.value,
+            itemStyle: {
+              color: isSel ? '#7C3AED' : (d.value >= 0 ? 'rgba(239,68,68,0.45)' : 'rgba(59,130,246,0.45)'),
+              borderColor: isSel ? '#5B21B6' : 'transparent',
+              borderWidth: isSel ? 2 : 0,
+              borderRadius: d.value >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
+            },
+            label: {
+              show: isSel,
+              position: d.value >= 0 ? 'right' : 'left',
+              formatter: `${d.value >= 0 ? '+' : ''}${d.value.toFixed(4)}`,
+              fontSize: 10,
+              color: '#5B21B6',
+              fontWeight: 700,
+            },
+          }
+        }),
+      }],
+    }
+  }, [shapSorted, selectedFeat])
+
   const BAR_COLORS = ['#3B82F6','#3B82F6','#3B82F6','#60A5FA','#60A5FA','#93C5FD','#93C5FD','#BFDBFE','#BFDBFE','#BFDBFE','#DBEAFE','#DBEAFE','#EFF6FF','#EFF6FF','#EFF6FF']
 
   const hbarOpt = useMemo(() => ({
@@ -193,6 +253,9 @@ export function ImportancePage() {
 
   return (
     <div className="feat-page">
+      <div style={{ fontSize:11, color:'#64748B', marginBottom:8 }}>
+        📅 기준일: 2026-05-07 — 최근 WT 완료분 기준 피처 중요도 분석
+      </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, alignItems:'stretch' }}>
 
         {/* 왼쪽: 막대차트 — 오른쪽 높이에 맞춰 늘어남 */}
@@ -234,6 +297,37 @@ export function ImportancePage() {
             {boxOpt && (
               <ChartCard title="📦 박스플롯 비교" tag="중앙값·IQR">
                 <ReactECharts option={boxOpt} style={{ height: BOX_H }} />
+              </ChartCard>
+            )}
+
+            {shapChartOpt && (
+              <ChartCard
+                title={`🧬 ${selectedFeat} — SHAP 기여도 분석`}
+                tag={shapInfo ? `SHAP 순위 #${shapInfo.rank}` : 'SHAP Top-20'}
+              >
+                <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>
+                  {shapInfo ? (
+                    <>
+                      <span style={{ fontWeight: 700, color: shapInfo.value >= 0 ? '#EF4444' : '#3B82F6', marginRight: 8 }}>
+                        {shapInfo.value >= 0 ? '▲ 위험 증가 기여' : '▼ 위험 감소 기여'}
+                      </span>
+                      effect_norm:&nbsp;
+                      <b style={{ fontFamily: 'DM Mono,monospace', color: '#7C3AED' }}>
+                        {shapInfo.value >= 0 ? '+' : ''}{shapInfo.value.toFixed(4)}
+                      </b>
+                      &nbsp;·&nbsp;전체 SHAP 순위&nbsp;
+                      <b style={{ fontFamily: 'DM Mono,monospace', color: '#7C3AED' }}>#{shapInfo.rank}</b>
+                    </>
+                  ) : (
+                    <span style={{ color: '#94A3B8' }}>이 피처는 SHAP Top-20 범위 밖입니다.</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>
+                  <span style={{ color: '#7C3AED', fontWeight: 700 }}>■</span> 선택 피처&nbsp;&nbsp;
+                  <span style={{ color: 'rgba(239,68,68,0.8)', fontWeight: 700 }}>■</span> 위험 증가&nbsp;&nbsp;
+                  <span style={{ color: 'rgba(59,130,246,0.8)', fontWeight: 700 }}>■</span> 위험 감소
+                </div>
+                <ReactECharts option={shapChartOpt} style={{ height: 360 }} />
               </ChartCard>
             )}
           </div>
@@ -321,6 +415,9 @@ export function ShapPage() {
 
   return (
     <div className="feat-page">
+      <div style={{ fontSize:11, color:'#64748B', marginBottom:8 }}>
+        📅 기준일: 2026-05-07 — 최근 WT 완료분 기준 SHAP 분석
+      </div>
       <div className="two-col" style={{ alignItems:'start' }}>
         <ChartCard title="📊 SHAP 분석 — TreeSHAP · LightGBM · TOP 20" tag="effect_norm 기준">
           <div style={{ fontSize:11, color:'#64748B', marginBottom:6 }}>
