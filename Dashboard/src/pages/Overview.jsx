@@ -267,7 +267,7 @@ export default function Overview() {
     <div className="overview">
       {/* KPI — 최신 lot(어제 하루치) 기준 */}
       <div style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
-        📅 기준일: {kpi.latestDate} (Lot {latestLot}) — 어제 WT 완료분
+        📅 기준일: {kpi.latestDate} — 최근 WT 완료분 기준
       </div>
       <div className="kpi-row">
         <KpiCard

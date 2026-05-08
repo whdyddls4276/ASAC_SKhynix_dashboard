@@ -376,6 +376,37 @@ export function ImportancePage() {
                 </div>
               </div>
             )}
+
+            {shapChartOpt && (
+              <ChartCard
+                title={`🧬 ${selectedFeat} — SHAP 기여도 분석`}
+                tag={shapInfo ? `SHAP 순위 #${shapInfo.rank}` : 'SHAP Top-20'}
+              >
+                <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>
+                  {shapInfo ? (
+                    <>
+                      <span style={{ fontWeight: 700, color: shapInfo.value >= 0 ? '#EF4444' : '#3B82F6', marginRight: 8 }}>
+                        {shapInfo.value >= 0 ? '▲ 위험 증가 기여' : '▼ 위험 감소 기여'}
+                      </span>
+                      effect_norm:&nbsp;
+                      <b style={{ fontFamily: 'DM Mono,monospace', color: '#7C3AED' }}>
+                        {shapInfo.value >= 0 ? '+' : ''}{shapInfo.value.toFixed(4)}
+                      </b>
+                      &nbsp;·&nbsp;전체 SHAP 순위&nbsp;
+                      <b style={{ fontFamily: 'DM Mono,monospace', color: '#7C3AED' }}>#{shapInfo.rank}</b>
+                    </>
+                  ) : (
+                    <span style={{ color: '#94A3B8' }}>이 피처는 SHAP Top-20 범위 밖입니다.</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>
+                  <span style={{ color: '#7C3AED', fontWeight: 700 }}>■</span> 선택 피처&nbsp;&nbsp;
+                  <span style={{ color: 'rgba(239,68,68,0.8)', fontWeight: 700 }}>■</span> 위험 증가&nbsp;&nbsp;
+                  <span style={{ color: 'rgba(59,130,246,0.8)', fontWeight: 700 }}>■</span> 위험 감소
+                </div>
+                <ReactECharts option={shapChartOpt} style={{ height: 360 }} />
+              </ChartCard>
+            )}
           </div>
         ) : (
           <div style={{
