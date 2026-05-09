@@ -202,7 +202,7 @@ export function ImportancePage() {
           />
         </ChartCard>
 
-        <ChartCard title="🧬 SHAP — 불량 기여도 Top-15" tag="클릭 → 분포 확인">
+        <ChartCard title="🧬 불량 기여 방향 — SHAP effect Top-15" tag="클릭 → 분포 확인">
           <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8, lineHeight: 1.6 }}>
             <span style={{ color: '#EF4444', fontWeight: 600 }}>빨강(+)</span> = 불량 위험을 높이는 피처 &nbsp;
             <span style={{ color: '#3B82F6', fontWeight: 600 }}>파랑(-)</span> = 불량 위험을 낮추는 피처.
