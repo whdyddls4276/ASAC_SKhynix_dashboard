@@ -4,13 +4,7 @@ import './Sidebar.css'
 const MENU = [
   { id: 'overview',       icon: '📊', label: 'Overview' },
   { id: 'wafer-map',      icon: '🗺', label: '웨이퍼맵' },
-  {
-    id: 'feature', icon: '🔬', label: '변수 분석',
-    children: [
-      { id: 'feat-importance', label: 'Feature Importance' },
-      { id: 'feat-shap',       label: 'SHAP 분석' },
-    ]
-  },
+  { id: 'feat-importance', icon: '🔬', label: '변수 분석' },
 { id: 'data-table',     icon: '📋', label: '데이터 테이블' },
 ]
 

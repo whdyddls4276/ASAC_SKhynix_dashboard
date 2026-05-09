@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
 import Overview from './pages/Overview'
 import WaferMap from './pages/WaferMap'
-import { ShapPage, ImportancePage } from './pages/FeatureAnalysis'
+import { ImportancePage } from './pages/FeatureAnalysis'
 import DataTablePage from './pages/DataTable'
 import './App.css'
 
@@ -18,7 +18,6 @@ export default function App() {
       case 'overview':        return <Overview />
       case 'wafer-map':       return <WaferMap />
       case 'feat-importance': return <ImportancePage />
-      case 'feat-shap':       return <ShapPage />
 case 'data-table':      return <DataTablePage />
       default:                return <Overview />
     }
