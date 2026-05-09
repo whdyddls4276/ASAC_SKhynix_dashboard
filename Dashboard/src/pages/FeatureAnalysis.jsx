@@ -18,7 +18,7 @@ export function ImportancePage() {
   const { data: impRaw, loading } = useCSV('/feature_importance.csv')
   const { data: distData }        = useCSV('/feature_dist.csv')
   const { data: unitData }        = useCSV('/dashboard_units.csv')
-  const { data: shapRaw }         = useCSV('/shap_bar.csv')
+  const { data: shapRaw }         = useCSV('/shap_data.csv')
 
   const [selectedFeat, setSelectedFeat] = useState(null)
 
@@ -31,13 +31,13 @@ export function ImportancePage() {
       .map(r => ({ feature: r.feature, value: parseFloat(r.lgbm_gain) || 0 }))
   }, [impRaw])
 
-  // ── SHAP Top-15
+  // ── SHAP Top-15 (shap_data.csv 기준, lgbm_rank 순)
   const shapTop = useMemo(() => {
     if (!shapRaw.length) return []
     return [...shapRaw]
-      .sort((a, b) => parseFloat(a.rank) - parseFloat(b.rank))
+      .sort((a, b) => parseFloat(a.lgbm_rank) - parseFloat(b.lgbm_rank))
       .slice(0, 15)
-      .map(r => ({ feature: r.feature, value: parseFloat(r.mean_shap) || 0 }))
+      .map(r => ({ feature: r.feature, value: parseFloat(r.effect_norm) || 0 }))
   }, [shapRaw])
 
   // ── risk 매핑
@@ -191,18 +191,27 @@ export function ImportancePage() {
       {/* 상단: LGBM + SHAP 나란히 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <ChartCard title="🏆 Feature Importance — LGBM Gain Top-15" tag="클릭 → 분포 확인">
+          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8, lineHeight: 1.6 }}>
+            모델이 예측할 때 <b>각 피처를 얼마나 많이 활용했는지</b>를 나타냅니다.
+            값이 클수록 해당 피처가 불량 예측에 중요하게 사용된 것입니다.
+          </div>
           <ReactECharts
             option={lgbmOpt}
-            style={{ height: 400 }}
+            style={{ height: 370 }}
             onEvents={{ click: p => { const f = lgbmNames[p.dataIndex]; if (f) setSelectedFeat(f) } }}
           />
         </ChartCard>
 
-        <ChartCard title="🧬 SHAP — mean SHAP Top-15" tag="클릭 → 분포 확인">
+        <ChartCard title="🧬 SHAP — 불량 기여도 Top-15" tag="클릭 → 분포 확인">
+          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8, lineHeight: 1.6 }}>
+            <span style={{ color: '#EF4444', fontWeight: 600 }}>빨강(+)</span> = 불량 위험을 높이는 피처 &nbsp;
+            <span style={{ color: '#3B82F6', fontWeight: 600 }}>파랑(-)</span> = 불량 위험을 낮추는 피처.
+            절대값이 클수록 예측 결과에 더 큰 영향을 줍니다.
+          </div>
           {shapOpt
             ? <ReactECharts
                 option={shapOpt}
-                style={{ height: 400 }}
+                style={{ height: 370 }}
                 onEvents={{ click: p => { const f = shapNames[p.dataIndex]; if (f) setSelectedFeat(f) } }}
               />
             : <div style={{ color: '#94A3B8', textAlign: 'center', paddingTop: 40 }}>SHAP 데이터 없음</div>
@@ -213,18 +222,26 @@ export function ImportancePage() {
       {/* 하단: 히스토그램 + 박스플롯 나란히 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <ChartCard title="📉 고위험 vs 저위험 분포" tag={selectedFeat ?? '피처를 선택하세요'}>
+          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8, lineHeight: 1.6 }}>
+            선택한 피처의 값 분포를 고위험/저위험 그룹별로 비교합니다.
+            두 선이 <b>많이 겹칠수록</b> 구분력이 낮고, <b>떨어져 있을수록</b> 불량 예측에 효과적인 피처입니다.
+          </div>
           {distOpt
-            ? <ReactECharts option={distOpt} style={{ height: 240 }} />
-            : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 240, color: '#94A3B8', fontSize: 12, flexDirection: 'column', gap: 6 }}>
+            ? <ReactECharts option={distOpt} style={{ height: 210 }} />
+            : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 210, color: '#94A3B8', fontSize: 12, flexDirection: 'column', gap: 6 }}>
                 <span style={{ fontSize: 20 }}>👆</span>위 막대를 클릭하세요
               </div>
           }
         </ChartCard>
 
         <ChartCard title="📦 박스플롯 비교" tag={selectedFeat ?? '피처를 선택하세요'}>
+          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8, lineHeight: 1.6 }}>
+            중앙값(가운데 선)과 IQR(박스 너비)로 두 그룹의 분포를 비교합니다.
+            <span style={{ color: '#EF4444', fontWeight: 600 }}>고위험</span>과 <span style={{ color: '#3B82F6', fontWeight: 600 }}>저위험</span>의 박스가 <b>겹치지 않을수록</b> 구분력이 높은 피처입니다.
+          </div>
           {boxOpt
-            ? <ReactECharts option={boxOpt} style={{ height: 240 }} />
-            : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 240, color: '#94A3B8', fontSize: 12, flexDirection: 'column', gap: 6 }}>
+            ? <ReactECharts option={boxOpt} style={{ height: 210 }} />
+            : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 210, color: '#94A3B8', fontSize: 12, flexDirection: 'column', gap: 6 }}>
                 <span style={{ fontSize: 20 }}>👆</span>위 막대를 클릭하세요
               </div>
           }
