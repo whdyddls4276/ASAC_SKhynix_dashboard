@@ -48,7 +48,7 @@ function computeThresholds(units) {
 
   // 최신 lot = val에서 run_id가 가장 큰 lot
   const valUnits = units.filter(u => u.split === 'val')
-  const latestLot = Math.max(...valUnits.map(u => parseFloat(u.run_id)))
+  const latestLot = valUnits.length ? Math.max(...valUnits.map(u => parseFloat(u.run_id))) : null
   const latestUnits = valUnits.filter(u => parseFloat(u.run_id) === latestLot)
   const latestPreds = latestUnits.map(u => parseFloat(u.reg_pred)).sort((a, b) => a - b)
   // highThresh: 최신 lot의 위험 unit(>=defectThresh) 중 상위 10% 경계

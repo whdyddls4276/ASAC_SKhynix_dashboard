@@ -193,7 +193,7 @@ export default function WaferMap() {
         <div className="wm-desc">날짜 → 로트 → 웨이퍼 → 웨이퍼맵 순으로 드릴다운합니다.</div>
       </div>
       <div style={{ fontSize:11, color:'#64748B', marginBottom:8 }}>
-        📅 기준일: 2026-05-07 — 최근 WT 완료분 기준 (Lot {Math.max(...(lots.filter(l => l <= 56)))})
+        📅 기준일: 2026-05-07 — 최근 WT 완료분 기준
       </div>
 
       {/* Step 1: 최근 2주 날짜별 위험 unit 수 */}

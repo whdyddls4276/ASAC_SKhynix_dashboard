@@ -79,7 +79,7 @@ export default function ModelPerformance() {
     return <div className="model-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8' }}>데이터 로딩 중…</div>
   }
 
-  const bestVal  = metrics.ensemble_val
+  const bestVal  = metrics.ensemble_val ?? metrics.lgbm_val ?? 0
   const beatBase = bestVal < BASELINE_RMSE
   const improvement = (((BASELINE_RMSE - bestVal) / BASELINE_RMSE) * 100).toFixed(1)
 
@@ -168,9 +168,9 @@ export default function ModelPerformance() {
     <div className="model-page">
       {/* RMSE 카드 */}
       <div className="metric-row">
-        <MetricCard label="Ensemble Val RMSE" value={bestVal.toFixed(6)}   color="#3B82F6" sub="최종 앙상블 모델" highlight />
-        <MetricCard label="LGBM Val RMSE"      value={metrics.lgbm_val.toFixed(6)}  color="#8B5CF6" sub="LightGBM 단독" />
-        <MetricCard label="ET Val RMSE"        value={metrics.et_val.toFixed(6)}    color="#06B6D4" sub="ExtraTrees 단독" />
+        <MetricCard label="Ensemble Val RMSE" value={bestVal != null ? bestVal.toFixed(6) : '—'}   color="#3B82F6" sub="최종 앙상블 모델" highlight />
+        <MetricCard label="LGBM Val RMSE"      value={metrics.lgbm_val != null ? metrics.lgbm_val.toFixed(6) : '—'}  color="#8B5CF6" sub="LightGBM 단독" />
+        <MetricCard label="ET Val RMSE"        value={metrics.et_val != null ? metrics.et_val.toFixed(6) : '—'}    color="#06B6D4" sub="ExtraTrees 단독" />
         <MetricCard
           label={beatBase ? '기준 대비 개선' : '기준 RMSE'}
           value={beatBase ? `-${improvement}%` : BASELINE_RMSE.toFixed(4)}
