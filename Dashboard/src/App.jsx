@@ -59,8 +59,8 @@ export default function App() {
       </div>
 
       {!chatOpen && (
-        <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI 어시스턴트 (더미)">
-          🤖<span className="fab-dummy-badge">🚧</span>
+        <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI 어시스턴트">
+          🤖
         </button>
       )}
 
