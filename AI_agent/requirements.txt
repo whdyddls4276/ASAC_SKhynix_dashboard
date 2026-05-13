@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pandas
+numpy
+scipy
+anthropic
+python-pptx
+python-dotenv

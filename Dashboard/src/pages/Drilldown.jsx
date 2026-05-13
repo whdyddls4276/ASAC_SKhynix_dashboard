@@ -215,6 +215,8 @@ function UnitReport({ ufsSerial, allDies, scale, onClose }) {
   const ppm = Math.round(pred * 1e6)
   const isRisk = pred > scale.threshold
   const health = dies[0].health !== undefined ? parseFloat(dies[0].health) : null
+  const waferNo = dies[0].wafer_no ?? null
+  const runId   = dies[0].run_id ?? null
   const clfProba = dies[0].clf_proba !== undefined ? parseFloat(dies[0].clf_proba) : null
 
   // pred 백분위 (전체 dies 기준)
@@ -235,7 +237,14 @@ function UnitReport({ ufsSerial, allDies, scale, onClose }) {
           <span className={`dd-verdict-badge ${isRisk ? 'risk' : 'normal'}`}>
             {isRisk ? '⚠ 위험' : '✓ 정상'}
           </span>
-          <span className="dd-verdict-serial">{ufsSerial}</span>
+          <span className="dd-verdict-serial">
+            {ufsSerial}
+            {runId && waferNo && (
+              <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--text3)' }}>
+                · Lot {runId} · Wafer #{waferNo}
+              </span>
+            )}
+          </span>
           {onClose && <button className="dd-report-close" onClick={onClose}>✕</button>}
         </div>
         <div className="dd-verdict-pred">
@@ -323,24 +332,16 @@ function UnitReport({ ufsSerial, allDies, scale, onClose }) {
   )
 }
 
-// ── 정렬/필터 옵션 ────────────────────────────────────
-const LOT_SORT_OPTIONS = [
-  { value: 'risk_ratio', label: '위험률' },
-  { value: 'lot_id',     label: 'lot 번호' },
-]
-
 // ── 메인 ─────────────────────────────────────────────
 export default function Drilldown() {
   const { data: dieData, loading: loadingDie } = useCSV('/wafer_map.csv')
 
-  const [splitFilter, setSplitFilter]   = useState('train')
   const [selectedLot, setSelectedLot]   = useState(null)
   const [selectedKey, setSelectedKey]   = useState(null)
   const [selectedUnit, setSelectedUnit] = useState(null)
-  const [viewMode, setViewMode]         = useState('single')
   const [search, setSearch]             = useState('')
-  const [lotSort, setLotSort]           = useState('risk_ratio')
-  const [lotOrder, setLotOrder]         = useState('desc')
+  const [expandedLot, setExpandedLot]   = useState(null)
+  const [waferSort, setWaferSort]       = useState('default') // 'default' | 'risk_desc'
 
   const scale = useMemo(() => computeScale(dieData), [dieData])
 
@@ -352,10 +353,12 @@ export default function Drilldown() {
       const wno = String(d.wafer_no)
       const key = `${lot}_${wno}`
       if (!lotMap[lot]) lotMap[lot] = { lot, wafers: {}, totalDies: 0, riskDies: 0 }
-      if (!lotMap[lot].wafers[wno]) lotMap[lot].wafers[wno] = { wno, key, dies: 0, riskDies: 0 }
+      if (!lotMap[lot].wafers[wno]) lotMap[lot].wafers[wno] = { wno, key, dies: 0, riskDies: 0, predSum: 0 }
       const pred = parseFloat(d.pred)
       lotMap[lot].wafers[wno].dies++
+      lotMap[lot].wafers[wno].predSum += isFinite(pred) ? pred : 0
       lotMap[lot].totalDies++
+      lotMap[lot].predSum = (lotMap[lot].predSum || 0) + (isFinite(pred) ? pred : 0)
       if (pred > scale.threshold) {
         lotMap[lot].wafers[wno].riskDies++
         lotMap[lot].riskDies++
@@ -368,19 +371,21 @@ export default function Drilldown() {
         l.lot.includes(q) || Object.keys(l.wafers).some(w => w.includes(q))
       )
     }
-    const sign = lotOrder === 'asc' ? 1 : -1
     lots.sort((a, b) => {
-      if (lotSort === 'lot_id') return sign * (parseInt(a.lot) - parseInt(b.lot))
       const rA = a.totalDies ? a.riskDies / a.totalDies : 0
       const rB = b.totalDies ? b.riskDies / b.totalDies : 0
-      return sign * (rA - rB)
+      return rB - rA
     })
     return lots.map(l => ({
       ...l,
       riskRatio: l.totalDies ? l.riskDies / l.totalDies : 0,
-      waferList: Object.values(l.wafers).sort((a, b) => parseInt(a.wno) - parseInt(b.wno))
+      avgPpm: l.totalDies ? Math.round(l.predSum / l.totalDies * 1e6) : 0,
+      waferList: Object.values(l.wafers).sort((a, b) => parseInt(a.wno) - parseInt(b.wno)).map(w => ({
+        ...w,
+        avgPpm: w.dies ? Math.round(w.predSum / w.dies * 1e6) : 0,
+      }))
     }))
-  }, [dieData, scale, search, lotSort, lotOrder])
+  }, [dieData, scale, search])
 
   const selectedDies = useMemo(() => {
     if (!selectedKey) return []
@@ -401,94 +406,117 @@ export default function Drilldown() {
 
   useEffect(() => { setSelectedUnit(null) }, [selectedKey])
 
-  useEffect(() => {
-    if (!selectedLot) return
-    const el = document.querySelector(`[data-lot="${selectedLot}"]`)
-    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [lotSort, lotOrder, selectedLot])
+  // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
+  // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
+  function absBarWidth(ratio) {
+    if (ratio < 0.70) return `${Math.round(ratio / 0.70 * 15)}%`
+    if (ratio < 0.85) return `${Math.round((ratio - 0.70) / 0.15 * 50)}%`
+    return `${Math.round(50 + (ratio - 0.85) / 0.15 * 50)}%`
+  }
+  function absClass(ratio) {
+    return ratio >= 0.85 ? 'danger' : ratio >= 0.70 ? 'warn' : 'ok'
+  }
 
   const currentDies = selectedKey ? selectedDies : lotAccumDies
-
-  // 선택된 lot의 wafer 목록 (드롭다운용)
-  const selectedLotData = lotTree.find(l => l.lot === selectedLot)
 
   return (
     <div className="drilldown">
       <div className="dd-body-3col">
 
-        {/* ── 좌: 드롭다운 2단계 ── */}
+        {/* ── 좌: 아코디언 트리 ── */}
         <div className="dd-left-panel">
-          <div className="dd-panel-title">Lot / Wafer</div>
+          <div className="dd-tree-controls">
+            <input
+              className="dd-search-input"
+              placeholder="Lot 검색..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
 
-          <div className="dd-select-panel">
-            {/* Lot 드롭다운 */}
-            <div className="dd-select-group">
-              <label className="dd-select-label">Lot</label>
-              <select
-                className="dd-select"
-                value={selectedLot ?? ''}
-                onChange={e => {
-                  const val = e.target.value
-                  setSelectedLot(val || null)
-                  setSelectedKey(null)
-                }}
-              >
-                <option value="">— 선택 —</option>
-                {lotTree.map(({ lot, riskRatio }) => (
-                  <option key={lot} value={lot}>
-                    {`Lot ${lot}  (위험 ${(riskRatio * 100).toFixed(1)}%)`}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Wafer 드롭다운 — lot 선택 후 활성화 */}
-            <div className="dd-select-group">
-              <label className="dd-select-label">Wafer</label>
-              <select
-                className="dd-select"
-                value={selectedKey ?? ''}
-                disabled={!selectedLotData}
-                onChange={e => setSelectedKey(e.target.value || null)}
-              >
-                <option value="">— 전체 (lot 누적) —</option>
-                {selectedLotData?.waferList.map(w => {
-                  const wRatio = w.dies ? w.riskDies / w.dies : 0
-                  return (
-                    <option key={w.key} value={w.key}>
-                      {`#${w.wno}  (위험 ${(wRatio * 100).toFixed(1)}%)`}
-                    </option>
-                  )
-                })}
-              </select>
-            </div>
-
-            {/* 선택 정보 요약 */}
-            {selectedLotData && (
-              <div className="dd-select-summary">
-                <div className="dd-select-summary-row">
-                  <span>Lot {selectedLot}</span>
-                  <span className={`dd-lot-ratio ${selectedLotData.riskRatio > 0.1 ? 'danger' : selectedLotData.riskRatio > 0.05 ? 'warn' : ''}`}>
-                    위험 {(selectedLotData.riskRatio * 100).toFixed(1)}%
-                  </span>
-                </div>
-                {selectedKey && (() => {
-                  const w = selectedLotData.waferList.find(w => w.key === selectedKey)
-                  const wRatio = w ? w.riskDies / w.dies : 0
-                  return w ? (
-                    <div className="dd-select-summary-row">
-                      <span>Wafer #{w.wno}</span>
-                      <span className={`dd-lot-ratio ${wRatio > 0.1 ? 'danger' : wRatio > 0.05 ? 'warn' : ''}`}>
-                        위험 {(wRatio * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  ) : null
-                })()}
-                <button className="dd-select-reset" onClick={() => { setSelectedLot(null); setSelectedKey(null) }}>
-                  선택 초기화
-                </button>
-              </div>
+          <div className="dd-tree-list">
+            {loadingDie && <div className="dd-tree-hint">로딩 중...</div>}
+            {!loadingDie && lotTree.length === 0 && (
+              <div className="dd-tree-hint">결과 없음</div>
             )}
+            {lotTree.map(({ lot, riskRatio, avgPpm, waferList }) => {
+              const isExpanded = expandedLot === lot
+              const isLotSel   = selectedLot === lot
+              const riskPct    = (riskRatio * 100).toFixed(1)
+              const riskClass  = absClass(riskRatio)
+
+              return (
+                <div key={lot} className="dd-lot-group">
+                  {/* Lot 행 */}
+                  <button
+                    className={`dd-lot-btn ${isLotSel ? 'selected' : ''}`}
+                    onClick={() => {
+                      const next = isExpanded ? null : lot
+                      setExpandedLot(next)
+                      setSelectedLot(next)
+                      setSelectedKey(null)
+                      setSelectedUnit(null)
+                    }}
+                  >
+                    <span className="dd-lot-arrow">{isExpanded ? '▾' : '▸'}</span>
+                    <span className="dd-lot-name">Lot {lot}</span>
+                    <div className="dd-lot-bar-wrap">
+                      <div
+                        className={`dd-lot-bar-fill ${riskClass}`}
+                        style={{ width: absBarWidth(riskRatio) }}
+                      />
+                    </div>
+                    <span className={`dd-lot-pct ${riskClass}`}>{riskPct}%</span>
+                    <span className="dd-lot-ppm">{avgPpm.toLocaleString()}</span>
+                  </button>
+
+                  {/* Wafer 서브 리스트 */}
+                  {isExpanded && (
+                    <div className="dd-wafer-list">
+                      <button
+                        className={`dd-wafer-sort-btn ${waferSort === 'risk_desc' ? 'active' : ''}`}
+                        onClick={() => setWaferSort(s => s === 'risk_desc' ? 'default' : 'risk_desc')}
+                      >
+                        {waferSort === 'risk_desc' ? '▼ 위험률순' : '· 위험률순'}
+                      </button>
+                      {[...waferList]
+                        .sort((a, b) => waferSort === 'risk_desc'
+                          ? (b.riskDies / b.dies) - (a.riskDies / a.dies)
+                          : parseInt(a.wno) - parseInt(b.wno)
+                        )
+                        .map(w => {
+                        const wRatio  = w.dies ? w.riskDies / w.dies : 0
+                        const wClass  = absClass(wRatio)
+                        const wPpm    = w.avgPpm
+                        const isSel   = selectedKey === w.key
+                        return (
+                          <button
+                            key={w.key}
+                            className={`dd-wafer-btn ${isSel ? 'selected' : ''}`}
+                            onClick={() => {
+                              setSelectedLot(lot)
+                              setSelectedKey(isSel ? null : w.key)
+                              setSelectedUnit(null)
+                            }}
+                          >
+                            <span className="dd-wafer-no">#{w.wno}</span>
+                            <div className="dd-lot-bar-wrap">
+                              <div
+                                className={`dd-lot-bar-fill ${wClass}`}
+                                style={{ width: absBarWidth(wRatio) }}
+                              />
+                            </div>
+                            <span className={`dd-lot-pct ${wClass}`}>{(wRatio * 100).toFixed(0)}%</span>
+                            <span className="dd-lot-ppm">{wPpm.toLocaleString()}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -497,7 +525,7 @@ export default function Drilldown() {
           {!selectedKey && !selectedLot && (
             <div className="dd-center-panel-inner">
               <div className="dd-panel-title">Wafer Map</div>
-              <div className="dd-map-hint">← 좌측 트리에서 lot 또는 wafer를 선택하세요</div>
+              <div className="dd-map-hint">← 좌측 목록에서 Lot을 클릭해 펼친 후 Wafer를 선택하세요</div>
             </div>
           )}
 
@@ -506,33 +534,10 @@ export default function Drilldown() {
             <div className="dd-center-panel-inner">
               <div className="dd-panel-header">
                 <span className="dd-panel-title">Wafer {selectedKey.replace('_', ' · #')}</span>
-                <div className="dd-panel-header-right">
-                  <button className="dd-text-btn"
-                    onClick={() => setSelectedKey(null)}
-                    title="lot 누적 view로 전환">
-                    ↺ lot 전체 보기
-                  </button>
-                  <div className="dd-view-toggle">
-                    {['single', 'lot'].map(m => (
-                      <button key={m}
-                        className={`dd-view-btn ${viewMode === m ? 'active' : ''}`}
-                        onClick={() => setViewMode(m)}>
-                        {m === 'single' ? '단일' : 'lot 누적'}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="dd-panel-meta">
-                    Dies {selectedDies.length}
-                  </span>
-                </div>
+                <span className="dd-panel-meta">Dies {selectedDies.length}</span>
               </div>
-              {viewMode === 'lot' && (
-                <div className="dd-map-hint sm">
-                  lot 누적 보려면 위 ↺ 버튼으로 wafer 선택 해제
-                </div>
-              )}
               <WaferMap
-                dies={viewMode === 'single' ? selectedDies : lotAccumDies}
+                dies={selectedDies}
                 scale={scale}
                 selectedUnit={selectedUnit}
                 onSelectUnit={setSelectedUnit}
@@ -550,13 +555,13 @@ export default function Drilldown() {
                 </span>
               </div>
               <div className="dd-map-hint sm">
-                lot 내 모든 wafer를 같은 die 좌표로 겹친 max 집계 — wafer 단일 보려면 트리에서 wafer 선택
+                lot 내 모든 wafer를 같은 die 좌표로 겹친 max 집계 — 좌측에서 Wafer를 선택하면 단일 보기로 전환
               </div>
               <WaferMap
                 dies={lotAccumDies}
                 scale={scale}
-                selectedUnit={null}
-                onSelectUnit={undefined}
+                selectedUnit={selectedUnit}
+                onSelectUnit={setSelectedUnit}
               />
             </div>
           )}

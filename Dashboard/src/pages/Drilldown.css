@@ -72,27 +72,6 @@
 }
 .dd-text-btn:hover { color: var(--text); background: var(--surface2); }
 
-/* view 토글 */
-.dd-view-toggle {
-  display: inline-flex;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  font-size: 10px;
-}
-.dd-view-btn {
-  padding: 3px 10px;
-  background: var(--surface2);
-  color: var(--text3);
-  border: none;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background 0.1s;
-}
-.dd-view-btn.active {
-  background: var(--accent);
-  color: #fff;
-}
 
 .dd-map-hint {
   font-size: 11px;
@@ -106,13 +85,10 @@
   text-align: left;
 }
 
-/* ── 좌측: 검색 + 정렬 ── */
+/* ── 좌측: 검색 ── */
 .dd-tree-controls {
-  padding: 10px 12px 8px;
+  padding: 10px 10px 8px;
   border-bottom: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -131,119 +107,142 @@
   border-color: var(--accent);
 }
 
-.dd-sort-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.dd-sort-label { font-size: 10px; color: var(--text3); flex-shrink: 0; }
-.dd-sort-select {
+/* ── 아코디언 트리 ── */
+.dd-tree-list {
   flex: 1;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 11px;
-  padding: 3px 6px;
+  overflow-y: auto;
+  padding: 4px 0;
 }
-.dd-sort-select:focus { outline: none; border-color: var(--accent); }
-
-.dd-sort-dir {
-  width: 28px; height: 26px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.dd-sort-dir:hover { background: var(--surface2); }
-
-/* ── 드롭다운 선택 패널 ── */
-.dd-select-panel {
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  flex: 1;
-}
-
-.dd-select-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.dd-select-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.dd-select {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  padding: 7px 10px;
-  cursor: pointer;
-  box-sizing: border-box;
-}
-.dd-select:focus { outline: none; border-color: var(--accent); }
-.dd-select:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.dd-select-summary {
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 10px 12px;
-  background: var(--surface2);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.dd-select-summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.dd-lot-ratio {
-  font-size: 11px;
-  font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--text3);
-}
-.dd-lot-ratio.danger { color: #DC2626; }
-.dd-lot-ratio.warn   { color: #D97706; }
-
-.dd-select-reset {
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--text3);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 4px 8px;
-  cursor: pointer;
-  align-self: flex-start;
-}
-.dd-select-reset:hover { color: var(--text); background: var(--surface); }
 
 .dd-tree-hint {
   padding: 12px;
   font-size: 11px;
   color: var(--text3);
 }
+
+.dd-lot-group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Lot 행 버튼 */
+.dd-lot-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.dd-lot-btn:hover   { background: var(--surface2); }
+.dd-lot-btn.selected { background: var(--accent-pale); }
+
+.dd-lot-arrow {
+  font-size: 9px;
+  color: var(--text3);
+  flex-shrink: 0;
+  width: 10px;
+}
+
+.dd-lot-name {
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 56px;
+}
+
+/* 미니 위험도 바 */
+.dd-lot-bar-wrap {
+  flex: 1;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.dd-lot-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.25s ease;
+}
+.dd-lot-bar-fill.ok     { background: #86EFAC; }
+.dd-lot-bar-fill.warn   { background: #FCD34D; }
+.dd-lot-bar-fill.danger { background: #F87171; }
+
+.dd-lot-pct {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 34px;
+  text-align: right;
+}
+.dd-lot-pct.ok     { color: var(--text3); }
+.dd-lot-pct.warn   { color: #D97706; }
+.dd-lot-pct.danger { color: #DC2626; }
+
+.dd-lot-ppm {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text3);
+  flex-shrink: 0;
+  width: 40px;
+  text-align: right;
+}
+
+/* Wafer 서브 리스트 */
+.dd-wafer-list {
+  display: flex;
+  flex-direction: column;
+  padding-left: 14px;
+  border-left: 2px solid var(--accent-mid);
+  margin-left: 14px;
+  margin-bottom: 2px;
+}
+
+.dd-wafer-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text2);
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+.dd-wafer-btn:hover    { background: var(--surface2); }
+.dd-wafer-btn.selected { background: var(--accent-pale); color: var(--accent); }
+
+.dd-wafer-no {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+  min-width: 32px;
+}
+
+.dd-wafer-sort-btn {
+  font-size: 9px;
+  color: var(--text3);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 6px;
+  align-self: flex-end;
+  margin: 2px 8px 2px auto;
+  display: block;
+  transition: color 0.1s, background 0.1s;
+}
+.dd-wafer-sort-btn:hover  { color: var(--text); background: var(--surface2); }
+.dd-wafer-sort-btn.active { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 
 /* ── 칩 ── */
 .dd-chip {
