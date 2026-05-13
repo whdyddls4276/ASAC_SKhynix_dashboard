@@ -174,3 +174,106 @@
 }
 
 .cb-send:hover { background: var(--accent-light); transform: translateY(-1px); }
+
+.cb-send:disabled,
+.cb-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 탭 제거 — 기존 .cb-tabs/.cb-tab은 숨김 처리 */
+.cb-tabs { display: none; }
+
+/* 상태 메시지 (tool 실행 중) */
+.cb-bubble.status {
+  background: #F0F9FF;
+  border-color: #BAE6FD;
+  color: #0369A1;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* 스트리밍 중 */
+.cb-bubble.streaming {
+  border-color: var(--accent-mid);
+}
+
+/* 마크다운 렌더링 */
+.cb-bubble p { margin: 0 0 4px; }
+.cb-bubble ul, .cb-bubble ol { padding-left: 16px; margin: 4px 0; }
+.cb-bubble li { margin: 2px 0; }
+.cb-bubble strong { color: var(--text); font-weight: 600; }
+.cb-bubble table { border-collapse: collapse; font-size: 12px; width: 100%; margin: 6px 0; }
+.cb-bubble th { background: var(--accent); color: #fff; padding: 4px 8px; text-align: left; }
+.cb-bubble td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.cb-bubble code { background: #F1F5F9; border-radius: 3px; padding: 1px 4px; font-size: 11px; }
+
+/* PI 확인 버튼 그룹 */
+.cb-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 4px 36px;
+}
+
+.cb-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+
+.cb-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* 보고서 미리보기 버튼 */
+.cb-preview-btn {
+  display: block;
+  margin-top: 10px;
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+
+.cb-preview-btn:hover {
+  background: var(--accent-light);
+  transform: translateY(-1px);
+}
+
+/* 타이핑 애니메이션 */
+.cb-typing {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  height: 16px;
+}
+
+.cb-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: cb-bounce 1.2s ease-in-out infinite;
+}
+
+.cb-typing span:nth-child(2) { animation-delay: 0.2s; }
+.cb-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes cb-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}

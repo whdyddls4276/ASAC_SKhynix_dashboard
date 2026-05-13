@@ -2,17 +2,22 @@ import { useState } from 'react'
 import './Sidebar.css'
 
 const MENU = [
-  { id: 'overview',       icon: '📊', label: 'Overview' },
-  { id: 'wafer-map',      icon: '🗺', label: '웨이퍼맵' },
-  { id: 'feat-importance', icon: '🔬', label: '변수 분석' },
-{ id: 'data-table',     icon: '📋', label: '데이터 테이블' },
+  { id: 'overview',        icon: '📊', label: 'Overview' },
+  { id: 'drilldown',       icon: '🔍', label: '계층별 정밀 분석' },
+  { id: 'wafer-map',       icon: '🗺', label: '웨이퍼맵' },
+  { id: 'weekly-prod',     icon: '📅', label: '주별 생산량' },
+  { id: 'feat-importance', icon: '🔬', label: '모델 분석' },
+  { id: 'data-table',      icon: '📋', label: '데이터 테이블' },
 ]
 
 export default function Sidebar({ activePage, setActivePage }) {
   const [openTree, setOpenTree] = useState(null)
 
   function handleNav(id) { setActivePage(id) }
-  function toggleTree(id) { setOpenTree(prev => prev === id ? null : id) }
+  function toggleTree(id, defaultChild) {
+    setOpenTree(prev => prev === id ? null : id)
+    if (defaultChild) setActivePage(defaultChild)
+  }
 
   return (
     <nav className="sidebar">
@@ -22,7 +27,7 @@ export default function Sidebar({ activePage, setActivePage }) {
         <div key={item.id}>
           <div
             className={`nav-item ${activePage === item.id ? 'active' : ''} ${openTree === item.id ? 'open' : ''}`}
-            onClick={() => item.children ? toggleTree(item.id) : handleNav(item.id)}
+            onClick={() => item.children ? toggleTree(item.id, item.children[0]?.id) : handleNav(item.id)}
           >
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>

@@ -11,7 +11,7 @@
 /* KPI */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
 }
 
@@ -122,6 +122,134 @@
   gap: 14px;
 }
 
+
+/* ── 포지션-유닛 박스 ── */
+.pu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pu-units-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.unit-box-wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.unit-outer {
+  flex: 1;
+  border: 2px solid;
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+}
+
+.unit-label {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unit-pos-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+
+.unit-pos-cell {
+  border: 1.5px solid;
+  border-radius: 4px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unit-gauge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 14px;
+}
+
+.unit-gauge-bar {
+  flex: 1;
+  width: 8px;
+  background: #F1F5F9;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 50px;
+}
+
+.unit-gauge-fill {
+  width: 100%;
+  border-radius: 4px;
+  transition: height 0.3s ease;
+}
+
+.unit-gauge-label {
+  font-size: 7px;
+  font-weight: 700;
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  letter-spacing: 0.5px;
+}
+
+.pu-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.pu-page-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.pu-page-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.pu-page-btn:not(:disabled):hover {
+  background: var(--accent-pale);
+  border-color: var(--accent-mid);
+}
+
+.pu-page-info {
+  font-size: 12px;
+  color: var(--text2);
+}
 
 /* ── 더미/미연결 표시 블록 ── */
 .dummy-block {

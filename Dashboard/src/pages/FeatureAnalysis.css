@@ -7,6 +7,96 @@
   flex: 1;
 }
 
+/* ── KPI 행 ── */
+.fa-kpi-row {
+  display: grid;
+  grid-template-columns: 180px 1fr 1fr 1fr;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.fa-kpi-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.fa-kpi-rmse {
+  border-left: 3px solid var(--accent);
+}
+
+.fa-kpi-feat {
+  border-left: 3px solid #8B5CF6;
+}
+
+.fa-kpi-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+}
+
+.fa-kpi-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.fa-kpi-hint {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.fa-kpi-rank {
+  font-size: 10px;
+  font-weight: 600;
+  color: #8B5CF6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fa-kpi-feat-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.fa-kpi-feat-name {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.fa-kpi-feat-ratio {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #8B5CF6;
+  white-space: nowrap;
+}
+
+.fa-kpi-tbd {
+  color: var(--text3);
+  font-size: 13px;
+}
+
+.fa-kpi-loading {
+  opacity: 0.5;
+}
+
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .chart-card {

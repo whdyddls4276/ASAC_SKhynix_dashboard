@@ -5,6 +5,7 @@ import './Overview.css'
 
 
 
+
 // lot 번호 → 날짜 변환
 // 오늘: 2026-06-11, 어제(최신 val lot 56): 2026-06-10
 // val:   lot 29~56 → 2026-05-12 ~ 2026-06-10 (30일치, 하루 1 lot)
@@ -39,25 +40,43 @@ function lotToDate(lot) {
   return d.toISOString().slice(0, 10)
 }
 
-// defectThresh: train reg_pred 상위 29.2% 경계값 (전체 고정 기준)
-// highThresh: 최신 lot(어제 하루치) 안에서 reg_pred 상위 10% (KPI 전용)
+// grade 기준 (train 전체 reg_pred 분위수 기반, 고정)
+// grade1: 상위 10%  (p90 이상)
+// grade2: 상위 10~29.2% (p70.8 ~ p90)
+// grade3: 상위 29.2~50% (p50 ~ p70.8)
+// grade4: 하위 50% (p50 미만)
+export const GRADE_COLORS = {
+  grade1: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C', bar: '#EF4444', label: 'Grade 1' },
+  grade2: { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E', bar: '#F59E0B', label: 'Grade 2' },
+  grade3: { bg: '#FEF9C3', border: '#EAB308', text: '#713F12', bar: '#EAB308', label: 'Grade 3' },
+  grade4: { bg: '#F0FDF4', border: '#86EFAC', text: '#166534', bar: '#22C55E', label: 'Grade 4' },
+}
+
+export function getGrade(pred, thresholds) {
+  const { g1, g2, g3 } = thresholds
+  if (pred >= g1) return 'grade1'
+  if (pred >= g2) return 'grade2'
+  if (pred >= g3) return 'grade3'
+  return 'grade4'
+}
+
+// 1팀 방식 threshold 계산 (KPI용 defectThresh/highThresh + grade용 g1/g2/g3)
 function computeThresholds(units) {
   const trainUnits = units.filter(u => u.split === 'train')
   const trainPreds = trainUnits.map(u => parseFloat(u.reg_pred)).sort((a, b) => a - b)
-  const defectThresh = trainPreds[Math.floor(trainPreds.length * 0.708)] ?? 0
+  const n = trainPreds.length
+  const defectThresh = trainPreds[Math.floor(n * 0.708)] ?? 0
+  const g1 = trainPreds[Math.floor(n * 0.90)]  ?? 0
+  const g2 = defectThresh
+  const g3 = trainPreds[Math.floor(n * 0.50)]  ?? 0
 
-  // 최신 lot = val에서 run_id가 가장 큰 lot
   const valUnits = units.filter(u => u.split === 'val')
   const latestLot = valUnits.length ? Math.max(...valUnits.map(u => parseFloat(u.run_id))) : null
   const latestUnits = valUnits.filter(u => parseFloat(u.run_id) === latestLot)
-  const latestPreds = latestUnits.map(u => parseFloat(u.reg_pred)).sort((a, b) => a - b)
-  // highThresh: 최신 lot의 위험 unit(>=defectThresh) 중 상위 10% 경계
-  const dangerPreds = latestPreds.filter(p => p >= defectThresh)
-  const highThresh = dangerPreds.length
-    ? dangerPreds[Math.floor(dangerPreds.length * 0.9)]
-    : defectThresh
+  const dangerPreds = latestUnits.map(u => parseFloat(u.reg_pred)).filter(p => p >= defectThresh).sort((a, b) => a - b)
+  const highThresh = dangerPreds.length ? dangerPreds[Math.floor(dangerPreds.length * 0.9)] : defectThresh
 
-  return { defectThresh, highThresh, latestLot }
+  return { defectThresh, highThresh, g1, g2, g3, latestLot }
 }
 
 function KpiCard({ label, value, sub, color, icon }) {
@@ -89,228 +108,297 @@ function ChartCard({ title, children }) {
 export default function Overview() {
   const { data: units, loading: loadingUnits } = useCSV('/dashboard_units.csv')
   const { data: trendRaw, loading: loadingTrend } = useCSV('/trend_data.csv')
+  const { data: gradeTrendRaw } = useCSV('/grade_trend.csv')
 
-  const { defectThresh, highThresh, latestLot } = useMemo(() => {
-    if (!units.length) return { defectThresh: 0, highThresh: 0, latestLot: null }
+  const { defectThresh, highThresh, g1, g2, g3, latestLot } = useMemo(() => {
+    if (!units.length) return { defectThresh: 0, highThresh: 0, g1: 0, g2: 0, g3: 0, latestLot: null }
     return computeThresholds(units)
   }, [units])
 
+  const thresholds = useMemo(() => ({ g1, g2, g3 }), [g1, g2, g3])
+
+  // KPI (1팀 방식: ppm 기준)
   const kpi = useMemo(() => {
     if (!units.length || latestLot === null) return null
 
-    // KPI는 최신 lot(어제 하루치) 기준
     const latestUnits = units.filter(u => u.split === 'val' && parseFloat(u.run_id) === latestLot)
     const total = latestUnits.length
-    const danger = latestUnits.filter(u => parseFloat(u.reg_pred) >= defectThresh).length
-    const rate = total ? ((danger / total) * 100).toFixed(1) : '0.0'
+    if (total === 0) return null
 
-    // HIGH: 최신 lot 안에서 상위 10%
-    const high = latestUnits.filter(u => parseFloat(u.reg_pred) >= highThresh)
-    const highAvg = high.length
-      ? (high.reduce((s, u) => s + parseFloat(u.reg_pred), 0) / high.length).toFixed(4)
-      : '0.0000'
+    const ppmValues = latestUnits.map(u => parseFloat(u.reg_pred) * 1_000_000)
+    const meanPpm = ppmValues.reduce((s, v) => s + v, 0) / ppmValues.length
 
-    // 위험 집중 Lot: 어제(최신 lot) 기준 위험 unit이 가장 많은 wafer
-    const latestWaferCount = {}
-    latestUnits.filter(u => parseFloat(u.reg_pred) >= defectThresh).forEach(u => {
-      const w = Math.round(parseFloat(u.wafer_no))
-      latestWaferCount[w] = (latestWaferCount[w] || 0) + 1
-    })
-    const topWaferEntry = Object.entries(latestWaferCount).sort((a, b) => b[1] - a[1])[0]
-    const topLotLabel = `Lot ${latestLot}`
-    const topLotRate  = `${rate}%`
+    const sorted = [...ppmValues].sort((a, b) => a - b)
+    const p95Idx = Math.min(Math.floor(sorted.length * 0.95), sorted.length - 1)
+    const p95Ppm = sorted[p95Idx] ?? 0
+
+    const nRisk = ppmValues.filter(v => v > p95Ppm).length
     const latestDate = lotToDate(latestLot)
+    const fmtPpm = (v) => `${Math.round(v).toLocaleString()} ppm`
 
-    return { total, danger, rate, topLotLabel, topLotRate, highAvg, latestDate }
-  }, [units, defectThresh, highThresh, latestLot])
+    return { total, meanPpm, p95Ppm, nRisk, latestDate, fmtPpm }
+  }, [units, latestLot])
 
-  // 트렌드: trend_data.csv 기반
+  // 트렌드: 주차별 집계 — 막대=생산량, 꺾은선=수율(예측/실제)
   const trendOption = useMemo(() => {
     if (!trendRaw.length) return null
 
-    const xData     = trendRaw.map(r => r.date)
-    const predYield = trendRaw.map(r => r.y_pred !== '' ? parseFloat(r.y_pred) : null)
-    const trueYield = trendRaw.map(r => r.y_true !== '' ? parseFloat(r.y_true) : null)
+    const weekMap = {}
+    trendRaw.forEach(r => {
+      const d = new Date(r.date)
+      const day = d.getDay()
+      const diff = day === 0 ? -6 : 1 - day
+      const monday = new Date(d)
+      monday.setDate(d.getDate() + diff)
+      const sunday = new Date(monday)
+      sunday.setDate(monday.getDate() + 6)
+      const fmt = (dt) => `${(dt.getMonth()+1).toString().padStart(2,'0')}/${dt.getDate().toString().padStart(2,'0')}`
+      const weekKey = `${fmt(monday)}~${fmt(sunday)}`
+      const weekStart = monday.toISOString().slice(0, 10)
 
-    // 실제 수율 시작일 (y_true가 처음 null로 바뀌는 날 = 구간2 시작)
-    const predBoundaryIdx = trueYield.findIndex(v => v === null)
-    const predBoundaryDate = predBoundaryIdx > 0 ? xData[predBoundaryIdx] : null
+      if (!weekMap[weekStart]) weekMap[weekStart] = { label: weekKey, preds: [], trues: [], prod: 0 }
+      const yp = r.y_pred !== '' && r.y_pred != null ? parseFloat(r.y_pred) : null
+      const yt = r.y_true !== '' && r.y_true != null ? parseFloat(r.y_true) : null
+      const prod = r.production !== '' && r.production != null ? parseInt(r.production) : 0
+      if (yp != null) weekMap[weekStart].preds.push(yp)
+      if (yt != null) weekMap[weekStart].trues.push(yt)
+      weekMap[weekStart].prod += prod
+    })
 
-    // 실제 데이터 시작일 (y_true가 다시 등장하는 날 = 마지막 5일 시작)
-    const realBoundaryIdx = trueYield.findLastIndex(v => v === null) + 1
-    const realBoundaryDate = realBoundaryIdx > 0 && realBoundaryIdx < xData.length ? xData[realBoundaryIdx] : null
+    const weeks = Object.entries(weekMap).sort(([a], [b]) => a.localeCompare(b))
+    const xLabels  = weeks.map(([, w]) => w.label)
+    const prodSum  = weeks.map(([, w]) => w.prod)
+    const predAvg  = weeks.map(([, w]) => w.preds.length ? +(w.preds.reduce((s,v)=>s+v,0)/w.preds.length).toFixed(2) : null)
+    const trueAvg  = weeks.map(([, w]) => w.trues.length ? +(w.trues.reduce((s,v)=>s+v,0)/w.trues.length).toFixed(2) : null)
 
     return {
-      tooltip: { trigger: 'axis', formatter: (p) => {
-        let html = `<b>${p[0].axisValue}</b><br/>`
-        p.forEach(item => {
-          if (item.value != null)
-            html += `${item.marker} ${item.seriesName}: ${parseFloat(item.value).toFixed(1)}%<br/>`
-        })
-        return html
-      }},
-      legend: { data: ['예측 수율', '실제 수율'], top: 4, textStyle: { fontSize: 11 } },
-      dataZoom: [
-        { type: 'slider', bottom: 0, height: 20, start: 0, end: 100, fillerColor: 'rgba(59,130,246,0.1)', borderColor: '#E2E8F0' },
-        { type: 'inside' },
-      ],
-      grid: { top: 36, bottom: 110, left: 56, right: 20 },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params) => {
+          let html = `<b>${params[0].axisValue}</b><br/>`
+          params.forEach(item => {
+            if (item.value == null) return
+            if (item.seriesName === '생산량') html += `${item.marker} 생산량: ${item.value.toLocaleString()}개<br/>`
+            else html += `${item.marker} ${item.seriesName}: ${item.value.toFixed(1)}%<br/>`
+          })
+          return html
+        },
+      },
+      legend: { data: ['생산량', '예측 수율', '실제 수율'], top: 4, textStyle: { fontSize: 11 } },
+      grid: { top: 40, bottom: 60, left: 56, right: 56 },
       xAxis: {
-        type: 'category', data: xData,
-        axisLabel: { fontSize: 9, rotate: 35, interval: 9, margin: 8 },
-        axisLine: { lineStyle: { color: '#E2E8F0' } },
+        type: 'category',
+        data: xLabels,
+        axisLabel: { fontSize: 9, rotate: 30, interval: 0, margin: 8 },
+        axisTick: { alignWithLabel: true },
       },
-      yAxis: {
-        type: 'value',
-        name: '수율(%)',
-        min: 60, max: 90,
-        nameTextStyle: { fontSize: 10 },
-        axisLabel: { fontSize: 10, formatter: '{value}%' },
-        splitLine: { lineStyle: { color: '#F1F5F9' } },
-      },
+      yAxis: [
+        {
+          type: 'value',
+          name: '생산량(개)',
+          nameTextStyle: { fontSize: 10 },
+          axisLabel: { fontSize: 10 },
+          splitLine: { lineStyle: { color: '#F1F5F9' } },
+        },
+        {
+          type: 'value',
+          name: '수율(%)',
+          nameTextStyle: { fontSize: 10 },
+          axisLabel: { fontSize: 10, formatter: '{value}%' },
+          splitLine: { show: false },
+          scale: true,
+        },
+      ],
       series: [
+        {
+          name: '생산량',
+          type: 'bar',
+          yAxisIndex: 0,
+          data: prodSum,
+          itemStyle: { color: 'rgba(99,102,241,0.45)', borderRadius: [3,3,0,0] },
+          barMaxWidth: 32,
+        },
         {
           name: '예측 수율',
           type: 'line',
-          data: predYield,
+          yAxisIndex: 1,
+          data: predAvg,
           smooth: true,
-          connectNulls: false,
+          connectNulls: true,
           lineStyle: { color: '#3B82F6', width: 2 },
           itemStyle: { color: '#3B82F6' },
-          symbol: 'none',
-          markLine: {
-            silent: true,
-            data: [
-              predBoundaryDate && { xAxis: predBoundaryDate, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 }, label: { formatter: '예측 구간 시작', fontSize: 9, color: '#64748B', position: 'insideStartTop' } },
-              realBoundaryDate && { xAxis: realBoundaryDate, lineStyle: { color: '#6366F1', type: 'solid', width: 1.5 }, label: { formatter: '실제 데이터', fontSize: 9, color: '#6366F1', position: 'insideStartTop' } },
-            ].filter(Boolean),
-          },
+          symbolSize: 5,
         },
         {
           name: '실제 수율',
           type: 'line',
-          data: trueYield,
+          yAxisIndex: 1,
+          data: trueAvg,
           smooth: true,
           connectNulls: false,
-          areaStyle: { color: 'rgba(239,68,68,0.10)' },
-          lineStyle: { color: '#EF4444', width: 1.5 },
+          lineStyle: { color: '#EF4444', width: 2 },
           itemStyle: { color: '#EF4444' },
-          symbol: 'none',
+          symbolSize: 6,
         },
       ],
     }
   }, [trendRaw])
 
-  // 최근 2주 Lot별 위험 unit 수
-  const lotBarOption = useMemo(() => {
-    if (!units.length || latestLot === null) return null
-    const twoWeeksAgo = latestLot - 14
-    const recentUnits = units.filter(u => u.split === 'val' && parseFloat(u.run_id) > twoWeeksAgo)
-    const lotMap = {}
-    recentUnits.forEach(u => {
-      const lot = Math.round(parseFloat(u.run_id))
-      if (!lotMap[lot]) lotMap[lot] = { danger: 0, total: 0 }
-      lotMap[lot].total++
-      if (parseFloat(u.reg_pred) >= defectThresh) lotMap[lot].danger++
+  // 포지션별 불량 위험 유닛 비율 (val 전체, run_id 내 ufs_serial 정렬로 pos 1~4 부여)
+  const positionRiskData = useMemo(() => {
+    if (!units.length) return []
+    const valUnits = units.filter(u => u.split === 'val')
+    if (!valUnits.length) return []
+    const runMap = {}
+    valUnits.forEach(u => {
+      if (!runMap[u.run_id]) runMap[u.run_id] = []
+      runMap[u.run_id].push(u)
     })
-    const sorted = Object.entries(lotMap).sort((a, b) => Number(a[0]) - Number(b[0]))
-    if (!sorted.length) return null
-    return {
-      tooltip: { trigger: 'axis', formatter: p => `Lot ${p[0].axisValue} (${lotToDate(p[0].axisValue)})<br/>위험 unit: ${p[0].value}개` },
-      grid: { top: 10, bottom: 50, left: 50, right: 10 },
-      xAxis: { type: 'category', data: sorted.map(([lot]) => lot), axisLabel: { fontSize: 10, formatter: v => `L${v}` } },
-      yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
-      series: [{
-        type: 'bar',
-        data: sorted.map(([lot, d]) => ({
-          value: d.danger,
-          itemStyle: { color: Number(lot) === latestLot ? '#6366F1' : '#F97316', borderRadius: [3, 3, 0, 0] },
-        })),
-        barMaxWidth: 28,
-      }],
-    }
-  }, [units, defectThresh, latestLot])
-
-  // 3. 최신 lot 하루치 위험 등급별 unit 수
-  const riskBarOption = useMemo(() => {
-    if (!units.length || latestLot === null) return null
-    const latestUnits = units.filter(u => u.split === 'val' && parseFloat(u.run_id) === latestLot)
-    const groups = { HIGH: 0, MED: 0, LOW: 0 }
-    latestUnits.forEach(u => {
-      const p = parseFloat(u.reg_pred)
-      if (p >= highThresh) groups.HIGH++
-      else if (p >= defectThresh) groups.MED++
-      else groups.LOW++
+    const posStat = { 1: { total: 0, danger: 0 }, 2: { total: 0, danger: 0 }, 3: { total: 0, danger: 0 }, 4: { total: 0, danger: 0 } }
+    Object.values(runMap).forEach(group => {
+      const sorted = [...group].sort((a, b) => a.ufs_serial.localeCompare(b.ufs_serial))
+      sorted.forEach((u, i) => {
+        const pos = (i % 4) + 1
+        posStat[pos].total++
+        if (parseFloat(u.reg_pred) >= defectThresh) posStat[pos].danger++
+      })
     })
-    return {
-      tooltip: { trigger: 'item' },
-      grid: { top: 10, bottom: 10, left: 50, right: 10 },
-      xAxis: { type: 'category', data: ['🔴 HIGH', '🟡 MED'], axisLabel: { fontSize: 11 } },
-      yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
-      series: [{
-        type: 'bar',
-        data: [
-          { value: groups.HIGH, itemStyle: { color: '#EF4444' } },
-          { value: groups.MED,  itemStyle: { color: '#F97316' } },
-        ],
-        barMaxWidth: 48,
-        itemStyle: { borderRadius: [4, 4, 0, 0] },
-      }],
-    }
-  }, [units, defectThresh, highThresh, latestLot])
+    return [1, 2, 3, 4].map(pos => ({
+      pos,
+      total: posStat[pos].total,
+      danger: posStat[pos].danger,
+      rate: posStat[pos].total ? +((posStat[pos].danger / posStat[pos].total) * 100).toFixed(1) : 0,
+    }))
+  }, [units, defectThresh])
 
-  if (loadingUnits || loadingTrend || !kpi) {
+  // Grade별 주차별 비율 라인 차트 (grade_trend.csv 기반)
+  const gradeTrendOption = useMemo(() => {
+    if (!gradeTrendRaw.length) return null
+    const xLabels = gradeTrendRaw.map(r => r.week)
+    const mk = (key) => gradeTrendRaw.map(r => parseFloat(r[key]) || 0)
+    // 마지막 4주(실제 val 데이터) 강조용 구분선 인덱스
+    const realStartIdx = gradeTrendRaw.length - 4
+    return {
+      tooltip: {
+        trigger: 'axis',
+        formatter: params => {
+          const idx = params[0].dataIndex
+          const isReal = idx >= realStartIdx
+          return `<b>${params[0].axisValue}</b>${isReal ? ' ✅ 실제' : ' (추정)'}<br/>` +
+            params.map(p => `${p.marker} ${p.seriesName}: ${p.value}%`).join('<br/>')
+        },
+      },
+      legend: { data: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'], top: 4, textStyle: { fontSize: 11 } },
+      grid: { top: 36, bottom: 50, left: 50, right: 16 },
+      xAxis: {
+        type: 'category',
+        data: xLabels,
+        axisLabel: { fontSize: 9, rotate: 30, interval: 0 },
+        axisTick: { alignWithLabel: true },
+        markLine: {
+          data: [{ xAxis: realStartIdx - 0.5, lineStyle: { color: '#94A3B8', type: 'dashed' } }],
+        },
+      },
+      yAxis: {
+        type: 'value',
+        name: '비율(%)',
+        nameTextStyle: { fontSize: 10 },
+        axisLabel: { fontSize: 10, formatter: '{value}%' },
+        splitLine: { lineStyle: { color: '#F1F5F9' } },
+      },
+      series: [
+        { name: 'Grade 1', type: 'line', data: mk('grade1'), smooth: true, symbolSize: 5, lineStyle: { color: GRADE_COLORS.grade1.bar, width: 2.5 }, itemStyle: { color: GRADE_COLORS.grade1.bar } },
+        { name: 'Grade 2', type: 'line', data: mk('grade2'), smooth: true, symbolSize: 5, lineStyle: { color: GRADE_COLORS.grade2.bar, width: 2.5 }, itemStyle: { color: GRADE_COLORS.grade2.bar } },
+        { name: 'Grade 3', type: 'line', data: mk('grade3'), smooth: true, symbolSize: 5, lineStyle: { color: GRADE_COLORS.grade3.bar, width: 2 }, itemStyle: { color: GRADE_COLORS.grade3.bar } },
+        { name: 'Grade 4', type: 'line', data: mk('grade4'), smooth: true, symbolSize: 5, lineStyle: { color: GRADE_COLORS.grade4.bar, width: 2 }, itemStyle: { color: GRADE_COLORS.grade4.bar } },
+      ],
+    }
+  }, [gradeTrendRaw])
+
+  if (loadingUnits || !kpi) {
     return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:14 }}>데이터 로딩 중…</div>
   }
 
   return (
     <div className="overview">
-      {/* KPI — 최신 lot(어제 하루치) 기준 */}
+      {/* KPI — 1팀 원본 */}
       <div style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
         📅 기준일: {kpi.latestDate} — 최근 WT 완료분 기준
       </div>
       <div className="kpi-row">
         <KpiCard
-          label="불량 위험률"
-          value={`${kpi.rate}%`}
-          sub={`위험 ${kpi.danger.toLocaleString()}개 / 전체 ${kpi.total.toLocaleString()}개`}
-          color="#EF4444" icon="📊"
+          label="오늘 검사 unit"
+          value={kpi.total.toLocaleString()}
+          sub="최신 Lot 실시간 진단 대상"
+          color="#F59E0B" icon="🔬"
         />
         <KpiCard
-          label="어제 위험 Lot"
-          value={kpi.topLotLabel}
-          sub={`${kpi.latestDate} WT 완료 — 위험 ${kpi.danger}개 / 전체 ${kpi.total}개`}
-          color="#F97316" icon="🏭"
+          label="평균 예측 ppm"
+          value={kpi.fmtPpm(kpi.meanPpm)}
+          sub={`fleet 평균 — Lot ${latestLot}`}
+          color="#3B82F6" icon="📊"
         />
         <KpiCard
-          label="HIGH 그룹 평균 불량지수"
-          value={kpi.highAvg}
-          sub="어제 lot 위험 unit 중 상위 10% y_pred 평균"
-          color="#6366F1" icon="🔴"
+          label="p95 ppm"
+          value={kpi.fmtPpm(kpi.p95Ppm)}
+          sub="상위 5% 꼬리 위험 수준"
+          color="#F97316" icon="⚠️"
+        />
+        <KpiCard
+          label="임계 초과 unit"
+          value={kpi.nRisk.toLocaleString()}
+          sub={`pred > p95 (전체 ${kpi.total.toLocaleString()} 중)`}
+          color="#EF4444" icon="🚨"
         />
       </div>
 
       {/* 트렌드 차트 */}
-      <ChartCard title="📈 수율 트렌드 — 예측 수율(라인) vs 실제 수율(영역, train만)">
-        {trendOption
-          ? <ReactECharts option={trendOption} style={{ height: 340 }} />
-          : <div className="dummy-desc">데이터 로딩 중…</div>
+      <ChartCard title="📈 주차별 수율 트렌드 — 막대(예측 주평균) + 꺾은선(예측/실제)">
+        {loadingTrend
+          ? <div className="dummy-desc">트렌드 데이터 로딩 중…</div>
+          : trendOption
+            ? <ReactECharts option={trendOption} style={{ height: 300 }} />
+            : <div className="dummy-desc">trend_data.csv 데이터 없음</div>
         }
       </ChartCard>
 
-      {/* 하단 바차트: 어제 하루치 */}
+      {/* 하단 2열: Grade별 라인차트 + 포지션별 불량 위험 비율 */}
       <div className="two-col">
-        <ChartCard title={`🏭 최근 2주 Lot별 위험 unit 수 (기준: ${kpi.latestDate})`}>
-          {lotBarOption
-            ? <ReactECharts option={lotBarOption} style={{ height: 220 }} />
-            : <div className="dummy-desc">위험 unit 없음</div>
-          }
-        </ChartCard>
-        <ChartCard title={`⚠️ 위험 등급별 unit 수 (${kpi.latestDate} 하루치)`}>
-          {riskBarOption
-            ? <ReactECharts option={riskBarOption} style={{ height: 220 }} />
+        {/* 왼쪽: Lot별 Grade 비율 라인 차트 */}
+        <ChartCard title="📉 Lot별 Grade 비율 추이 (Val 전체)">
+          {gradeTrendOption
+            ? <ReactECharts option={gradeTrendOption} style={{ height: 260 }} />
             : <div className="dummy-desc">데이터 로딩 중…</div>
           }
+        </ChartCard>
+
+        {/* 오른쪽: 포지션별 불량 위험 비율 가로 막대 */}
+        <ChartCard title="📊 포지션별 불량 위험 유닛 비율 (Val 전체 기준)">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '20px 8px' }}>
+            {positionRiskData.map(({ pos, rate, danger, total }) => {
+              const color = pos === 1 ? '#EF4444' : pos === 2 ? '#F97316' : pos === 3 ? '#EAB308' : '#22C55E'
+              return (
+                <div key={pos} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, flexShrink: 0, fontSize: 13, fontWeight: 700, color: '#475569', fontFamily: 'DM Mono,monospace' }}>
+                    POS {pos}
+                  </div>
+                  <div style={{ flex: 1, background: '#F1F5F9', borderRadius: 6, height: 22, overflow: 'hidden' }}>
+                    <div style={{ width: `${rate}%`, height: '100%', background: color, borderRadius: 6, opacity: 0.85, transition: 'width 0.5s ease' }} />
+                  </div>
+                  <div style={{ width: 52, flexShrink: 0, textAlign: 'right', fontSize: 15, fontWeight: 700, fontFamily: 'DM Mono,monospace', color }}>
+                    {rate}%
+                  </div>
+                  <div style={{ width: 64, flexShrink: 0, fontSize: 10, color: '#94A3B8' }}>
+                    {danger}/{total}
+                  </div>
+                </div>
+              )
+            })}
+            <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>
+              * 상위 29.2% 이상(grade1+2+3 제외) 기준 위험으로 집계
+            </div>
+          </div>
         </ChartCard>
       </div>
 

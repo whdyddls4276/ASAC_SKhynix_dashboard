@@ -1,0 +1,162 @@
+.wp-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 28px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.wp-header { margin-bottom: 4px; }
+
+.wp-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+
+.wp-subtitle {
+  font-size: 12px;
+  color: var(--text3);
+  margin: 0;
+}
+
+/* 요약 카드 */
+.wp-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.wp-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.wp-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--wp-color, #6366F1);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.wp-card-val {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.wp-card-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text2);
+  margin-top: 4px;
+}
+
+.wp-card-sub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+/* 차트 카드 */
+.wp-chart-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+}
+
+.wp-chart-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+/* 테이블 */
+.wp-table-wrap {
+  overflow-x: auto;
+}
+
+.wp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.wp-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--surface2, #F8FAFC);
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.wp-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.wp-table tr:hover td { background: var(--surface2, #F8FAFC); }
+
+.wp-td-week {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.wp-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wp-badge-high { background: #FEE2E2; color: #B91C1C; }
+.wp-badge-med  { background: #FEF3C7; color: #92400E; }
+.wp-badge-low  { background: #F0FDF4; color: #166534; }
+
+.wp-badge-g1 { background: #FEE2E2; color: #B91C1C; }
+.wp-badge-g2 { background: #FEF3C7; color: #92400E; }
+.wp-badge-g3 { background: #FEF9C3; color: #713F12; }
+.wp-badge-g4 { background: #F0FDF4; color: #166534; }
+
+.wp-rate-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.wp-rate-bar {
+  height: 6px;
+  background: #EF4444;
+  border-radius: 3px;
+  opacity: 0.5;
+  min-width: 2px;
+  flex-shrink: 0;
+}
+
+.wp-rate-val {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text2);
+  white-space: nowrap;
+}

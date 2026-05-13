@@ -6,8 +6,19 @@ import Overview from './pages/Overview'
 import WaferMap from './pages/WaferMap'
 import { ImportancePage } from './pages/FeatureAnalysis'
 import DataTablePage from './pages/DataTable'
+import WeeklyProd from './pages/WeeklyProd'
+import Drilldown from './pages/Drilldown'
 import './App.css'
 
+function PlaceholderPage({ title }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, color: '#94A3B8' }}>
+      <div style={{ fontSize: 36 }}>🚧</div>
+      <div style={{ fontSize: 16, fontWeight: 600 }}>{title}</div>
+      <div style={{ fontSize: 12 }}>준비 중입니다</div>
+    </div>
+  )
+}
 
 export default function App() {
   const [activePage, setActivePage] = useState('overview')
@@ -17,8 +28,18 @@ export default function App() {
     switch (page) {
       case 'overview':        return <Overview />
       case 'wafer-map':       return <WaferMap />
+      case 'weekly-prod':     return <WeeklyProd />
       case 'feat-importance': return <ImportancePage />
-case 'data-table':      return <DataTablePage />
+      case 'data-table':      return <DataTablePage />
+      case 'drilldown':
+      case 'lot-level':
+      case 'wafer-level':
+      case 'unit-level':
+      case 'die-level':       return <Drilldown initialTab={
+        page === 'wafer-level' ? 'wafer' :
+        page === 'unit-level'  ? 'unit'  :
+        page === 'die-level'   ? 'die'   : 'lot'
+      } />
       default:                return <Overview />
     }
   }
