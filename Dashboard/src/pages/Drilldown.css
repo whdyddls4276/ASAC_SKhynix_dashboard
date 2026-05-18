@@ -8,7 +8,7 @@
 
 .dd-body-3col {
   display: grid;
-  grid-template-columns: 260px 1fr 280px;
+  grid-template-columns: 260px 1fr 560px;
   flex: 1;
   overflow: hidden;
   height: 100%;
@@ -26,7 +26,7 @@
 
 .dd-left-panel   { border-right: 1px solid var(--border); }
 .dd-right-panel  { border-left: 1px solid var(--border); }
-.dd-center-panel { overflow-y: auto; }
+.dd-center-panel { overflow: hidden; }
 
 .dd-panel-title {
   font-size: 13px;
@@ -36,8 +36,35 @@
   flex-shrink: 0;
 }
 
+/* ── 우측 패널 섹션 타이틀 ── */
+.dd-right-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  padding: 8px 14px 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+
 .dd-center-panel-inner {
-  padding: 12px 16px;
+  padding: 10px 12px 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 웨이퍼맵 영역 (상단 flex 영역) */
+.dd-wmap-top {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
 }
 
 .dd-panel-header {
@@ -90,6 +117,9 @@
   padding: 10px 10px 8px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .dd-search-input {
@@ -264,22 +294,28 @@
 .dd-chip.danger { background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }
 .dd-chip.info   { background: var(--accent-pale); color: var(--accent); border: 1px solid var(--accent-mid); }
 
-/* ── WaferMap ── */
-.dd-wmap-container {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 16px;
-  align-items: start;
+/* ── WaferMap 내부 (SVG + 범례) ── */
+.dd-wmap-inner {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
 }
 
 .dd-wmap-svg-wrap {
-  width: 100%;
-  max-width: 560px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  max-height: 100%;
 }
 
 .dd-wmap-svg {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
   background: #fff;
   border-radius: 8px;
@@ -296,7 +332,8 @@
 .dd-wmap-legend {
   font-size: 10px;
   color: var(--text);
-  min-width: 130px;
+  min-width: 160px;
+  max-width: 200px;
 }
 
 .dd-wmap-legend-title {
@@ -351,10 +388,7 @@
   border: 1px solid var(--border);
 }
 
-/* ── 우측: Unit 진단 ── */
-.dd-right-panel {
-  overflow-y: auto;
-}
+/* ── 우측: Unit+Die 동시 진단 ── */
 
 .dd-report-empty {
   padding: 16px 14px;
@@ -370,9 +404,12 @@
 }
 
 .dd-verdict {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 8px;
   border: 1.5px solid;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .dd-verdict.risk   { background: #FEF2F2; border-color: #EF4444; }
 .dd-verdict.normal { background: #F0FDF4; border-color: #86EFAC; }
@@ -380,22 +417,60 @@
 .dd-verdict-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
-  margin-bottom: 4px;
 }
 
 .dd-verdict-badge {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
 }
 .dd-verdict-badge.risk   { color: #DC2626; }
 .dd-verdict-badge.normal { color: #16A34A; }
+
+/* Die 진단 compact 헤더 (verdict 대체) */
+.dd-die-header {
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1.5px solid;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dd-die-header.risk   { background: #FEF2F2; border-color: #EF4444; }
+.dd-die-header.normal { background: #F0FDF4; border-color: #86EFAC; }
+
+.dd-die-header-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dd-die-coord-main {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text);
+  flex: 1;
+}
 
 .dd-verdict-serial {
   font-size: 10px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text3);
-  flex: 1;
+  line-height: 1.6;
+}
+.dd-verdict-serial-main {
+  font-size: 11px;
+  color: var(--text2);
+  font-weight: 600;
+  display: block;
+}
+.dd-verdict-serial-sub {
+  font-size: 10px;
+  color: var(--text3);
+  display: block;
 }
 
 .dd-report-close {
@@ -412,12 +487,13 @@
 .dd-report-close:hover { background: var(--surface2); color: var(--text); }
 
 .dd-verdict-pred {
-  font-size: 11px;
+  font-size: 13px;
   font-family: 'JetBrains Mono', monospace;
-  color: var(--text2);
+  font-weight: 700;
+  color: var(--text);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -505,3 +581,375 @@
 }
 
 .mono { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+
+/* ── Unit Die Position 세로 뷰 ── */
+.dd-unit-compare {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  min-width: 180px;
+  max-width: 220px;
+  flex-shrink: 0;
+}
+
+.dd-unit-compare-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.dd-unit-compare-serial {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.dd-unit-compare-sub {
+  font-size: 9px;
+  color: var(--text3);
+}
+
+.dd-pos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dd-pos-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface2);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.dd-pos-row:hover { background: var(--surface); border-color: #94A3B8; }
+.dd-pos-row.selected { border-color: #7C3AED; background: #F5F3FF; }
+.dd-pos-row.risk { background: #FFF7F7; }
+.dd-pos-row.risk.selected { border-color: #DC2626; background: #FEF2F2; }
+
+.dd-pos-arrow {
+  width: 8px;
+  font-size: 8px;
+  color: #7C3AED;
+  flex-shrink: 0;
+}
+
+.dd-pos-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+  width: 24px;
+}
+
+.dd-pos-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,0.08);
+  flex-shrink: 0;
+}
+
+.dd-pos-bar-wrap {
+  flex: 1;
+  max-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dd-pos-bar-track {
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: visible;
+  position: relative;
+}
+
+.dd-pos-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.25s ease;
+}
+
+.dd-pos-bar-threshold {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1.5px;
+  background: #F97316;
+  border-radius: 1px;
+}
+
+.dd-pos-bar-label {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: var(--text2);
+}
+.dd-pos-bar-label.danger { color: #DC2626; }
+
+.dd-pos-unit {
+  font-size: 7px;
+  font-weight: 400;
+  color: var(--text3);
+}
+
+.dd-pos-clf {
+  font-size: 8px;
+  font-weight: 400;
+  color: var(--text3);
+}
+
+.dd-pos-coord {
+  display: none;
+}
+
+/* ── 웨이퍼 하단 패널 ── */
+.dd-bottom-panel {
+  flex-shrink: 0;
+  border-top: 1.5px solid var(--border);
+  background: var(--surface2);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 임계값 게이지 */
+.dd-bottom-thresh {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dd-bottom-thresh-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  min-width: 110px;
+}
+
+.dd-bottom-thresh-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dd-bottom-thresh-val {
+  font-size: 14px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  color: #F97316;
+}
+
+.dd-bottom-thresh-sub {
+  font-size: 9px;
+  color: var(--text3);
+}
+
+.dd-bottom-thresh-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+}
+
+.dd-bottom-thresh-gradient {
+  height: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.dd-bottom-thresh-marker {
+  position: absolute;
+  top: 0;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dd-bottom-thresh-marker-line {
+  width: 2px;
+  height: 16px;
+  background: #F97316;
+  border-radius: 1px;
+}
+
+.dd-bottom-thresh-marker-label {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #F97316;
+  font-weight: 700;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.dd-bottom-thresh-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 14px;
+}
+
+/* 포지션 그리드 */
+.dd-bottom-pos { display: flex; flex-direction: column; gap: 5px; }
+
+.dd-bottom-pos-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dd-bottom-pos-serial {
+  font-size: 9px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 400;
+}
+
+.dd-bottom-pos-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dd-bpos-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dd-bpos-row:hover { border-color: #94A3B8; background: #f8fafc; }
+.dd-bpos-row.selected { border-color: #7C3AED; background: #F5F3FF; }
+.dd-bpos-row.risk { background: #FFF7F7; }
+.dd-bpos-row.risk.selected { border-color: #DC2626; background: #FEF2F2; }
+
+.dd-bpos-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dd-bpos-num {
+  font-size: 12px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.dd-bpos-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0,0,0,0.08);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.dd-bpos-ppm {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+.dd-bpos-ppm.danger { color: #DC2626; }
+
+.dd-bpos-coord {
+  font-size: 9px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.dd-bpos-sel-arrow {
+  font-size: 9px;
+  color: #7C3AED;
+  flex-shrink: 0;
+}
+
+.dd-bpos-track {
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: visible;
+  position: relative;
+}
+
+.dd-bpos-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.25s ease;
+}
+
+.dd-bpos-thresh-line {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #F97316;
+  border-radius: 1px;
+  z-index: 1;
+}
+
+.dd-bottom-hint {
+  font-size: 11px;
+  color: var(--text3);
+  padding: 4px 0;
+}
+
+/* ── 우측 패널: Unit | Die 가로 2열 ── */
+.dd-right-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+
+/* 섹션 타이틀 — 각 열 맨 위 고정 */
+.dd-right-panel .dd-right-panel-title {
+  border-bottom: 1.5px solid var(--border);
+  background: var(--surface2);
+  padding: 7px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* Unit 열 — 왼쪽 */
+.dd-right-unit-col {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+/* Die 열 — 오른쪽 */
+.dd-right-die-col {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}

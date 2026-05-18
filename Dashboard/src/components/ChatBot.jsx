@@ -14,13 +14,13 @@ export default function ChatBot({ open, onClose }) {
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [buttons, setButtons] = useState([])       // PI 확인 버튼 목록
+  const [buttons, setButtons] = useState([])
   const [reportMd, setReportMd] = useState(null)
   const [reportData, setReportData] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const historyRef  = useRef([])                    // Claude API용 대화 이력
-  const toolCacheRef = useRef({})                   // 실행 완료된 tool 결과 (재실행 방지)
-  const bottomRef = useRef(null)
+  const historyRef   = useRef([])
+  const toolCacheRef = useRef({})
+  const bottomRef    = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -30,6 +30,20 @@ export default function ChatBot({ open, onClose }) {
     setMessages(prev => [...prev, { role: 'bot', text, ...opts }])
   }
 
+  // ── DEV: 바로 미리보기 ──────────────────────────────────────
+  async function handleDevPreview() {
+    try {
+      const res  = await fetch(`${API_URL}/report/preview`)
+      const json = await res.json()
+      setReportMd(json.html)
+      setReportData(json.report_data || null)
+      setModalOpen(true)
+    } catch {
+      alert('서버 연결 실패. FastAPI 서버가 실행 중인지 확인하세요.')
+    }
+  }
+
+  // ── PROD: 에이전트 대화 ─────────────────────────────────────
   async function send(text) {
     const msg = (text || input).trim()
     if (!msg || loading) return
@@ -47,14 +61,14 @@ export default function ChatBot({ open, onClose }) {
         body: JSON.stringify({
           message: msg,
           history: historyRef.current.slice(0, -1),
-          tool_cache: toolCacheRef.current,        // 이미 실행된 tool 결과 전달
+          tool_cache: toolCacheRef.current,
         }),
       })
 
-      const reader = res.body.getReader()
+      const reader  = res.body.getReader()
       const decoder = new TextDecoder()
       let botText = ''
-      let buffer = ''
+      let buffer  = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -62,7 +76,7 @@ export default function ChatBot({ open, onClose }) {
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        buffer = lines.pop() // 마지막 불완전한 줄은 버퍼에 남김
+        buffer = lines.pop()
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
@@ -70,9 +84,7 @@ export default function ChatBot({ open, onClose }) {
           if (!raw || raw === '[DONE]') continue
 
           let event
-          try {
-            event = JSON.parse(raw)
-          } catch { continue }
+          try { event = JSON.parse(raw) } catch { continue }
 
           if (event.type === 'text') {
             botText += event.content
@@ -90,16 +102,14 @@ export default function ChatBot({ open, onClose }) {
 
           if (event.type === 'tool_start') {
             const labels = {
-              infer_period: '📅 기간 추론 중...',
-              scan_data: '🔍 데이터 스캔 중...',
+              scan_data:        '🔍 데이터 스캔 중...',
               analyze_features: '📊 feature 분포 비교 중...',
-              get_importance: '📋 feature importance 조회 중...',
+              get_importance:   '📋 feature importance 조회 중...',
             }
             addBotMsg(labels[event.tool] || `⚙️ ${event.tool} 실행 중...`, { status: true })
           }
 
           if (event.type === 'tool_result') {
-            // 실행 완료된 tool 결과 누적 저장 → 다음 요청 시 재실행 방지
             toolCacheRef.current = {
               ...toolCacheRef.current,
               [event.tool]: event.result,
@@ -113,7 +123,8 @@ export default function ChatBot({ open, onClose }) {
           if (event.type === 'report_ready') {
             setReportMd(event.html)
             setReportData(event.report_data || null)
-            addBotMsg('보고서 초안이 완성됐습니다. 확인해주세요.', { reportReady: true })
+            // 보고서 완성 → 자동으로 미리보기 오픈
+            setModalOpen(true)
           }
 
           if (event.type === 'error') {
@@ -126,7 +137,7 @@ export default function ChatBot({ open, onClose }) {
           }
         }
       }
-      // 버퍼에 남은 데이터 처리
+
       if (buffer.startsWith('data: ')) {
         const raw = buffer.slice(6).trim()
         if (raw && raw !== '[DONE]') {
@@ -134,14 +145,13 @@ export default function ChatBot({ open, onClose }) {
         }
       }
 
-      // streaming 플래그 제거
       setMessages(prev =>
         prev.map(m => m.streaming ? { ...m, streaming: false } : m)
       )
       if (botText) {
         historyRef.current.push({ role: 'assistant', content: botText })
       }
-    } catch (err) {
+    } catch {
       addBotMsg('⚠️ 서버 연결에 실패했습니다. FastAPI 서버가 실행 중인지 확인해주세요.')
       setLoading(false)
     }
@@ -149,10 +159,6 @@ export default function ChatBot({ open, onClose }) {
 
   function handleKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
-  }
-
-  function handleButton(btn) {
-    send(btn)
   }
 
   function handleReset() {
@@ -165,20 +171,8 @@ export default function ChatBot({ open, onClose }) {
     setReportMd(null)
     setReportData(null)
     setModalOpen(false)
-    historyRef.current = []
+    historyRef.current   = []
     toolCacheRef.current = {}
-  }
-
-  async function handleDevPreview() {
-    try {
-      const res = await fetch(`${API_URL}/report/preview`)
-      const html = await res.text()
-      setReportMd(html)
-      setReportData(null)
-      setModalOpen(true)
-    } catch {
-      alert('서버 연결 실패. FastAPI 서버가 실행 중인지 확인하세요.')
-    }
   }
 
   return (
@@ -186,22 +180,18 @@ export default function ChatBot({ open, onClose }) {
       <div className={`chatbot-panel ${open ? 'open' : ''}`}>
         <div className="cb-header">
           <div className="cb-title">🤖 AI Agent</div>
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {/* DEV 버튼: 보고서 즉시 미리보기 */}
             <button
               className="cb-close"
               onClick={handleDevPreview}
-              title="[DEV] API 없이 바로 미리보기"
-              style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', width: 'auto', color: '#F59E0B', borderColor: '#F59E0B' }}
+              title="DEV: 보고서 즉시 미리보기"
+              style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px',
+                       width: 'auto', color: '#D97706', borderColor: '#D97706' }}
             >
               DEV
             </button>
-            <button
-              className="cb-close"
-              onClick={handleReset}
-              title="대화 초기화"
-            >
-              🔄
-            </button>
+            <button className="cb-close" onClick={handleReset} title="대화 초기화">🔄</button>
             <button className="cb-close" onClick={onClose}>✕</button>
           </div>
         </div>
@@ -209,29 +199,21 @@ export default function ChatBot({ open, onClose }) {
         <div className="cb-messages">
           {messages.map((m, i) => (
             <div key={i} className={`cb-msg ${m.role}`}>
-              {m.role === 'bot' && (
-                <div className="cb-avatar">AI</div>
-              )}
+              {m.role === 'bot' && <div className="cb-avatar">AI</div>}
               <div className={`cb-bubble ${m.status ? 'status' : ''} ${m.streaming ? 'streaming' : ''}`}>
                 {m.role === 'bot' && !m.status ? (
                   <ReactMarkdown>{m.text}</ReactMarkdown>
                 ) : (
                   <span>{m.text}</span>
                 )}
-                {m.reportReady && (
-                  <button className="cb-preview-btn" onClick={() => setModalOpen(true)}>
-                    미리보기 열기
-                  </button>
-                )}
               </div>
             </div>
           ))}
 
-          {/* PI 확인 버튼 */}
           {buttons.length > 0 && !loading && (
             <div className="cb-buttons">
               {buttons.map(btn => (
-                <button key={btn} className="cb-btn" onClick={() => handleButton(btn)}>
+                <button key={btn} className="cb-btn" onClick={() => send(btn)}>
                   {btn}
                 </button>
               ))}

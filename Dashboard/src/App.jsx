@@ -4,9 +4,7 @@ import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
 import Overview from './pages/Overview'
 import WaferMap from './pages/WaferMap'
-import { ImportancePage } from './pages/FeatureAnalysis'
-import DataTablePage from './pages/DataTable'
-import WeeklyProd from './pages/WeeklyProd'
+import ModelPerformance from './pages/ModelPerformance'
 import Drilldown from './pages/Drilldown'
 import './App.css'
 
@@ -28,10 +26,8 @@ export default function App() {
     switch (page) {
       case 'overview':        return <Overview />
       case 'wafer-map':       return <WaferMap />
-      case 'weekly-prod':     return <WeeklyProd />
-      case 'feat-importance': return <ImportancePage />
-      case 'data-table':      return <DataTablePage />
-      case 'drilldown':
+case 'feat-importance': return <ModelPerformance />
+case 'drilldown':
       case 'lot-level':
       case 'wafer-level':
       case 'unit-level':
@@ -60,7 +56,7 @@ export default function App() {
 
       {!chatOpen && (
         <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI 어시스턴트 (더미)">
-          🤖<span className="fab-dummy-badge">🚧</span>
+          💬
         </button>
       )}
 

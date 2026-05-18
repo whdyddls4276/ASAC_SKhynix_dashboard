@@ -21,7 +21,7 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
       <div className="topbar-left">
         <div className="logo">QMS</div>
         <div className="topbar-div" />
-        <div className="topbar-title">불량 현황 · 예측 모니터링</div>
+        <div className="topbar-title">품질 분석 시스템 & 의사결정 지원</div>
       </div>
 
       <div className="topbar-right">
@@ -32,7 +32,7 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
           onClick={() => setNotifOpen(v => !v)}
           title="알림"
         >
-          🔔
+          🔕
           <span className="notif-dot" />
         </button>
 
@@ -41,7 +41,7 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
             className="profile-btn"
             onClick={() => setProfileOpen(v => !v)}
           >
-            <div className="avatar">PI</div>
+            <div className="avatar">👤</div>
             <span className="profile-name">이정훈</span>
             <span className="profile-arrow">{profileOpen ? '▲' : '▼'}</span>
           </button>

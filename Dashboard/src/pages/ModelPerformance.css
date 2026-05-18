@@ -1,63 +1,135 @@
-.model-page {
+.mp-page {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px 18px;
+  padding: 18px 22px;
   overflow-y: auto;
   flex: 1;
 }
 
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* ── Row 1: RMSE KPI 4개 ── */
+.mp-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
 
-.metric-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+/* ── Row 2: 피처 임포턴스 Top5 KPI 5개 ── */
+.mp-fi-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
 
-.metric-card {
+/* ── KPI 박스 ── */
+.mp-kpi {
   background: var(--surface);
-  border: 1.5px solid var(--border);
+  border: 1.5px solid var(--kc, var(--border));
   border-radius: 10px;
-  padding: 16px 18px;
+  padding: 14px 16px;
   text-align: center;
-  transition: box-shadow .2s;
+  background: var(--ka, var(--surface));
+  transition: box-shadow 0.18s;
 }
-.metric-card:hover { box-shadow: 0 2px 12px rgba(59,130,246,.1); }
+.mp-kpi:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
 
-.metric-val {
-  font-size: 28px;
+.mp-kpi-val {
+  font-size: 22px;
   font-weight: 700;
-  font-family: 'DM Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   line-height: 1.1;
+  letter-spacing: -0.5px;
 }
 
-.metric-label {
+.mp-kpi-label {
   font-size: 11px;
-  color: var(--text3);
-  margin-top: 4px;
-  font-weight: 500;
+  color: var(--text2);
+  margin-top: 5px;
+  font-weight: 600;
 }
 
-.metric-sub {
-  font-size: 10px;
+.mp-kpi-sub {
+  font-size: 9px;
   color: var(--text3);
-  font-family: 'DM Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   margin-top: 3px;
 }
 
-.chart-card {
+/* ── 2×2 차트 그리드 ── */
+.mp-grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 14px;
+}
+
+/* ── 차트 카드 ── */
+.mp-chart-card {
   background: var(--surface);
-  border: 1.5px solid var(--border);
+  border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  transition: box-shadow .2s, border-color .2s;
+  transition: box-shadow 0.18s;
 }
-.chart-card:hover { box-shadow: 0 2px 14px rgba(59,130,246,.08); border-color: var(--primary-mid); }
+.mp-chart-card:hover { box-shadow: 0 2px 14px rgba(59,130,246,0.07); }
 
-.cc-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2);
+.mp-cc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
 }
-.cc-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
-.cc-tag {
-  font-size: 10px; font-family: 'DM Mono',monospace; padding: 2px 8px;
-  border-radius: 4px; background: var(--primary-pale); color: var(--accent); border: 1px solid var(--primary-mid);
+
+.mp-cc-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
 }
-.cc-body { padding: 10px 14px; }
+
+.mp-cc-tag {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--accent-pale);
+  color: var(--accent);
+  border: 1px solid var(--accent-mid);
+  white-space: nowrap;
+}
+
+.mp-cc-body {
+  padding: 10px 14px;
+}
+
+/* ── 피처 탭 (우하단) ── */
+.mp-feat-tabs {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.mp-feat-tab {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 3px 9px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.mp-feat-tab:hover  { background: var(--surface); border-color: #94A3B8; }
+.mp-feat-tab.active { background: var(--accent-pale); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+/* ── 빈 상태 ── */
+.mp-empty {
+  font-size: 11px;
+  color: var(--text3);
+  padding: 24px;
+  text-align: center;
+}

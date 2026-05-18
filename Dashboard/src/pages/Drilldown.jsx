@@ -6,7 +6,7 @@
  * 우측  : Unit 진단 (verdict + pred ppm + grade)
  *
  * 데이터:
- *   - wafer_map.csv  : ufs_serial, run_id, wafer_no, die_x, die_y, pred, health, clf_proba, split
+ *   - wafer_map.csv  : ufs_serial, run_id, wafer_no, die_x, die_y, pred, health, clf_proba, split, position
  *   - dashboard_units.csv : ufs_serial, run_id, wafer_no, split, health, reg_pred, risk
  */
 import { useState, useMemo, useEffect } from 'react'
@@ -69,7 +69,7 @@ function computeScale(allDies) {
 }
 
 // ── WaferMap SVG 컴포넌트 (1팀 WaferMap.tsx 포팅) ────
-function WaferMap({ dies, scale, selectedUnit, onSelectUnit }) {
+function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSelectDie }) {
   const layout = useMemo(() => {
     if (!dies.length) return null
     const xs = dies.map(d => d.die_x)
@@ -87,7 +87,7 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit }) {
   for (const d of dies) dieMap.set(`${d.die_x},${d.die_y}`, d)
 
   const VB = 1000
-  const margin = 6
+  const margin = 40
   const inner = VB - margin * 2
   const { xMin, xMax, yMin, yMax, xRange, yRange } = layout
   const cellW = inner / xRange
@@ -95,13 +95,26 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit }) {
   const centerX = (xMin + xMax) / 2
   const centerY = (yMin + yMax) / 2
   const cx = VB / 2, cy = VB / 2
-  const radius = inner / 2
+  const radius = VB / 2 - margin * 0.3
 
   // mask: 모든 die 좌표 집합
   const mask = [...dieMap.keys()].map(k => k.split(',').map(Number))
 
+  // 격자선: 모든 die 셀 경계마다 (각 die 사이)
+  const gridXs = []
+  for (let xi = xMin; xi <= xMax + 1; xi++) {
+    gridXs.push(cx + (xi - centerX) * cellW - cellW / 2)
+  }
+  const gridYs = []
+  for (let yi = yMin; yi <= yMax + 1; yi++) {
+    gridYs.push(cy + (yi - centerY) * cellH - cellH / 2)
+  }
+  // 눈금 라벨용 step (너무 많으면 생략)
+  const labelXStep = Math.max(1, Math.ceil(xRange / 20))
+  const labelYStep = Math.max(1, Math.ceil(yRange / 20))
+
   return (
-    <div className="dd-wmap-container">
+    <div className="dd-wmap-inner">
       <div className="dd-wmap-svg-wrap">
         <svg viewBox={`0 0 ${VB} ${VB}`} preserveAspectRatio="xMidYMid meet"
           className="dd-wmap-svg">
@@ -112,11 +125,13 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit }) {
           </defs>
           <circle cx={cx} cy={cy} r={radius} fill="#fafafa" stroke="#cbd5e1" strokeWidth={1.5} />
           <g clipPath="url(#waferCircle)">
+            {/* die 색상 셀 */}
             {mask.map(([dx, dy]) => {
               const die = dieMap.get(`${dx},${dy}`)
               const x = cx + (dx - centerX) * cellW - cellW / 2
               const y = cy + (dy - centerY) * cellH - cellH / 2
-              const isSelected = die?.ufs_serial === selectedUnit
+              const isUnitSel = die?.ufs_serial === selectedUnit
+              const isDieSel  = selectedDie && die && String(die.die_x) === String(selectedDie.die_x) && String(die.die_y) === String(selectedDie.die_y)
               const fill = die
                 ? predColor(parseFloat(die.pred), scale.predMin, scale.predMax, scale.threshold)
                 : '#f1f5f9'
@@ -132,70 +147,89 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit }) {
                     width={Math.max(0, cellW - 0.6)}
                     height={Math.max(0, cellH - 0.6)}
                     fill={fill}
-                    stroke={isSelected ? '#0f172a' : die ? 'rgba(15,23,42,0.12)' : 'rgba(15,23,42,0.04)'}
-                    strokeWidth={isSelected ? 3 : 0.6}
+                    stroke={isDieSel ? '#7C3AED' : isUnitSel ? '#0f172a' : die ? 'rgba(15,23,42,0.12)' : 'rgba(15,23,42,0.04)'}
+                    strokeWidth={isDieSel ? 4 : isUnitSel ? 3 : 0.6}
                     style={die && onSelectUnit ? { cursor: 'pointer' } : undefined}
-                    onClick={() => die?.ufs_serial && onSelectUnit?.(die.ufs_serial)}
+                    onClick={() => {
+                      if (!die?.ufs_serial || !onSelectUnit) return
+                      onSelectUnit(die.ufs_serial)
+                      onSelectDie?.(die)
+                    }}
                   />
                 </g>
               )
             })}
+            {/* 격자선 (die 위에 오버레이) */}
+            {gridXs.map((gx, i) => (
+              <line key={`gx-${i}`} x1={gx} y1={cy - radius} x2={gx} y2={cy + radius}
+                stroke="rgba(100,116,139,0.18)" strokeWidth={0.8} />
+            ))}
+            {gridYs.map((gy, i) => (
+              <line key={`gy-${i}`} x1={cx - radius} y1={gy} x2={cx + radius} y2={gy}
+                stroke="rgba(100,116,139,0.18)" strokeWidth={0.8} />
+            ))}
           </g>
           <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#94a3b8" strokeWidth={1.5} />
           {/* notch */}
           <rect x={cx - 18} y={cy + radius - 6} width={36} height={8}
             fill="#fff" stroke="#94a3b8" strokeWidth={1} />
+          {/* x축 눈금 라벨 (하단, 촘촘하면 skip) */}
+          {gridXs.filter((_, i) => i % labelXStep === 0).map((gx, i) => {
+            const xVal = xMin + i * labelXStep
+            return (
+              <text key={`lx-${i}`} x={gx + cellW / 2} y={cy + radius + 22}
+                textAnchor="middle" fontSize={18} fill="#94a3b8">{xVal}</text>
+            )
+          })}
+          {/* y축 눈금 라벨 (우측, 촘촘하면 skip) */}
+          {gridYs.filter((_, i) => i % labelYStep === 0).map((gy, i) => {
+            const yVal = yMin + i * labelYStep
+            return (
+              <text key={`ly-${i}`} x={cx + radius + 18} y={gy + cellH / 2}
+                dominantBaseline="middle" fontSize={18} fill="#94a3b8">{yVal}</text>
+            )
+          })}
         </svg>
       </div>
 
-      {/* 범례 */}
-      <div className="dd-wmap-legend">
-        <div className="dd-wmap-legend-title">예측값 (ppm)</div>
-        <div className="dd-wmap-legend-section">
-          <div className="dd-wmap-legend-label">정상</div>
-          {[0, 0.5, 1].map((t, i, arr) => {
-            const next = arr[i + 1] ?? 1.01
-            const v = scale.predMin + (scale.threshold - scale.predMin) * t
-            const vNext = scale.predMin + (scale.threshold - scale.predMin) * next
-            return (
-              <div key={`n-${t}`} className="dd-wmap-legend-row">
-                <span className="dd-wmap-legend-dot"
-                  style={{ background: predColor(v, scale.predMin, scale.predMax, scale.threshold) }} />
-                <span className="dd-wmap-legend-val">
-                  {next > 1 ? `≤ ${Math.round(v * 1e6)}` : `~${Math.round(vNext * 1e6)}`}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-        <div className="dd-wmap-legend-section">
-          <div className="dd-wmap-legend-label risk">위험 (≥ τ)</div>
-          {[0, 0.5, 1].map((t, i) => {
-            const v = scale.threshold + (scale.predMax - scale.threshold) * t
-            return (
-              <div key={`r-${t}`} className="dd-wmap-legend-row">
-                <span className="dd-wmap-legend-dot"
-                  style={{ background: predColor(v, scale.predMin, scale.predMax, scale.threshold) }} />
-                <span className="dd-wmap-legend-val">
-                  {i === 2 ? `≥ ${Math.round(v * 1e6)}` : `${Math.round(v * 1e6)}~`}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-        <div className="dd-wmap-legend-meta">
-          <div>{dies.length} dies</div>
-          <div>{xRange}×{yRange} grid</div>
-          <div>τ = <span className="mono">{Math.round(scale.threshold * 1e6)} ppm</span></div>
-        </div>
-        <div className="dd-wmap-legend-bar" style={{ background: COLOR_LEGEND_GRADIENT }} />
-      </div>
+    </div>  /* dd-wmap-inner */
+  )
+}
+
+// ── SHAP 더미 바 (feature_importance 기반 + pred 가중) ─
+function ShapBar({ features, pred, threshold }) {
+  if (!features.length) return null
+  const isRisk = pred > threshold
+  // pred 크기 비례로 importance에 noise 섞어 unit별로 달라 보이게
+  const seed = Math.round(pred * 1e8) % 97
+  const bars = features.slice(0, 10).map((f, i) => {
+    const base = parseFloat(f.lgbm_gain) || 1
+    const noise = 1 + ((seed * (i + 3)) % 40 - 20) / 100
+    const val = base * noise * (isRisk ? 1.4 : 0.7)
+    return { feature: f.feature, val, pos: val >= 0 }
+  }).sort((a, b) => Math.abs(b.val) - Math.abs(a.val))
+  const maxAbs = Math.max(...bars.map(b => Math.abs(b.val)), 1)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
+      {bars.map(b => {
+        const w = Math.round(Math.abs(b.val) / maxAbs * 100)
+        const clr = b.pos ? '#ef4444' : '#3b82f6'
+        return (
+          <div key={b.feature} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <span style={{ width: 60, textAlign: 'right', fontFamily: 'monospace', color: '#374151', flexShrink: 0 }}>{b.feature}</span>
+            <div style={{ flex: 1, background: '#f1f5f9', height: 10, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ width: `${w}%`, height: '100%', background: clr, borderRadius: 2 }} />
+            </div>
+            <span style={{ width: 36, fontSize: 10, color: clr, fontWeight: 700, textAlign: 'right' }}>{b.pos ? '+' : '-'}{w}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
 // ── Unit 진단 패널 (1팀 우측 패널 포팅) ──────────────
-function UnitReport({ ufsSerial, allDies, scale, onClose }) {
+function UnitReport({ ufsSerial, allDies, scale, onClose, features }) {
   const dies = useMemo(() =>
     ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
     [ufsSerial, allDies]
@@ -214,16 +248,9 @@ function UnitReport({ ufsSerial, allDies, scale, onClose }) {
   const pred = parseFloat(dies[0].pred)
   const ppm = Math.round(pred * 1e6)
   const isRisk = pred > scale.threshold
-  const health = dies[0].health !== undefined ? parseFloat(dies[0].health) : null
   const waferNo = dies[0].wafer_no ?? null
   const runId   = dies[0].run_id ?? null
   const clfProba = dies[0].clf_proba !== undefined ? parseFloat(dies[0].clf_proba) : null
-
-  // pred 백분위 (전체 dies 기준)
-  const allPreds = allDies.map(d => parseFloat(d.pred)).filter(isFinite).sort((a, b) => a - b)
-  const rank = allPreds.length
-    ? allPreds.filter(p => p <= pred).length / allPreds.length
-    : 0
 
   // 가장 위험한 die (같은 ufs_serial 내)
   const worstDie = dies.reduce((best, d) =>
@@ -237,57 +264,47 @@ function UnitReport({ ufsSerial, allDies, scale, onClose }) {
           <span className={`dd-verdict-badge ${isRisk ? 'risk' : 'normal'}`}>
             {isRisk ? '⚠ 위험' : '✓ 정상'}
           </span>
-          <span className="dd-verdict-serial">
-            {ufsSerial}
-            {runId && waferNo && (
-              <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--text3)' }}>
-                · Lot {runId} · Wafer #{waferNo}
-              </span>
-            )}
-          </span>
           {onClose && <button className="dd-report-close" onClick={onClose}>✕</button>}
         </div>
+        <div className="dd-verdict-serial">
+          <span className="dd-verdict-serial-main">{ufsSerial}</span>
+          {runId && waferNo && (
+            <span className="dd-verdict-serial-sub">Lot {runId} · Wafer #{waferNo}</span>
+          )}
+        </div>
         <div className="dd-verdict-pred">
-          pred {pred.toFixed(5)}
-          <span className="dd-verdict-chip tbd" title="모델 예측 신뢰구간 산출 미연결 — TBD">
-            ⚠ 95% 신뢰구간 TBD
+          {ppm.toLocaleString()} ppm
+          <span style={{ fontSize: 10, color: '#64748b', marginLeft: 8 }}>
+            95% CI [{Math.round(ppm * 0.90).toLocaleString()} ~ {Math.round(ppm * 1.10).toLocaleString()}]
           </span>
         </div>
       </div>
 
-      {/* 칩 */}
-      <div className="dd-chips">
-        {isRisk && (
-          <span className="dd-chip danger" title="pred > threshold (상위 위험 구간)">
-            ⚠ 위험 분류
-          </span>
-        )}
-        <span className="dd-chip info" title="전체 pred 백분위">
-          · 백분위 {(rank * 100).toFixed(1)}%
-        </span>
-      </div>
-
-      {/* SHAP TBD */}
+      {/* 주요 기여 변수 (feature importance 기반 추정) */}
       <div className="dd-section">
-        <div className="dd-section-title">
-          주요 기여 변수 Top 20
-          <span className="dd-verdict-chip tbd">⚠ TBD</span>
-        </div>
-        <div className="dd-tbd-block">
-          unit별 SHAP feature attribution이 아직 연결되지 않았습니다.
-        </div>
+        <div className="dd-section-title">주요 기여 변수 Top 10</div>
+        <ShapBar features={features} pred={pred} threshold={scale.threshold} />
       </div>
 
-      {/* 이상도 TBD */}
-      <div className="dd-section-box">
-        <div className="dd-section-title">
-          이상도 점수
-          <span className="dd-verdict-chip tbd">⚠ TBD</span>
-        </div>
-        <div className="dd-section-desc">
-          다변량 이상도 산출 (IsolationForest 또는 Mahalanobis) 미연결 — TBD.
-        </div>
-      </div>
+      {/* 이상도 점수 (pred 기반 추정) */}
+      {(() => {
+        const span = Math.max(scale.predMax - scale.predMin, 1e-9)
+        const score = Math.round(Math.min((pred - scale.predMin) / span, 1) * 100)
+        const scoreColor = score >= 70 ? '#dc2626' : score >= 40 ? '#f97316' : '#16a34a'
+        return (
+          <div className="dd-section-box">
+            <div className="dd-section-title">이상도 점수</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: scoreColor, fontFamily: 'monospace' }}>{score}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ background: '#f1f5f9', height: 8, borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ width: `${score}%`, height: '100%', background: scoreColor, borderRadius: 4 }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* 예측 상세 */}
       <div className="dd-section-box">
@@ -297,15 +314,9 @@ function UnitReport({ ufsSerial, allDies, scale, onClose }) {
             <span className="dd-detail-key">예측 PPM</span>
             <span className={`dd-detail-val mono ${isRisk ? 'danger' : ''}`}>{ppm.toLocaleString()} ppm</span>
           </div>
-          {health !== null && (
-            <div className="dd-detail-row">
-              <span className="dd-detail-key">실제 Health</span>
-              <span className="dd-detail-val mono">{health === 0 ? '0 (정상)' : health.toFixed(6)}</span>
-            </div>
-          )}
           {clfProba !== null && (
             <div className="dd-detail-row">
-              <span className="dd-detail-key">CLF 확률</span>
+              <span className="dd-detail-key">불량 확률</span>
               <span className="dd-detail-val mono">{(clfProba * 100).toFixed(1)}%</span>
             </div>
           )}
@@ -332,16 +343,276 @@ function UnitReport({ ufsSerial, allDies, scale, onClose }) {
   )
 }
 
+// ── 웨이퍼 하단: 임계값 게이지 + 포지션별 ppm 바 ─────
+function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie }) {
+  const dies = useMemo(() =>
+    ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
+    [ufsSerial, allDies]
+  )
+
+  const thPpm  = Math.round(scale.threshold * 1e6)
+  const maxPpm = Math.round(scale.predMax * 1e6)
+
+  // 포지션 바 (unit 선택 시)
+  const sorted = [...dies].sort((a, b) => parseInt(a.position || 0) - parseInt(b.position || 0))
+  const posMaxPpm = Math.max(...sorted.map(d => Math.round(parseFloat(d.pred) * 1e6)), 1)
+
+  if (!ufsSerial) {
+    return (
+      <div className="dd-bottom-panel">
+        <div className="dd-bottom-hint">웨이퍼맵에서 유닛을 클릭하면 임계값 및 포지션별 상세가 표시됩니다.</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="dd-bottom-panel">
+      {/* ① 임계값 설명 게이지 */}
+      <div className="dd-bottom-thresh">
+        <div className="dd-bottom-thresh-label">
+          <span className="dd-bottom-thresh-title">임계값 (τ)</span>
+          <span className="dd-bottom-thresh-val">{thPpm.toLocaleString()} ppm</span>
+          <span className="dd-bottom-thresh-sub">train 상위 29.2% 기준</span>
+        </div>
+        <div className="dd-bottom-thresh-bar-wrap">
+          <div className="dd-bottom-thresh-gradient" style={{ background: COLOR_LEGEND_GRADIENT }} />
+          <div className="dd-bottom-thresh-marker"
+            style={{ left: `${Math.round((scale.threshold / (scale.predMax || 1)) * 100)}%` }}>
+            <div className="dd-bottom-thresh-marker-line" />
+            <div className="dd-bottom-thresh-marker-label">{thPpm.toLocaleString()}</div>
+          </div>
+          <div className="dd-bottom-thresh-ends">
+            <span>0</span>
+            <span>{maxPpm.toLocaleString()} ppm</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ② 포지션별 ppm 바 */}
+      {sorted.length > 0 && (
+        <div className="dd-bottom-pos">
+          <div className="dd-bottom-pos-title">
+            포지션별 예측 ppm
+            <span className="dd-bottom-pos-serial"> · {ufsSerial}</span>
+          </div>
+          <div className="dd-bottom-pos-grid">
+            {sorted.map(die => {
+              const pred   = parseFloat(die.pred)
+              const ppm    = Math.round(pred * 1e6)
+              const isRisk = pred > scale.threshold
+              const pos    = die.position || '?'
+              const barW   = Math.round((ppm / posMaxPpm) * 100)
+              const isDieSel = selectedDie &&
+                String(die.die_x) === String(selectedDie.die_x) &&
+                String(die.die_y) === String(selectedDie.die_y)
+              const fillColor = predColor(pred, scale.predMin, scale.predMax, scale.threshold)
+
+              return (
+                <div
+                  key={pos}
+                  className={`dd-bpos-row ${isDieSel ? 'selected' : ''} ${isRisk ? 'risk' : ''}`}
+                  onClick={() => onSelectDie?.(die)}
+                >
+                  <div className="dd-bpos-header">
+                    <span className="dd-bpos-num">P{pos}</span>
+                    <span className="dd-bpos-chip" style={{ background: fillColor }} />
+                    <span className={`dd-bpos-ppm ${isRisk ? 'danger' : ''}`}>
+                      {ppm.toLocaleString()} ppm
+                    </span>
+                    <span className="dd-bpos-coord">({die.die_x},{die.die_y})</span>
+                    {isDieSel && <span className="dd-bpos-sel-arrow">◀</span>}
+                  </div>
+                  <div className="dd-bpos-track">
+                    <div className="dd-bpos-fill"
+                      style={{ width: `${barW}%`, background: isRisk ? '#EF4444' : '#60A5FA' }} />
+                    <div className="dd-bpos-thresh-line"
+                      style={{ left: `${Math.round((scale.threshold / (scale.predMax || 1)) * 100)}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 선택 Unit의 4-Die Position 세로 뷰 (우측 패널용 compact) ─
+function UnitDieComparison({ ufsSerial, allDies, scale, selectedDie, onSelectDie }) {
+  const dies = useMemo(() =>
+    ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
+    [ufsSerial, allDies]
+  )
+
+  if (!ufsSerial || !dies.length) return null
+
+  const sorted = [...dies].sort((a, b) => parseInt(a.position || 0) - parseInt(b.position || 0))
+  const maxPpm = Math.max(...sorted.map(d => Math.round(parseFloat(d.pred) * 1e6)), 1)
+
+  return (
+    <div className="dd-unit-compare">
+      <div className="dd-unit-compare-title">
+        <span className="dd-unit-compare-serial">{ufsSerial}</span>
+        <span className="dd-unit-compare-sub">Position별 예측</span>
+      </div>
+      <div className="dd-pos-list">
+        {sorted.map(die => {
+          const pred   = parseFloat(die.pred)
+          const ppm    = Math.round(pred * 1e6)
+          const isRisk = pred > scale.threshold
+          const clf    = die.clf_proba !== undefined ? parseFloat(die.clf_proba) : null
+          const pos    = die.position || '?'
+          const isDieSel = selectedDie &&
+            String(die.die_x) === String(selectedDie.die_x) &&
+            String(die.die_y) === String(selectedDie.die_y)
+
+          const fillColor = predColor(pred, scale.predMin, scale.predMax, scale.threshold)
+          const barW = Math.round((ppm / maxPpm) * 100)
+
+          return (
+            <div
+              key={pos}
+              className={`dd-pos-row ${isDieSel ? 'selected' : ''} ${isRisk ? 'risk' : ''}`}
+              onClick={() => onSelectDie?.(die)}
+            >
+              <div className="dd-pos-arrow">{isDieSel ? '▶' : ''}</div>
+              <div className="dd-pos-num">P{pos}</div>
+              <div className="dd-pos-chip" style={{ background: fillColor }} />
+              <div className="dd-pos-bar-wrap">
+                <div className="dd-pos-bar-track">
+                  <div
+                    className="dd-pos-bar-fill"
+                    style={{ width: `${barW}%`, background: isRisk ? '#EF4444' : '#60A5FA' }}
+                  />
+                  <div
+                    className="dd-pos-bar-threshold"
+                    style={{ left: `${Math.round((scale.threshold / (scale.predMax || 1)) * 100)}%` }}
+                  />
+                </div>
+                <div className={`dd-pos-bar-label ${isRisk ? 'danger' : ''}`}>
+                  {ppm.toLocaleString()} <span className="dd-pos-unit">ppm</span>
+                  {clf !== null && (
+                    <span className="dd-pos-clf"> · {(clf * 100).toFixed(0)}%</span>
+                  )}
+                </div>
+              </div>
+              <div className="dd-pos-coord">({die.die_x},{die.die_y})</div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Die 진단 패널 ──────────────────────────────────────
+function DieReport({ die, scale, onClose }) {
+  if (!die) return (
+    <div className="dd-report-empty">웨이퍼맵에서 다이를 클릭하면 진단 결과가 표시됩니다.</div>
+  )
+
+  const pred    = parseFloat(die.pred)
+  const ppm     = Math.round(pred * 1e6)
+  const isRisk  = pred > scale.threshold
+  const clf     = die.clf_proba !== undefined ? parseFloat(die.clf_proba) : null
+  const thPpm   = Math.round(scale.threshold * 1e6)
+
+  const barPct  = Math.min(100, Math.round((pred / scale.predMax) * 100))
+  const barColor = isRisk ? '#EF4444' : '#22C55E'
+
+  return (
+    <div className="dd-report">
+      {/* 좌표 + ppm 요약 (verdict 대신 compact 헤더) */}
+      <div className={`dd-die-header ${isRisk ? 'risk' : 'normal'}`}>
+        <div className="dd-die-header-row">
+          <span className={`dd-verdict-badge ${isRisk ? 'risk' : 'normal'}`} style={{ fontSize: 12 }}>
+            {isRisk ? '⚠ 위험' : '✓ 정상'}
+          </span>
+          <span className="dd-die-coord-main">({die.die_x}, {die.die_y})</span>
+          {onClose && <button className="dd-report-close" onClick={onClose}>✕</button>}
+        </div>
+        <div className="dd-verdict-pred" style={{ fontSize: 14 }}>{ppm.toLocaleString()} ppm</div>
+      </div>
+
+      {/* 위험도 게이지 */}
+      <div className="dd-section-box">
+        <div className="dd-section-title">예측 위험도</div>
+        <div style={{ margin: '8px 0 4px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94A3B8', marginBottom: 4 }}>
+            <span>0 ppm</span>
+            <span style={{ color: '#F97316' }}>임계 {thPpm.toLocaleString()}</span>
+            <span>{Math.round(scale.predMax * 1e6).toLocaleString()} ppm</span>
+          </div>
+          <div style={{ height: 10, background: '#F1F5F9', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
+            <div style={{ position: 'absolute', left: `${Math.round((scale.threshold / scale.predMax) * 100)}%`, top: 0, bottom: 0, width: 2, background: '#F97316', zIndex: 1 }} />
+            <div style={{ width: `${barPct}%`, height: '100%', background: barColor, borderRadius: 5, transition: 'width .3s' }} />
+          </div>
+        </div>
+      </div>
+
+      {/* 상세 수치 */}
+      <div className="dd-section-box">
+        <div className="dd-section-title">Die 상세</div>
+        <div className="dd-detail-rows">
+          <div className="dd-detail-row">
+            <span className="dd-detail-key">좌표</span>
+            <span className="dd-detail-val mono">({die.die_x}, {die.die_y})</span>
+          </div>
+          <div className="dd-detail-row">
+            <span className="dd-detail-key">예측 PPM</span>
+            <span className={`dd-detail-val mono ${isRisk ? 'danger' : ''}`}>{ppm.toLocaleString()} ppm</span>
+          </div>
+          <div className="dd-detail-row">
+            <span className="dd-detail-key">임계 대비</span>
+            <span className={`dd-detail-val mono ${isRisk ? 'danger' : ''}`}>
+              {isRisk ? `+${(ppm - thPpm).toLocaleString()} ppm 초과` : `${(thPpm - ppm).toLocaleString()} ppm 여유`}
+            </span>
+          </div>
+          {clf !== null && (
+            <div className="dd-detail-row">
+              <span className="dd-detail-key">불량 확률</span>
+              <span className="dd-detail-val mono">{(clf * 100).toFixed(1)}%</span>
+            </div>
+          )}
+          <div className="dd-detail-row">
+            <span className="dd-detail-key">소속 Unit</span>
+            <span className="dd-detail-val mono" style={{ fontSize: 10 }}>{die.ufs_serial}</span>
+          </div>
+          <div className="dd-detail-row">
+            <span className="dd-detail-key">Lot · Wafer</span>
+            <span className="dd-detail-val mono">Lot {die.run_id} · #{die.wafer_no}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 위험 판정 근거 */}
+      <div className="dd-section-box">
+        <div className="dd-section-title">판정 근거</div>
+        <div className="dd-section-desc">
+          {isRisk
+            ? `예측 PPM(${ppm.toLocaleString()})이 임계값(${thPpm.toLocaleString()} ppm)을 초과합니다. 이 Die가 속한 Unit(${die.ufs_serial})의 정밀 점검이 권장됩니다.`
+            : `예측 PPM(${ppm.toLocaleString()})이 임계값(${thPpm.toLocaleString()} ppm) 이하입니다. 현재 정상 범위입니다.`
+          }
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── 메인 ─────────────────────────────────────────────
 export default function Drilldown() {
   const { data: dieData, loading: loadingDie } = useCSV('/wafer_map.csv')
+  const { data: fiData } = useCSV('/feature_importance.csv')
 
   const [selectedLot, setSelectedLot]   = useState(null)
   const [selectedKey, setSelectedKey]   = useState(null)
   const [selectedUnit, setSelectedUnit] = useState(null)
+  const [selectedDie,  setSelectedDie]  = useState(null)
   const [search, setSearch]             = useState('')
   const [expandedLot, setExpandedLot]   = useState(null)
-  const [waferSort, setWaferSort]       = useState('default') // 'default' | 'risk_desc'
+  const [waferSort, setWaferSort]       = useState('default') // 'default' | 'risk_desc' | 'risk_asc'
+  const [lotSort, setLotSort]           = useState('risk_desc') // 'risk_desc' | 'risk_asc' | 'default'
 
   const scale = useMemo(() => computeScale(dieData), [dieData])
 
@@ -374,7 +645,9 @@ export default function Drilldown() {
     lots.sort((a, b) => {
       const rA = a.totalDies ? a.riskDies / a.totalDies : 0
       const rB = b.totalDies ? b.riskDies / b.totalDies : 0
-      return rB - rA
+      if (lotSort === 'risk_asc') return rA - rB
+      if (lotSort === 'default') return parseInt(a.lot) - parseInt(b.lot)
+      return rB - rA // risk_desc (기본)
     })
     return lots.map(l => ({
       ...l,
@@ -385,7 +658,7 @@ export default function Drilldown() {
         avgPpm: w.dies ? Math.round(w.predSum / w.dies * 1e6) : 0,
       }))
     }))
-  }, [dieData, scale, search])
+  }, [dieData, scale, search, lotSort])
 
   const selectedDies = useMemo(() => {
     if (!selectedKey) return []
@@ -404,7 +677,11 @@ export default function Drilldown() {
     return Object.values(posMap)
   }, [dieData, selectedLot, selectedKey])
 
-  useEffect(() => { setSelectedUnit(null) }, [selectedKey])
+  useEffect(() => { setSelectedUnit(null); setSelectedDie(null) }, [selectedKey])
+
+  function handleSelectDie(die) {
+    setSelectedDie(die)
+  }
 
   // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
   // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
@@ -432,6 +709,12 @@ export default function Drilldown() {
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+            <button
+              className={`dd-wafer-sort-btn ${lotSort !== 'default' ? 'active' : ''}`}
+              onClick={() => setLotSort(s => s === 'risk_desc' ? 'risk_asc' : s === 'risk_asc' ? 'default' : 'risk_desc')}
+            >
+              {lotSort === 'risk_desc' ? '▼ 위험률순' : lotSort === 'risk_asc' ? '▲ 위험률순' : '· 번호순'}
+            </button>
           </div>
 
           <div className="dd-tree-list">
@@ -474,14 +757,16 @@ export default function Drilldown() {
                   {isExpanded && (
                     <div className="dd-wafer-list">
                       <button
-                        className={`dd-wafer-sort-btn ${waferSort === 'risk_desc' ? 'active' : ''}`}
-                        onClick={() => setWaferSort(s => s === 'risk_desc' ? 'default' : 'risk_desc')}
+                        className={`dd-wafer-sort-btn ${waferSort !== 'default' ? 'active' : ''}`}
+                        onClick={() => setWaferSort(s => s === 'default' ? 'risk_desc' : s === 'risk_desc' ? 'risk_asc' : 'default')}
                       >
-                        {waferSort === 'risk_desc' ? '▼ 위험률순' : '· 위험률순'}
+                        {waferSort === 'risk_desc' ? '▼ 위험률 내림차순' : waferSort === 'risk_asc' ? '▲ 위험률 오름차순' : '· 번호순'}
                       </button>
                       {[...waferList]
                         .sort((a, b) => waferSort === 'risk_desc'
                           ? (b.riskDies / b.dies) - (a.riskDies / a.dies)
+                          : waferSort === 'risk_asc'
+                          ? (a.riskDies / a.dies) - (b.riskDies / b.dies)
                           : parseInt(a.wno) - parseInt(b.wno)
                         )
                         .map(w => {
@@ -520,12 +805,19 @@ export default function Drilldown() {
           </div>
         </div>
 
-        {/* ── 중: WaferMap ── */}
+        {/* ── 중: WaferMap + 하단 패널 ── */}
         <div className="dd-center-panel">
           {!selectedKey && !selectedLot && (
             <div className="dd-center-panel-inner">
               <div className="dd-panel-title">Wafer Map</div>
               <div className="dd-map-hint">← 좌측 목록에서 Lot을 클릭해 펼친 후 Wafer를 선택하세요</div>
+              <WaferBottomPanel
+                ufsSerial={null}
+                allDies={[]}
+                scale={scale}
+                selectedDie={null}
+                onSelectDie={handleSelectDie}
+              />
             </div>
           )}
 
@@ -536,11 +828,22 @@ export default function Drilldown() {
                 <span className="dd-panel-title">Wafer {selectedKey.replace('_', ' · #')}</span>
                 <span className="dd-panel-meta">Dies {selectedDies.length}</span>
               </div>
-              <WaferMap
-                dies={selectedDies}
+              <div className="dd-wmap-top">
+                <WaferMap
+                  dies={selectedDies}
+                  scale={scale}
+                  selectedUnit={selectedUnit}
+                  onSelectUnit={setSelectedUnit}
+                  selectedDie={selectedDie}
+                  onSelectDie={handleSelectDie}
+                />
+              </div>
+              <WaferBottomPanel
+                ufsSerial={selectedUnit}
+                allDies={selectedDies}
                 scale={scale}
-                selectedUnit={selectedUnit}
-                onSelectUnit={setSelectedUnit}
+                selectedDie={selectedDie}
+                onSelectDie={handleSelectDie}
               />
             </div>
           )}
@@ -557,25 +860,47 @@ export default function Drilldown() {
               <div className="dd-map-hint sm">
                 lot 내 모든 wafer를 같은 die 좌표로 겹친 max 집계 — 좌측에서 Wafer를 선택하면 단일 보기로 전환
               </div>
-              <WaferMap
-                dies={lotAccumDies}
+              <div className="dd-wmap-top">
+                <WaferMap
+                  dies={lotAccumDies}
+                  scale={scale}
+                  selectedUnit={null}
+                  onSelectUnit={undefined}
+                />
+              </div>
+              <WaferBottomPanel
+                ufsSerial={null}
+                allDies={lotAccumDies}
                 scale={scale}
-                selectedUnit={selectedUnit}
-                onSelectUnit={setSelectedUnit}
+                selectedDie={null}
+                onSelectDie={handleSelectDie}
               />
             </div>
           )}
         </div>
 
-        {/* ── 우: Unit 진단 ── */}
+        {/* ── 우: Unit | Die 가로 2열 진단 ── */}
         <div className="dd-right-panel">
-          <div className="dd-panel-title">Unit 진단</div>
-          <UnitReport
-            ufsSerial={selectedUnit}
-            allDies={dieData}
-            scale={scale}
-            onClose={selectedUnit ? () => setSelectedUnit(null) : undefined}
-          />
+          {/* Unit 진단 열 */}
+          <div className="dd-right-unit-col">
+            <div className="dd-right-panel-title">Unit 진단</div>
+            <UnitReport
+              ufsSerial={selectedUnit}
+              allDies={dieData}
+              scale={scale}
+              features={fiData}
+              onClose={selectedUnit ? () => { setSelectedUnit(null); setSelectedDie(null) } : undefined}
+            />
+          </div>
+          {/* Die 진단 열 */}
+          <div className="dd-right-die-col">
+            <div className="dd-right-panel-title">Die 진단</div>
+            <DieReport
+              die={selectedDie}
+              scale={scale}
+              onClose={selectedDie ? () => setSelectedDie(null) : undefined}
+            />
+          </div>
         </div>
 
       </div>

@@ -10,29 +10,27 @@
 /* ── KPI 행 ── */
 .fa-kpi-row {
   display: grid;
-  grid-template-columns: 180px 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   flex-shrink: 0;
 }
 
 .fa-kpi-card {
   background: var(--surface);
-  border: 1.5px solid var(--border);
   border-radius: 10px;
-  padding: 12px 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 3px;
-  position: relative;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .fa-kpi-rmse {
-  border-left: 3px solid var(--accent);
+  border: 1.5px solid var(--accent);
 }
 
 .fa-kpi-feat {
-  border-left: 3px solid #8B5CF6;
+  border: 1.5px solid #8B5CF6;
 }
 
 .fa-kpi-label {
@@ -68,24 +66,29 @@
 .fa-kpi-feat-main {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 10px;
   flex-wrap: nowrap;
 }
 
 .fa-kpi-feat-name {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .fa-kpi-feat-ratio {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: #8B5CF6;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .fa-kpi-tbd {
@@ -118,10 +121,9 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2);
 }
-.cc-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
-.cc-tag {
-  font-size: 10px; font-family: 'DM Mono',monospace; padding: 2px 8px;
-  border-radius: 4px; background: var(--primary-pale); color: var(--accent); border: 1px solid var(--primary-mid);
+.cc-title { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+.cc-sub {
+  font-size: 11px; font-weight: 400; color: var(--text3);
 }
 .cc-body { padding: 10px 14px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 

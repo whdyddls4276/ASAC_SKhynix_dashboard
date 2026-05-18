@@ -198,13 +198,20 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   const [input, setInput]   = useState('')
   const [loading, setLoading] = useState(false)
   const [currentHtml, setCurrentHtml] = useState(html)
+  const [currentReportData, setCurrentReportData] = useState(reportData || {})
 
-  const iframeRef      = useRef(null)
-  const bottomRef      = useRef(null)
-  const historyRef     = useRef([])
-  const prevBlobRef    = useRef(null)
-  const initialLoad    = useRef(true)
+  const iframeRef         = useRef(null)
+  const bottomRef         = useRef(null)
+  const historyRef        = useRef([])
+  const prevBlobRef       = useRef(null)
+  const initialLoad       = useRef(true)
+  const currentHtmlRef    = useRef(currentHtml)
+  const currentReportRef  = useRef(currentReportData)
   const [blobUrl, setBlobUrl] = useState(null)
+
+  // ref를 항상 최신 state로 동기화
+  useEffect(() => { currentHtmlRef.current = currentHtml }, [currentHtml])
+  useEffect(() => { currentReportRef.current = currentReportData }, [currentReportData])
 
   function _inject(rawHtml) {
     return rawHtml.includes('</body>')
@@ -232,41 +239,129 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
     if (!iframe) return
     const doc = iframe.contentDocument || iframe.contentWindow?.document
     if (!doc) return
-    // 현재 스크롤 저장
     const scrollY = iframe.contentWindow?.scrollY || 0
     doc.open()
     doc.write(_inject(currentHtml))
     doc.close()
-    // 스크롤 복원 (write 완료 후 다음 프레임)
+    // Chart.js 렌더링 완료 후 스크롤 복원 (rAF 2중첩 + 100ms 보험)
     requestAnimationFrame(() => {
-      iframe.contentWindow?.scrollTo(0, scrollY)
-      // select 모드 재전달
-      if (selectMode) {
-        iframe.contentWindow?.postMessage({ type: 'SET_SELECT_MODE', value: true }, '*')
-      }
+      requestAnimationFrame(() => {
+        iframe.contentWindow?.scrollTo(0, scrollY)
+        if (selectMode) {
+          iframe.contentWindow?.postMessage({ type: 'SET_SELECT_MODE', value: true }, '*')
+        }
+      })
     })
+    const t = setTimeout(() => {
+      iframe.contentWindow?.scrollTo(0, scrollY)
+    }, 120)
+    return () => clearTimeout(t)
   }, [currentHtml])
 
-  // iframe → 부모: 영역 선택 이벤트 수신
+  // iframe → 부모: 영역 선택 이벤트 수신 (기존 SECTION_SELECTED + 신규 ia_event)
   useEffect(() => {
     function onMessage(e) {
-      if (e.data?.type !== 'SECTION_SELECTED') return
-      const { label, mode, count } = e.data
-      setSelected(label)
-      if (mode === 'empty') {
-        // 빈 여백 → "이 영역에 뭐 채워줘" 유도
-        setInput(prev => prev || '이 빈 영역에 ')
-      } else if (mode === 'drag' && count > 1) {
-        // 다중 박스 → 선택된 박스명 나열
-        setInput(prev => prev || `[${label}] `)
-      } else {
-        // 단일 박스 (클릭 or 드래그 1개)
-        setInput(prev => prev || `[${label}] `)
+      // ── 기존: 선택 모드 드래그/클릭 ──────────────────────
+      if (e.data?.type === 'SECTION_SELECTED') {
+        const { label, mode, count } = e.data
+        setSelected(label)
+        if (mode === 'empty') {
+          setInput(prev => prev || '이 빈 영역에 ')
+        } else {
+          setInput(prev => prev || `[${label}] `)
+        }
+        return
+      }
+
+      // ── 신규: ia_event (드래그·우클릭·hover 버튼) ────────
+      if (e.data?.type === 'ia_event') {
+        const payload = e.data.payload
+        if (!payload) return
+        setSelected(payload.label || payload.sid || '선택됨')
+
+        // /report/interact 엔드포인트로 SSE 요청 전송
+        sendInteract(payload)
+        return
       }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [])
+  }, [])   // dep [] 고정 — 최신 state는 ref로 참조
+
+  // ── /report/interact 전송 (ia_event 처리) ──────────────────
+  async function sendInteract(payload) {
+    if (loading) return
+    setLoading(true)
+    const userMsg = payload.prompt || `[${payload.label}] 수정 요청`
+    addMsg('user', userMsg)
+    historyRef.current.push({ role: 'user', content: userMsg })
+
+    try {
+      const res = await fetch(`${apiUrl || API_URL}/report/interact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          history: historyRef.current.slice(0, -1),
+          tool_cache: toolCache || {},
+          current_report_data: currentReportRef.current,
+        }),
+      })
+
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let botText = ''
+      let buffer  = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw || raw === '[DONE]') continue
+          let event
+          try { event = JSON.parse(raw) } catch { continue }
+
+          if (event.type === 'text') {
+            botText += event.content
+            setMessages(prev => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              if (last?.role === 'bot' && last?.streaming) {
+                next[next.length - 1] = { ...last, text: botText }
+              } else {
+                next.push({ role: 'bot', text: botText, streaming: true })
+              }
+              return next
+            })
+          }
+          if (event.type === 'report_ready' && event.html) {
+            setCurrentHtml(event.html)
+            if (event.report_data) setCurrentReportData(event.report_data)
+          }
+          if (event.type === 'confirm' && event.buttons) {
+            setMessages(prev => [...prev, { role: 'bot', text: botText, buttons: event.buttons }])
+            botText = ''
+          }
+          if (event.type === 'done') setLoading(false)
+          if (event.type === 'error') {
+            addMsg('bot', `⚠️ ${event.message}`)
+            setLoading(false)
+          }
+        }
+      }
+      setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m))
+      if (botText) historyRef.current.push({ role: 'assistant', content: botText })
+    } catch {
+      addMsg('bot', '⚠️ 서버 연결에 실패했습니다.')
+      setLoading(false)
+    }
+  }
 
   // 선택 모드 토글 → iframe에 전달
   function toggleSelectMode() {
@@ -313,6 +408,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
           tool_cache: toolCache || {},
           context: 'report_edit',
           current_html: currentHtml,
+          current_report_data: currentReportData,
         }),
       })
 
@@ -352,7 +448,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
           // 수정된 HTML이 보고서로 내려오면 미리보기 갱신
           if (event.type === 'report_ready' && event.html) {
             setCurrentHtml(event.html)
-            addMsg('bot', '보고서가 수정됐습니다. 미리보기를 확인해주세요.')
+            if (event.report_data) setCurrentReportData(event.report_data)
           }
 
           if (event.type === 'done') setLoading(false)
@@ -460,8 +556,21 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
               {messages.map((m, i) => (
                 <div key={i} className={`rm-msg ${m.role}`}>
                   {m.role === 'bot' && <div className="rm-avatar">AI</div>}
-                  <div className={`rm-bubble ${m.streaming ? 'streaming' : ''}`}>
-                    {m.text}
+                  <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+                    <div className={`rm-bubble ${m.streaming ? 'streaming' : ''}`}>
+                      {m.text}
+                    </div>
+                    {m.buttons && m.buttons.length > 0 && (
+                      <div style={{display:'flex',flexWrap:'wrap',gap:'6px',paddingLeft:'4px'}}>
+                        {m.buttons.map((btn, bi) => (
+                          <button key={bi}
+                            style={{background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:'6px',
+                                    padding:'4px 10px',fontSize:'11px',cursor:'pointer',color:'#1D4ED8'}}
+                            onClick={() => { setInput(btn); }}
+                          >{btn}</button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
