@@ -1,0 +1,29 @@
+# 환경변수 (절대 커밋 금지)
+.env
+
+# 대용량 데이터
+augmented_xs_data.csv
+*.csv.gz
+
+# Python 캐시
+__pycache__/
+*.pyc
+*.pyo
+
+# Node 모듈
+node_modules/
+dist/
+build/
+
+# ChromaDB 벡터 DB (바이너리, 재생성 가능)
+rag_db/vectordb/
+
+# 임시 파일
+_live_cache.json
+*.pptx
+*.tmp
+*.log
+
+# IDE
+.vscode/
+.idea/

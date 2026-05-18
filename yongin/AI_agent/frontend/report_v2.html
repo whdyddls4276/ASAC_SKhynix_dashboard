@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<title>Field Health 불량 예측 분석 보고서</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Malgun Gothic','Segoe UI',sans-serif;background:#f1f5f9;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px;gap:12px}
+
+/* 슬라이드 카드 */
+.slide{width:1280px;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.18);border:1px solid #cbd5e1;border-radius:4px;overflow:visible}
+
+/* 헤더 */
+.s-hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 20px 10px;border-bottom:3px solid #1e3a8a;background:#fff}
+.s-title{font-size:22px;font-weight:900;color:#0f172a;letter-spacing:-.01em}
+.s-info{font-size:10.5px;color:#64748b;margin-top:4px}
+.conf{background:#dc2626;color:#fff;font-size:11px;font-weight:800;padding:5px 16px;border-radius:3px;white-space:nowrap;border:1px solid #991b1b;flex-shrink:0;margin-top:2px}
+
+/* 본문 */
+.s-body{padding:12px 18px 12px}
+
+/* 2열 */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.col{display:flex;flex-direction:column}
+
+/* 섹션 박스 */
+.sbox{border:1px solid #cbd5e1;overflow:hidden;border-radius:5px;box-shadow:0 2px 10px rgba(0,0,0,.07)}
+.shdr{background:#1e3a8a;text-align:center;padding:7px 8px;font-size:12px;font-weight:800;color:#fff;letter-spacing:.02em;position:relative}
+.shdr::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:#3b82f6}
+.sbdy{padding:11px 13px}
+
+/* KPI 카드 */
+.kpi-cards{display:flex;gap:7px;margin-bottom:9px}
+.kpi-card{flex:1;background:#fff;border:1px solid #cbd5e1;border-radius:5px;padding:7px 10px 6px 14px;min-width:0;position:relative;box-shadow:0 2px 6px rgba(0,0,0,.07);overflow:hidden}
+.kpi-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px}
+.kpi-card.navy::before{background:#1e3a8a}
+.kpi-card.dark::before{background:#374151}
+.kpi-card.red::before{background:#ef4444}
+.kpi-card.green::before{background:#22c55e}
+.kpi-label{font-size:9px;color:#94a3b8;margin-bottom:2px}
+.kpi-main{font-size:17px;font-weight:900;line-height:1.1}
+.kpi-main.navy{color:#1e3a8a}
+.kpi-main.dark{color:#374151}
+.kpi-main.red{color:#ef4444}
+.kpi-main.green{color:#22c55e}
+.kpi-sub{font-size:9px;color:#64748b;margin-top:2px}
+
+/* 소제목 */
+.inum{font-size:11px;font-weight:700;color:#1e293b;margin-top:9px;margin-bottom:4px}
+.inum:first-child{margin-top:0}
+.inum-sub{font-size:10px;font-weight:400;color:#64748b}
+
+/* RMSE 카드 */
+.rmse-card{display:flex;align-items:stretch;background:#fff;border:1px solid #cbd5e1;border-radius:5px;box-shadow:0 2px 6px rgba(0,0,0,.07);overflow:hidden;margin-bottom:6px}
+.rmse-accent{width:6px;flex-shrink:0}
+.rmse-accent.green{background:#22c55e}
+.rmse-accent.amber{background:#f59e0b}
+.rmse-inner{padding:8px 14px}
+.rmse-num{font-size:26px;font-weight:900;line-height:1}
+.rmse-num.green{color:#16a34a}
+.rmse-num.amber{color:#d97706}
+.rmse-lbl{font-size:9.5px;color:#64748b;margin-top:3px}
+
+/* 구분선 */
+.div{height:1px;background:#e2e8f0;margin:9px 0}
+
+/* 차트 레이블 */
+.clbl{font-size:10px;font-weight:700;color:#475569;margin-bottom:4px}
+
+/* SHAP */
+.shap-row{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.shap-feat{width:105px;font-size:9.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.shap-bw{flex:1;position:relative;height:14px;background:#f1f5f9;border-radius:3px}
+.shap-bar{position:absolute;top:2px;height:10px;border-radius:2px}
+.shap-zero{position:absolute;top:0;height:100%;width:1px;background:#94a3b8}
+.shap-val{width:72px;font-size:8.5px;text-align:right;flex-shrink:0}
+.shap-dir{width:76px;font-size:9px;flex-shrink:0}
+
+/* 박스플롯 */
+.bp-row{display:flex;align-items:center;gap:5px;margin-bottom:3px}
+.bp-lbl{width:32px;font-size:9px;font-weight:700;flex-shrink:0}
+.bp-wrap{flex:1;position:relative;height:18px;background:#f1f5f9;border-radius:3px}
+.bp-iqr{position:absolute;top:20%;height:60%;border-radius:1px;opacity:.8}
+.bp-med{position:absolute;top:5%;height:90%;width:2px;background:#fff}
+.bp-wsk{position:absolute;top:46%;height:2px}
+.bp-stat{width:62px;font-size:9px;color:#94a3b8;text-align:right;flex-shrink:0}
+
+/* 피처 분포 블록 */
+.fc-feat{margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid #f1f5f9}
+.fc-feat:last-child{border:none;margin-bottom:0;padding-bottom:0}
+.fc-fname-top{font-size:10px;font-weight:700;color:#374151;margin-bottom:2px;display:flex;align-items:center;gap:5px;overflow:hidden}
+.fc-fname-bot{font-size:9px;display:flex;justify-content:space-between;margin-bottom:4px;gap:4px}
+
+/* 개선방안 */
+.sol-grid{display:grid;grid-template-columns:1fr auto;gap:9px;margin-bottom:7px}
+.sol-num-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:5px;padding:8px 12px;white-space:nowrap;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.sol-num{font-size:18px;font-weight:800}
+.sol-num.red{color:#dc2626}
+.sol-num.green{color:#16a34a}
+.rec-box{background:#eff6ff;border-radius:5px;padding:7px 11px;font-size:10px;color:#1e40af;line-height:1.7;border-left:3px solid #3b82f6}
+table{width:100%;border-collapse:collapse;font-size:10px}
+td{padding:4px 6px;border-bottom:1px solid #f8fafc}
+td:first-child{color:#64748b}
+
+/* 푸터 */
+.s-footer{border-top:3px solid #1e3a8a;margin-top:14px;padding-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#64748b}
+.footer-brand{font-weight:700;color:#1e3a8a}
+
+.loading{display:flex;align-items:center;justify-content:center;height:300px;font-size:15px;color:#94a3b8}
+
+@media print{
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{background:#fff !important;padding:0;margin:0;display:block;zoom:0.74}
+  .slide{box-shadow:none !important;border:1px solid #cbd5e1;width:1280px;margin:0 auto}
+}
+@page{size:A4 landscape;margin:6mm}
+</style>
+</head>
+<body>
+
+<div id="root"><div class="loading">데이터 로딩 중...</div></div>
+
+<script>
+var charts = {};
+var C = {high:'#ef4444', low:'#22c55e', blue:'#3b82f6', amber:'#f59e0b', gray:'#94a3b8'};
+var today = new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'});
+var REPORT_DATE = new Date(2026, 5, 11);
+function dayToDateStr(d, lastDay){
+  var dt = new Date(REPORT_DATE);
+  dt.setDate(dt.getDate() + (d - lastDay));
+  return (dt.getMonth()+1) + '/' + dt.getDate();
+}
+function dayToDateFull(d, lastDay){
+  var dt = new Date(REPORT_DATE);
+  dt.setDate(dt.getDate() + (d - lastDay));
+  return (dt.getMonth()+1) + '월 ' + dt.getDate() + '일';
+}
+function destroyChart(id){
+  if(charts[id]){ charts[id].destroy(); delete charts[id]; }
+}
+function fmt(v, d){
+  if(d === undefined) d = 4;
+  return v == null ? '—' : Number(v).toFixed(d);
+}
+
+// ── 자동 스케일 (iframe 너비에 맞게 축소) ─────────────────
+(function autoScale(){
+  var DESIGN_W = 1328;
+  function fit(){
+    var vw = document.documentElement.clientWidth;
+    document.body.style.zoom = vw < DESIGN_W ? String(vw / DESIGN_W) : '';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+})();
+
+// ═══════════════════════════════════════════════════════════
+function render(d){
+  var p     = d.perf;
+  var fc    = d.feature_comparison;
+  var feat0 = fc[0];
+  var lastDay = p.last_test_day || (p.train_days + p.val_days + p.test_days);
+  var thr = p.pred_defect_thr || p.high_thr;
+
+  document.getElementById('root').innerHTML =
+    '<div class="slide">' +
+
+      '<div class="s-hdr">' +
+        '<div>' +
+          '<div class="s-title">Field Health 불량 예측 분석 보고서</div>' +
+          '<div class="s-info">' +
+            today + '&nbsp;&nbsp;·&nbsp;&nbsp;Two-Stage Model&nbsp;&nbsp;·&nbsp;&nbsp;Val RMSE ' + p.val_rmse.toFixed(6) +
+            '&nbsp;&nbsp;·&nbsp;&nbsp;임계값 y_pred ≥ ' + thr +
+          '</div>' +
+        '</div>' +
+        '<div class="conf">대외비</div>' +
+      '</div>' +
+
+      '<div class="s-body">' +
+        '<div class="cols">' +
+
+          // ── 왼쪽 [불량 현황]
+          '<div class="col">' +
+            '<div class="sbox">' +
+              '<div class="shdr">[ 불량 현황 ]</div>' +
+              '<div class="sbdy" id="col-left-sbdy">' +
+                buildKpiHTML(p) +
+                '<div class="inum">1. 모델 성능' +
+                  '<span class="inum-sub"> — Study: ' + p.study_id + '</span>' +
+                '</div>' +
+                buildRmseHTML(p) +
+                '<div class="div"></div>' +
+                '<div class="inum">2. 불량률 트렌드' +
+                  '<span class="inum-sub"> — Train ' + p.train_days + '일 / Val ' + p.val_days + '일 / Test ' + p.test_days + '일' +
+                  '&nbsp;|&nbsp;<span style="color:#f97316">— 주황 점선: 개선 후</span></span>' +
+                '</div>' +
+                '<div style="position:relative;height:148px"><canvas id="c-trend"></canvas></div>' +
+                '<div class="div"></div>' +
+                '<div class="inum">3. SHAP 분석' +
+                  '<span class="inum-sub"> — TreeSHAP · 서로게이트 LightGBM' +
+                  (d.shap_meta ? ' (R²=' + d.shap_meta.surrogate_r2 + ')' : '') +
+                  ' · TOP ' + d.shap_data.length + '</span>' +
+                '</div>' +
+                '<div id="shap-body">' + buildShapHTML(d.shap_data) + '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          // ── 오른쪽 [이력 및 대책]
+          '<div class="col">' +
+            '<div class="sbox">' +
+              '<div class="shdr">[ 이력 및 대책 ]</div>' +
+              '<div class="sbdy" id="col-right-sbdy">' +
+                '<div class="inum">1. 위험 집중 Wafer' +
+                  '<span class="inum-sub"> — Test 기준 · 예측 불량률 ≥ 30%</span>' +
+                '</div>' +
+                buildWaferHTML(d.wafer_risk) +
+                '<div class="div"></div>' +
+                '<div class="inum">2. 고위험 피처 분포' +
+                  '<span class="inum-sub"> — 고위험(y_pred≥' + p.high_thr + ') vs 저위험(y_pred&lt;' + p.low_thr + ')</span>' +
+                '</div>' +
+                '<div id="fc-body">' + buildFcHTML(fc) + '</div>' +
+                '<div class="div"></div>' +
+                '<div class="inum">3. 개선 방안' +
+                  '<span class="inum-sub" style="color:#1d4ed8;font-weight:700"> — ' + feat0.feature + '&nbsp;(' + feat0.agg + ' 집계)</span>' +
+                '</div>' +
+                buildSimHTML(feat0) +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+        '</div>' +
+
+        '<div class="s-footer">' +
+          '<div>' + today + '&nbsp;·&nbsp;Two-Stage Model&nbsp;·&nbsp;불량 임계값 y_pred ≥ ' + thr + '</div>' +
+          '<div style="font-weight:600;color:#475569">Field Health Prediction Model v1.0&nbsp;·&nbsp;WT Quality Analysis&nbsp;&nbsp;Page 1 of 1</div>' +
+          '<div class="footer-brand">We Do Technology&nbsp;|&nbsp;SK hynix</div>' +
+        '</div>' +
+
+      '</div>' +
+    '</div>';
+
+  setTimeout(function(){
+    var elT = document.getElementById('c-trend');
+    void elT.parentElement.offsetWidth;
+    drawTrend(d.trend_data, p);
+  }, 0);
+}
+
+// ── KPI 카드 ──────────────────────────────────────────────
+function buildKpiHTML(p){
+  var nUnit   = p.n_val;
+  var nPred   = p.n_high;
+  var predPct = nUnit > 0 ? (nPred / nUnit * 100).toFixed(1) : '0.0';
+  var day     = p.last_test_day || (p.train_days + p.val_days + p.test_days);
+  var thr     = p.pred_defect_thr || p.high_thr;
+  var predCls = nPred > 0 ? 'red' : 'green';
+  function card(cls, label, main, sub){
+    return '<div class="kpi-card ' + cls + '">' +
+      '<div class="kpi-label">' + label + '</div>' +
+      '<div class="kpi-main ' + cls + '">' + main + '</div>' +
+      '<div class="kpi-sub">' + sub + '</div>' +
+    '</div>';
+  }
+  return '<div class="kpi-cards">' +
+    card('navy', '기준일', dayToDateFull(day, day), '최신 1일 기준') +
+    card('dark', '분석 유닛', nUnit + '개', 'last lot') +
+    card(predCls, '예측 불량', nPred + '개', predPct + '%&nbsp;(y_pred ≥ ' + thr + ')') +
+  '</div>';
+}
+
+// ── SHAP ──────────────────────────────────────────────────
+function buildShapHTML(shap_data){
+  var sorted = shap_data.slice().sort(function(a,b){
+    var aVal = (a.mean_abs_shap !== undefined) ? a.mean_abs_shap : Math.abs(a.effect_norm);
+    var bVal = (b.mean_abs_shap !== undefined) ? b.mean_abs_shap : Math.abs(b.effect_norm);
+    return bVal - aVal;
+  });
+  var hasProperShap = sorted.length > 0 && sorted[0].mean_abs_shap !== undefined;
+  var maxAbs = hasProperShap
+    ? (Math.max.apply(null, sorted.map(function(s){ return s.mean_abs_shap; })) || 1e-10)
+    : (Math.max.apply(null, sorted.map(function(s){ return Math.abs(s.effect_norm); })) || 1);
+
+  return sorted.map(function(s){
+    var absVal, direction, valLabel;
+    if(hasProperShap){
+      absVal = s.mean_abs_shap;
+      var highShap = s.high_mean_shap !== undefined ? s.high_mean_shap : s.effect_norm;
+      direction = highShap >= 0;
+      valLabel  = (highShap >= 0 ? '+' : '') + (highShap * 1e4).toFixed(2) + '×10⁻⁴';
+    } else {
+      absVal    = Math.abs(s.effect_norm);
+      direction = s.effect_norm >= 0;
+      valLabel  = (direction ? '+' : '') + s.effect_norm.toFixed(3);
+    }
+    var pct     = (absVal / maxAbs * 44).toFixed(1);
+    var color   = direction ? C.high : C.blue;
+    var dir     = direction ? '↑ 위험 증가 기여' : '↓ 위험 감소 기여';
+    var barLeft = direction ? '50%' : (50 - parseFloat(pct)).toFixed(1) + '%';
+    return '<div class="shap-row">' +
+      '<div class="shap-feat" title="' + s.feature + '">' + s.feature + '</div>' +
+      '<div class="shap-bw">' +
+        '<div class="shap-zero" style="left:50%"></div>' +
+        '<div class="shap-bar" style="left:' + barLeft + ';width:' + pct + '%;background:' + color + '"></div>' +
+      '</div>' +
+      '<div class="shap-val" style="color:' + color + '">' + valLabel + '</div>' +
+      '<div class="shap-dir" style="color:' + color + '">' + dir + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── RMSE 카드 ─────────────────────────────────────────────
+function buildRmseHTML(p){
+  var cls = p.val_rmse < 0.006 ? 'green' : 'amber';
+  return '<div class="rmse-card">' +
+    '<div class="rmse-accent ' + cls + '"></div>' +
+    '<div class="rmse-inner">' +
+      '<div class="rmse-num ' + cls + '">' + p.val_rmse.toFixed(6) + '</div>' +
+      '<div class="rmse-lbl">Validation RMSE</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// ── Wafer 테이블 ──────────────────────────────────────────
+function buildWaferHTML(wafer_risk){
+  var high = wafer_risk.filter(function(w){ return w.pred_rate >= 30; });
+  if(high.length === 0){
+    high = wafer_risk.slice().sort(function(a,b){ return b.pred_rate - a.pred_rate; }).slice(0,10);
+  }
+  high.sort(function(a,b){ return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });
+  var maxRate = Math.max.apply(null, high.map(function(w){ return w.pred_rate; })) || 1;
+  var rows = high.map(function(w){
+    var barW = (w.pred_rate / maxRate * 60).toFixed(1);
+    var col  = w.pred_rate >= 60 ? '#dc2626' : w.pred_rate >= 40 ? '#f59e0b' : '#3b82f6';
+    return '<tr>' +
+      '<td style="font-weight:600;color:#1e293b;white-space:nowrap">' + w.id + '</td>' +
+      '<td><div style="display:flex;align-items:center;gap:5px">' +
+        '<div style="width:' + barW + 'px;height:7px;background:' + col + ';border-radius:2px;flex-shrink:0"></div>' +
+        '<span style="color:' + col + ';font-weight:700">' + w.pred_rate + '%</span>' +
+      '</div></td>' +
+      '<td style="color:#94a3b8">' + w.n + '</td>' +
+    '</tr>';
+  }).join('');
+  return '<div style="max-height:105px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:10px">' +
+      '<thead><tr style="background:#f8fafc;position:sticky;top:0">' +
+        '<th style="padding:4px 7px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0;background:#f8fafc">Lot-Wafer</th>' +
+        '<th style="padding:4px 7px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0;background:#f8fafc">예측 불량률</th>' +
+        '<th style="padding:4px 7px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0;background:#f8fafc">유닛수</th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>' +
+  '</div>';
+}
+
+// ── 박스플롯 ──────────────────────────────────────────────
+function buildFcHTML(fc){
+  var html = '';
+  fc.slice(0, 3).forEach(function(feat){
+    var hb = feat.high_box, lb = feat.low_box;
+    var all_pts = hb.concat(lb, [feat.normal_lo, feat.normal_hi]);
+    var minV = Math.min.apply(null, all_pts);
+    var maxV = Math.max.apply(null, all_pts);
+    var rng  = maxV - minV || 1;
+    function pp(v){ return ((v - minV) / rng * 100).toFixed(1) + '%'; }
+    function pw(a, b){ return Math.max(0, (b - a) / rng * 100).toFixed(1) + '%'; }
+    function bpRow(box, color, lbl){
+      var q10=box[1], q25=box[2], q50=box[3], q75=box[4], q90=box[5];
+      return '<div class="bp-row">' +
+        '<div class="bp-lbl" style="color:' + color + '">' + lbl + '</div>' +
+        '<div class="bp-wrap">' +
+          '<div class="bp-iqr" style="left:' + pp(q25) + ';width:' + pw(q25,q75) + ';background:' + color + '"></div>' +
+          '<div class="bp-med" style="left:' + pp(q50) + '"></div>' +
+          '<div class="bp-wsk" style="left:' + pp(q10) + ';width:' + pw(q10,q25) + ';background:' + color + '"></div>' +
+          '<div class="bp-wsk" style="left:' + pp(q75) + ';width:' + pw(q75,q90) + ';background:' + color + '"></div>' +
+        '</div>' +
+        '<div class="bp-stat">Med: ' + fmt(q50,4) + '</div>' +
+      '</div>';
+    }
+    var corrColor = Math.abs(feat.corr_ypred) > 0.01 ? C.high : '#94a3b8';
+    var deltaCol  = feat.high_median > feat.normal_median ? C.high : C.blue;
+    html += '<div class="fc-feat">' +
+      '<div class="fc-fname-top">' +
+        '<span style="background:#eff6ff;color:#1d4ed8;border-radius:3px;padding:1px 7px;font-size:10px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">' + feat.feature + '</span>' +
+        '<span style="font-size:9px;color:#94a3b8;white-space:nowrap">' + feat.agg + ' 집계</span>' +
+      '</div>' +
+      '<div class="fc-fname-bot">' +
+        '<span style="color:' + corrColor + '">r=' + (feat.corr_ypred >= 0 ? '+' : '') + feat.corr_ypred + '</span>' +
+        '<span style="color:' + deltaCol + ';font-weight:700">' +
+          (feat.high_median > feat.normal_median ? '▲' : '▼') + ' Δ' + Math.abs(feat.high_median - feat.normal_median).toFixed(4) +
+        '</span>' +
+      '</div>' +
+      bpRow(feat.high_box, C.high, '고위험') +
+      bpRow(feat.low_box,  C.low,  '저위험') +
+      '<div style="font-size:9px;color:#64748b;margin-top:3px">정상 범위: <b>' + feat.normal_lo + '</b> ~ <b>' + feat.normal_hi + '</b></div>' +
+    '</div>';
+  });
+  return html;
+}
+
+// ── 개선방안 ──────────────────────────────────────────────
+function buildSimHTML(feat){
+  var sim = feat.sim;
+  var improved = sim.new_pred_est < sim.current_pred_median;
+  var dSign = sim.delta_pred >= 0 ? '+' : '';
+  var fSign = sim.delta_feat >= 0 ? '+' : '';
+  return '<div class="sol-grid">' +
+    '<table>' +
+      '<tr><td>고위험 중앙값</td><td><b style="color:' + C.high + '">' + feat.high_median + '</b></td></tr>' +
+      '<tr><td>목표 (저위험 중앙값)</td><td><b style="color:' + C.low + '">' + feat.normal_median + '</b></td></tr>' +
+      '<tr><td>정상 범위</td><td><b>' + feat.normal_lo + ' ~ ' + feat.normal_hi + '</b></td></tr>' +
+      '<tr><td>조정량</td><td><b>' + fSign + sim.delta_feat + '</b></td></tr>' +
+    '</table>' +
+    '<div class="sol-num-box">' +
+      '<div style="font-size:9px;color:#94a3b8;margin-bottom:2px">예상 y_pred 변화</div>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<div><div style="font-size:8px;color:#94a3b8;text-align:center">현재</div>' +
+          '<div class="sol-num red">' + sim.current_pred_median + '</div></div>' +
+        '<div style="font-size:14px;color:#64748b">→</div>' +
+        '<div><div style="font-size:8px;color:#94a3b8;text-align:center">조정 후</div>' +
+          '<div class="sol-num ' + (improved ? 'green' : 'red') + '">' + sim.new_pred_est + '</div></div>' +
+      '</div>' +
+      '<div style="font-size:9px;color:#15803d;margin-top:3px">Δ <b>' + dSign + sim.delta_pred + '</b> ' + (improved ? '↓ 개선' : '변화 미미') + '</div>' +
+    '</div>' +
+  '</div>' +
+  '<div class="rec-box">' +
+    '<b>권고</b> — <b>' + feat.feature + '</b>(' + feat.agg + '): 중앙값 ' + feat.high_median +
+    ' → 정상범위 ' + feat.normal_lo + '~' + feat.normal_hi +
+    '&nbsp;<span style="color:#6b7280">· r≈' + Math.abs(feat.corr_ypred).toFixed(4) + '</span>' +
+  '</div>';
+}
+
+// ── 트렌드 차트 ───────────────────────────────────────────
+function drawTrend(trend_data, perf){
+  destroyChart('trend');
+  var el = document.getElementById('c-trend');
+  if(!el) return;
+  var ctx = el.getContext('2d');
+  var days       = trend_data.map(function(r){ return r.day; });
+  var lastDay    = perf.last_test_day || 75;
+  var dateLabels = days.map(function(d){ return dayToDateStr(d, lastDay); });
+  var pred_vals  = trend_data.map(function(r){ return r.pred_rate; });
+  var true_vals  = trend_data.map(function(r){ return r.true_rate; });
+  var sim_vals   = trend_data.map(function(r){ return r.sim_pred_rate; });
+  var TD = perf.train_days;
+  var VD = perf.train_days + perf.val_days;
+  var thr = (perf.pred_defect_thr || perf.high_thr);
+
+  function dayToIdx(dayNum){
+    var best = 0;
+    for(var i = 0; i < days.length; i++){
+      if(days[i] <= dayNum) best = i; else break;
+    }
+    return best;
+  }
+
+  var bandPlugin = {
+    id: 'bands-v2',
+    beforeDraw: function(chart){
+      var c2  = chart.ctx;
+      var scX = chart.scales.x;
+      if(!scX) return;
+      var top = chart.chartArea.top, bottom = chart.chartArea.bottom;
+      var bands = [
+        {lo:dayToIdx(1),    hi:dayToIdx(TD),      color:'rgba(59,130,246,0.06)', lbl:'Train'},
+        {lo:dayToIdx(TD+1), hi:dayToIdx(VD),      color:'rgba(245,158,11,0.08)', lbl:'Val'},
+        {lo:dayToIdx(VD+1), hi:dayToIdx(lastDay), color:'rgba(239,68,68,0.07)',  lbl:'Test'},
+      ];
+      c2.save();
+      bands.forEach(function(b){
+        var x1 = scX.getPixelForValue(b.lo), x2 = scX.getPixelForValue(b.hi);
+        c2.fillStyle = b.color;
+        c2.fillRect(x1, top, x2-x1, bottom-top);
+        c2.fillStyle = 'rgba(100,116,139,0.65)';
+        c2.font = 'bold 9px Segoe UI';
+        c2.fillText(b.lbl, x1+4, top+10);
+      });
+      [dayToIdx(TD+1)-0.5, dayToIdx(VD+1)-0.5].forEach(function(v){
+        var xv = scX.getPixelForValue(v);
+        c2.strokeStyle = 'rgba(100,116,139,0.45)'; c2.lineWidth = 1;
+        c2.setLineDash([3,3]);
+        c2.beginPath(); c2.moveTo(xv, top); c2.lineTo(xv, bottom); c2.stroke();
+      });
+      c2.restore();
+    }
+  };
+
+  charts['trend'] = new Chart(ctx, {
+    type: 'line',
+    plugins: [bandPlugin],
+    data: {
+      labels: dateLabels,
+      datasets: [
+        {label:'실제 불량률%',   data:true_vals, borderColor:'#16a34a', backgroundColor:'rgba(22,163,74,0.12)', borderWidth:1.5, fill:'origin', pointRadius:0, pointHoverRadius:3, tension:0.4, spanGaps:false, order:3},
+        {label:'예측 불량 비율%', data:pred_vals, borderColor:'#2563eb', backgroundColor:'transparent',          borderWidth:2,   fill:false,    pointRadius:0, pointHoverRadius:3, tension:0.4, spanGaps:true,  order:1},
+        {label:'개선 후 비율%',   data:sim_vals,  borderColor:'#f97316', backgroundColor:'transparent',          borderWidth:2,   fill:false,    pointRadius:0, pointHoverRadius:3, tension:0.4, spanGaps:false, order:2, borderDash:[6,3]},
+      ]
+    },
+    options: {
+      animation:false, responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, labels:{font:{size:9}, boxWidth:10, padding:6}},
+        tooltip:{callbacks:{
+          title:function(items){ return dayToDateFull(days[items[0].dataIndex], lastDay); },
+          label:function(item){ return item.dataset.label + ': ' + (item.raw != null ? item.raw.toFixed(1)+'%' : '—'); }
+        }}
+      },
+      scales:{
+        x:{ticks:{font:{size:8}, maxTicksLimit:12}},
+        y:{ticks:{font:{size:8}, callback:function(v){ return v.toFixed(0)+'%'; }},
+           title:{display:true, text:'불량률 (%)', font:{size:8}, color:'#64748b'}}
+      }
+    }
+  });
+}
+
+// ── 데이터 로드 ───────────────────────────────────────────
+fetch('/api/report/data-live')
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    try { render(d); } catch(renderErr){
+      document.getElementById('root').innerHTML =
+        '<div class="loading" style="flex-direction:column;gap:8px;color:#dc2626">' +
+        '<div>렌더링 오류</div>' +
+        '<div style="font-size:11px;color:#94a3b8;max-width:600px;text-align:center">' + renderErr.message + '</div>' +
+        '</div>';
+      console.error('render error:', renderErr);
+      return;
+    }
+    setTimeout(function(){
+      var root = document.getElementById('root');
+      var slideDiv = root.firstChild;
+
+      // ── position별 분류 ───────────────────────────────────
+      var byPos = {};
+      (d.custom_sections || []).forEach(function(sec, si){
+        var pos = sec.position || 'end';
+        if(!byPos[pos]) byPos[pos] = [];
+        byPos[pos].push({sec:sec, idx:si});
+      });
+
+      // ── before_slide ──────────────────────────────────────
+      (byPos['before_slide'] || []).forEach(function(item){
+        var card = makeCsCard(item.sec, item.idx);
+        root.insertBefore(card, slideDiv);
+        renderCsContent(item.sec, item.idx);
+      });
+
+      // ── left_col / right_col (슬라이드 내부 삽입) ─────────
+      ['left_col', 'right_col'].forEach(function(pos){
+        var colId = pos === 'left_col' ? 'col-left-sbdy' : 'col-right-sbdy';
+        (byPos[pos] || []).forEach(function(item){
+          var colEl = document.getElementById(colId);
+          if(!colEl) return;
+          var csId = 'cs-' + item.idx;
+          colEl.insertAdjacentHTML('beforeend',
+            '<div class="div"></div>' +
+            '<div class="inum">' + item.sec.title + '</div>' +
+            (item.sec.description ? '<div style="font-size:9.5px;color:#64748b;margin-bottom:5px">' + item.sec.description + '</div>' : '') +
+            (item.sec.chart_type === 'table'
+              ? '<div id="' + csId + '-tbl"></div>'
+              : '<div style="position:relative;height:' + (item.sec.height || 150) + 'px"><canvas id="' + csId + '-chart"></canvas></div>')
+          );
+          renderCsContent(item.sec, item.idx);
+        });
+      });
+
+      // ── after_slide (슬라이드 직후, commentary 위) ────────
+      var afterRef = slideDiv.nextSibling;
+      (byPos['after_slide'] || []).forEach(function(item){
+        var card = makeCsCard(item.sec, item.idx);
+        root.insertBefore(card, afterRef);
+        renderCsContent(item.sec, item.idx);
+      });
+
+      // ── commentary ────────────────────────────────────────
+      if(d.commentary && d.commentary.length > 0){
+        d.commentary.forEach(function(item){
+          var div = document.createElement('div');
+          div.style.cssText = 'width:1280px;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.12);padding:16px 22px;border:1px solid #cbd5e1;margin-top:12px;border-radius:6px;border-left:4px solid #3b82f6';
+          div.innerHTML =
+            '<div style="font-size:14px;font-weight:800;color:#1e3a8a;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #e2e8f0">📝 ' + item.title + '</div>' +
+            '<div style="font-size:11.5px;line-height:1.8;color:#334155;white-space:pre-wrap">' + item.content + '</div>';
+          root.appendChild(div);
+        });
+      }
+
+      // ── end / 기본값 ──────────────────────────────────────
+      (byPos['end'] || []).forEach(function(item){
+        var card = makeCsCard(item.sec, item.idx);
+        root.appendChild(card);
+        renderCsContent(item.sec, item.idx);
+      });
+
+    }, 60);
+  })
+  .catch(function(e){
+    document.getElementById('root').innerHTML =
+      '<div class="loading" style="flex-direction:column;gap:8px;color:#dc2626">' +
+      '<div>데이터 로드 실패</div>' +
+      '<div style="font-size:11px;color:#94a3b8">서버가 실행 중인지 확인하세요 (uvicorn main:app --port 8080)</div>' +
+      '</div>';
+    console.error(e);
+  });
+
+// ── Custom Section 헬퍼 ──────────────────────────────────────
+function makeCsCard(sec, idx){
+  var csId = 'cs-' + idx;
+  var card = document.createElement('div');
+  card.style.cssText = 'width:1280px;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.12);border:1px solid #cbd5e1;margin-top:12px;border-radius:6px;overflow:hidden';
+  card.innerHTML =
+    '<div style="background:#1e3a8a;padding:9px 18px;font-size:13px;font-weight:800;color:#fff;position:relative">' +
+    '<span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#3b82f6"></span>' +
+    '&nbsp;&nbsp;&nbsp;&nbsp;' + sec.title + '</div>' +
+    '<div style="padding:16px 20px">' +
+    (sec.description ? '<div style="font-size:11px;color:#64748b;margin-bottom:10px">' + sec.description + '</div>' : '') +
+    (sec.chart_type === 'table'
+      ? '<div id="' + csId + '-tbl"></div>'
+      : '<div style="position:relative;height:' + (sec.height || 260) + 'px"><canvas id="' + csId + '-chart"></canvas></div>') +
+    '</div>';
+  return card;
+}
+
+function renderCsContent(sec, idx){
+  var csId = 'cs-' + idx;
+  if(sec.chart_type === 'table') renderCustomTable(csId + '-tbl', sec);
+  else renderCustomChart(csId + '-chart', sec);
+}
+
+// ── Custom Chart 렌더러 ──────────────────────────────────────
+function renderCustomChart(canvasId, sec){
+  var el = document.getElementById(canvasId);
+  if(!el) return;
+
+  var PALETTE = ['#3b82f6','#ef4444','#22c55e','#f59e0b','#8b5cf6',
+                 '#06b6d4','#f97316','#ec4899','#64748b','#84cc16'];
+
+  var datasets = (sec.datasets || []).map(function(ds, di){
+    var col = ds.color || PALETTE[di % PALETTE.length];
+    var base = {
+      label:           ds.label || '',
+      data:            ds.data  || [],
+      backgroundColor: sec.chart_type === 'line' ? col + '22' : col,
+      borderColor:     col,
+      borderWidth:     sec.chart_type === 'bar' ? 0 : 2,
+      pointRadius:     sec.chart_type === 'scatter' ? 4 : 0,
+      fill:            sec.chart_type === 'line' && !!ds.fill,
+      tension:         0.3,
+      borderRadius:    sec.chart_type === 'bar' ? 4 : 0,
+    };
+    // scatter용: ds.data = [{x,y}, ...]
+    if(sec.chart_type === 'scatter') base.data = ds.data;
+    return base;
+  });
+
+  var isHorizontal = sec.horizontal === true;
+  var chartType = (sec.chart_type === 'bar' && isHorizontal) ? 'bar' : sec.chart_type;
+
+  new Chart(el.getContext('2d'), {
+    type: chartType,
+    data: { labels: sec.labels || [], datasets: datasets },
+    options: {
+      indexAxis:   isHorizontal ? 'y' : 'x',
+      responsive:  true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: datasets.length > 1 || !!datasets[0]?.label,
+                  labels: { font: { size: 11 } } },
+        tooltip: { callbacks: {
+          label: function(ctx){
+            var v = ctx.parsed.y !== undefined ? ctx.parsed.y : ctx.parsed;
+            return ' ' + ctx.dataset.label + ': ' + (typeof v === 'number' ? v.toFixed(4) : v);
+          }
+        }},
+      },
+      scales: (sec.chart_type === 'pie' || sec.chart_type === 'doughnut') ? {} : {
+        x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 },
+             maxRotation: sec.chart_type === 'bar' && !isHorizontal ? 35 : 0 } },
+        y: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } },
+             beginAtZero: sec.y_begin_zero !== false },
+      },
+    },
+  });
+}
+
+function renderCustomTable(divId, sec){
+  var el = document.getElementById(divId);
+  if(!el) return;
+  var cols = sec.columns || [];
+  var rows = sec.rows    || [];
+  var thead = cols.map(function(c){
+    return '<th style="padding:5px 8px;text-align:left;color:#64748b;font-weight:600;font-size:10px;border-bottom:2px solid #e2e8f0;white-space:nowrap">' + c + '</th>';
+  }).join('');
+  var tbody = rows.map(function(r, ri){
+    var bg = ri % 2 === 0 ? '#fff' : '#f8fafc';
+    var cells = (Array.isArray(r) ? r : cols.map(function(c){ return r[c] !== undefined ? r[c] : ''; }))
+      .map(function(v, ci){
+        return '<td style="padding:5px 8px;font-size:10.5px;color:' + (ci===0?'#1e293b':'#475569') + ';border-bottom:1px solid #f1f5f9">' + v + '</td>';
+      }).join('');
+    return '<tr style="background:' + bg + '">' + cells + '</tr>';
+  }).join('');
+  el.innerHTML =
+    '<div style="max-height:' + (sec.height || 220) + 'px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:5px">' +
+    '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="background:#f8fafc">' + thead + '</tr></thead>' +
+    '<tbody>' + tbody + '</tbody>' +
+    '</table></div>';
+}
+</script>
+</body>
+</html>

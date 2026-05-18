@@ -155,11 +155,3 @@
   transform: translateY(-2px) scale(1.05);
   box-shadow: 0 8px 28px rgba(99,102,241,.5);
 }
-
-.fab-dummy-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  font-size: 13px;
-  line-height: 1;
-}
