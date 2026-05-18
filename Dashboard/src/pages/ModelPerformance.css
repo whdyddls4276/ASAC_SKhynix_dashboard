@@ -7,50 +7,49 @@
   flex: 1;
 }
 
-/* ── Row 1: RMSE KPI 4개 ── */
+/* ── KPI 행 ── */
 .mp-kpi-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-/* ── Row 2: 피처 임포턴스 Top5 KPI 5개 ── */
-.mp-fi-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
 }
+.mp-kpi-row--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.mp-kpi-row--5 {
+  grid-template-columns: repeat(5, 1fr);
+}
 
-/* ── KPI 박스 ── */
+/* ── KPI 박스 — 파란 테두리 흰 배경 통일 ── */
 .mp-kpi {
-  background: var(--surface);
-  border: 1.5px solid var(--kc, var(--border));
+  background: #fff;
+  border: 1.5px solid #3B82F6;
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   text-align: center;
-  background: var(--ka, var(--surface));
   transition: box-shadow 0.18s;
 }
-.mp-kpi:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+.mp-kpi:hover { box-shadow: 0 2px 12px rgba(59,130,246,0.15); }
 
 .mp-kpi-val {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
-  line-height: 1.1;
+  color: #1E40AF;
+  line-height: 1.2;
   letter-spacing: -0.5px;
+  word-break: break-all;
 }
 
 .mp-kpi-label {
   font-size: 11px;
-  color: var(--text2);
-  margin-top: 5px;
+  color: #374151;
+  margin-top: 4px;
   font-weight: 600;
 }
 
 .mp-kpi-sub {
   font-size: 9px;
-  color: var(--text3);
+  color: #94A3B8;
   font-family: 'JetBrains Mono', monospace;
   margin-top: 3px;
 }
@@ -70,6 +69,8 @@
   border-radius: 10px;
   overflow: hidden;
   transition: box-shadow 0.18s;
+  display: flex;
+  flex-direction: column;
 }
 .mp-chart-card:hover { box-shadow: 0 2px 14px rgba(59,130,246,0.07); }
 
@@ -80,6 +81,7 @@
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
+  flex-shrink: 0;
 }
 
 .mp-cc-title {
@@ -104,27 +106,19 @@
   padding: 10px 14px;
 }
 
-/* ── 피처 탭 (우하단) ── */
-.mp-feat-tabs {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
+/* ── 스크롤 가능한 차트 영역 ── */
+/* 7개 항목 높이(~245px)만 보이고, 안에서 스크롤 */
+.mp-cc-scroll {
+  padding: 10px 14px;
+  height: 245px;        /* 화면에 보이는 고정 높이 (항목 1개 ≈ 28px × 7 + 여백) */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 transparent;
 }
-
-.mp-feat-tab {
-  font-size: 10px;
-  font-family: 'JetBrains Mono', monospace;
-  padding: 3px 9px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-}
-.mp-feat-tab:hover  { background: var(--surface); border-color: #94A3B8; }
-.mp-feat-tab.active { background: var(--accent-pale); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.mp-cc-scroll::-webkit-scrollbar { width: 4px; }
+.mp-cc-scroll::-webkit-scrollbar-track { background: transparent; }
+.mp-cc-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
 
 /* ── 빈 상태 ── */
 .mp-empty {
