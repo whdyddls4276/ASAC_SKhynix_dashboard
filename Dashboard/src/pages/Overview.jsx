@@ -187,19 +187,15 @@ export default function Overview() {
     // 구간 구분: lastTrueIdx = 실측 마지막 주차 인덱스
     const lastTrueIdx = trueAvg.reduce((acc, v, i) => v != null ? i : acc, -1)
 
-    // 3구간 series 데이터 생성
-    // ① 실측 구간 (0 ~ lastTrueIdx): 회색
-    // ② 예측 구간 (lastTrueIdx ~ n-2): 파란색  — 연결을 위해 각 구간 경계점 포함
-    // ③ 마지막 주 (n-2 ~ n-1): 빨간색
-    const pastData    = predAvg.map((v, i) => i <= lastTrueIdx ? v : null)
-    const futureData  = predAvg.map((v, i) => (i >= lastTrueIdx && i <= n - 2) ? v : null)
-    const lastData    = predAvg.map((v, i) => i >= n - 2 ? v : null)
-
     const allPpm = predAvg.filter(v => v != null)
     const rawMax = Math.max(...allPpm)
     const pad    = (rawMax - 190_000) * 0.12 || rawMax * 0.1
     const ppmMin = 190_000
     const ppmMax = Math.round((rawMax + pad) / 10_000) * 10_000
+
+    const pastData   = predAvg.map((v, i) => i <= lastTrueIdx ? v : null)
+    const futureData = predAvg.map((v, i) => (i >= lastTrueIdx && i <= n - 2) ? v : null)
+    const lastData   = predAvg.map((v, i) => i >= n - 2 ? v : null)
 
     return {
       tooltip: {
@@ -236,7 +232,6 @@ export default function Overview() {
           nameTextStyle: { fontSize: 10 },
           axisLabel: { fontSize: 10, formatter: v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v },
           splitLine: { lineStyle: { color: '#F1F5F9' } },
-          // 생산량 범위를 아래 15%에 고정 → 라인이 위쪽 공간 충분히 차지
           max: v => Math.round(v.max * 6.5),
         },
         {
@@ -259,7 +254,6 @@ export default function Overview() {
           barMaxWidth: 28,
         },
         {
-          // 실측 구간: 회색 실선 + 회색 배경
           name: '실측 구간',
           type: 'line',
           yAxisIndex: 1,
@@ -278,7 +272,6 @@ export default function Overview() {
           } : undefined,
         },
         {
-          // 예측 구간: 파란 실선 + 파란 배경
           name: '예측 구간',
           type: 'line',
           yAxisIndex: 1,
@@ -297,7 +290,6 @@ export default function Overview() {
           } : undefined,
         },
         {
-          // 최신 주차: 빨간 강조 + 빨간 배경
           name: '최신 주차',
           type: 'line',
           yAxisIndex: 1,
@@ -307,7 +299,6 @@ export default function Overview() {
           lineStyle: { color: '#DC2626', width: 2.5, type: 'dashed' },
           itemStyle: { color: '#DC2626' },
           symbolSize: (_, params) => params.dataIndex === n - 1 ? 12 : 5,
-          symbol: (_, params) => params.dataIndex === n - 1 ? 'circle' : 'circle',
           markArea: {
             silent: true,
             data: [[
@@ -534,21 +525,21 @@ export default function Overview() {
     <div className="overview">
       <div className="kpi-row">
         <KpiCard
-          label="오늘 검사 unit"
+          label="이번주 검사 unit"
           value={kpi.total.toLocaleString()}
-          sub="최신 Lot 실시간 진단 대상"
+          sub={`최신 Lot 대상`}
           color="#F59E0B"
         />
         <KpiCard
           label="평균 예측 ppm"
           value={kpi.fmtPpm(kpi.meanPpm)}
-          sub={`fleet 평균 — Lot ${latestLot}`}
+          sub={`Lot ${latestLot} 기준`}
           color="#3B82F6"
         />
         <KpiCard
-          label="p95 ppm"
+          label="상위 5% 예측 ppm"
           value={kpi.fmtPpm(kpi.p95Ppm)}
-          sub="상위 5% 꼬리 위험 수준"
+          sub="상위 5% 위험 수준"
           color="#F97316"
         />
         <KpiCard

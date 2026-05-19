@@ -6,7 +6,6 @@ import Overview from './pages/Overview'
 import WaferMap from './pages/WaferMap'
 import ModelPerformance from './pages/ModelPerformance'
 import Drilldown from './pages/Drilldown'
-import { DieMapPage, PositionPage, WaferZonePage } from './pages/LocationAnalysis'
 import { useCSV } from './hooks/useCSV'
 import './App.css'
 
@@ -52,9 +51,6 @@ export default function App() {
       case 'overview':        return <Overview />
       case 'wafer-map':       return <WaferMap />
 case 'feat-importance': return <ModelPerformance />
-      case 'loc-die':         return <DieMapPage />
-      case 'loc-position':    return <PositionPage />
-      case 'loc-zone':        return <WaferZonePage />
 case 'drilldown':
       case 'lot-level':
       case 'wafer-level':

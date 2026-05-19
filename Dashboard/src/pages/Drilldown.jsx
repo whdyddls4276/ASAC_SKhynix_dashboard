@@ -86,16 +86,22 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
   const dieMap = new Map()
   for (const d of dies) dieMap.set(`${d.die_x},${d.die_y}`, d)
 
-  const VB = 1000
-  const margin = 40
-  const inner = VB - margin * 2
+  // ── viewBox 좌표계 ──
+  const D      = 800   // 원 지름
+  const PAD    = 80    // 상/좌/하/우 동일 여백 (라벨 공간 포함)
+  const VB_W   = D + PAD * 2
+  const VB_H   = D + PAD * 2
+  const cx     = PAD + D / 2
+  const cy     = PAD + D / 2
+  const radius = D / 2
+
   const { xMin, xMax, yMin, yMax, xRange, yRange } = layout
-  const cellW = inner / xRange
-  const cellH = inner / yRange
   const centerX = (xMin + xMax) / 2
   const centerY = (yMin + yMax) / 2
-  const cx = VB / 2, cy = VB / 2
-  const radius = VB / 2 - margin * 0.3
+
+  // 격자 셀 크기
+  const cellW = D / xRange
+  const cellH = D / yRange
 
   // mask: 모든 die 좌표 집합
   const mask = [...dieMap.keys()].map(k => k.split(',').map(Number))
@@ -116,7 +122,7 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
   return (
     <div className="dd-wmap-inner">
       <div className="dd-wmap-svg-wrap">
-        <svg viewBox={`0 0 ${VB} ${VB}`} preserveAspectRatio="xMidYMid meet"
+        <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet" style={{ overflow: 'visible' }}
           className="dd-wmap-svg">
           <defs>
             <clipPath id="waferCircle">
@@ -177,7 +183,7 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
           {gridXs.filter((_, i) => i % labelXStep === 0).map((gx, i) => {
             const xVal = xMin + i * labelXStep
             return (
-              <text key={`lx-${i}`} x={gx + cellW / 2} y={cy + radius + 22}
+              <text key={`lx-${i}`} x={gx + cellW / 2} y={cy + radius + 42}
                 textAnchor="middle" fontSize={18} fill="#94a3b8">{xVal}</text>
             )
           })}
@@ -185,7 +191,7 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
           {gridYs.filter((_, i) => i % labelYStep === 0).map((gy, i) => {
             const yVal = yMin + i * labelYStep
             return (
-              <text key={`ly-${i}`} x={cx + radius + 18} y={gy + cellH / 2}
+              <text key={`ly-${i}`} x={cx + radius + 12} y={gy + cellH / 2}
                 dominantBaseline="middle" fontSize={18} fill="#94a3b8">{yVal}</text>
             )
           })}

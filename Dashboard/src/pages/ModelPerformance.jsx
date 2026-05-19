@@ -182,7 +182,14 @@ export default function ModelPerformance() {
     return featDistCols[0]
   }, [selFeat, featDistCols])
 
-  // ── 고위험 vs 저위험 피처값 분포 — 밀도 라인 차트 + 중앙값 점선 ──
+  // grade1/grade4 구분을 위한 ufs_serial → grade 맵
+  const gradeMap = useMemo(() => {
+    const m = {}
+    unitsRaw.forEach(u => { m[u.ufs_serial] = u.grade })
+    return m
+  }, [unitsRaw])
+
+  // ── 고위험(grade1) vs 저위험(grade4) 피처값 분포 — 밀도 라인 차트 ──
   const riskDistOption = useMemo(() => {
     if (!featDistRaw.length || !activeFeat) return null
 
@@ -190,8 +197,18 @@ export default function ModelPerformance() {
     for (const r of featDistRaw) {
       const x = parseFloat(r[activeFeat])
       if (!isFinite(x)) continue
-      if (parseInt(r.is_defect) === 1) highVals.push(x)
-      else lowVals.push(x)
+      const grade = gradeMap[r.ufs_serial]
+      if (grade === 'grade1') highVals.push(x)
+      else if (grade === 'grade4') lowVals.push(x)
+    }
+    // grade 정보 없으면 is_defect fallback
+    if (!highVals.length && !lowVals.length) {
+      for (const r of featDistRaw) {
+        const x = parseFloat(r[activeFeat])
+        if (!isFinite(x)) continue
+        if (parseInt(r.is_defect) === 1) highVals.push(x)
+        else lowVals.push(x)
+      }
     }
     if (!highVals.length && !lowVals.length) return null
 
@@ -239,8 +256,15 @@ export default function ModelPerformance() {
           return lines.join('<br/>') + `<br/><span style="color:#94A3B8;font-size:10px">${activeFeat} = ${p[0]?.axisValue ?? ''}</span>`
         },
       },
-      legend: { show: false },
-      grid: { top: 12, bottom: 36, left: 48, right: 16 },
+      legend: {
+        show: true, top: 4, right: 8,
+        data: [
+          { name: '저위험 (Grade 4)', icon: 'rect', itemStyle: { color: '#3B82F6' } },
+          { name: '고위험 (Grade 1)', icon: 'rect', itemStyle: { color: '#EF4444' } },
+        ],
+        textStyle: { fontSize: 10, color: '#475569' },
+      },
+      grid: { top: 32, bottom: 36, left: 48, right: 16 },
       xAxis: {
         type: 'category',
         data: xLabels,
@@ -254,7 +278,7 @@ export default function ModelPerformance() {
       },
       series: [
         {
-          name: '저위험(정상)',
+          name: '저위험 (Grade 4)',
           type: 'line',
           data: mkDensity(lowVals),
           smooth: true,
@@ -264,14 +288,14 @@ export default function ModelPerformance() {
           markLine: {
             silent: false,
             symbol: 'none',
-            data: [{ xAxis: medLowIdx, name: `정상 중앙값: ${fmtX(median(lowVals))}` }],
+            data: [{ xAxis: medLowIdx, name: `Grade4 중앙값: ${fmtX(median(lowVals))}` }],
             lineStyle: { color: '#3B82F6', type: 'dashed', width: 1.5 },
             label: { show: false },
-            tooltip: { show: true, formatter: p => `<b style="color:#3B82F6">정상 중앙값</b><br/>${fmtX(median(lowVals))}` },
+            tooltip: { show: true, formatter: () => `<b style="color:#3B82F6">Grade4 중앙값</b><br/>${fmtX(median(lowVals))}` },
           },
         },
         {
-          name: '고위험(불량)',
+          name: '고위험 (Grade 1)',
           type: 'line',
           data: mkDensity(highVals),
           smooth: true,
@@ -281,10 +305,10 @@ export default function ModelPerformance() {
           markLine: {
             silent: false,
             symbol: 'none',
-            data: [{ xAxis: medHighIdx, name: `불량 중앙값: ${fmtX(median(highVals))}` }],
+            data: [{ xAxis: medHighIdx, name: `Grade1 중앙값: ${fmtX(median(highVals))}` }],
             lineStyle: { color: '#EF4444', type: 'dashed', width: 1.5 },
             label: { show: false },
-            tooltip: { show: true, formatter: p => `<b style="color:#EF4444">불량 중앙값</b><br/>${fmtX(median(highVals))}` },
+            tooltip: { show: true, formatter: () => `<b style="color:#EF4444">Grade1 중앙값</b><br/>${fmtX(median(highVals))}` },
           },
         },
       ],
@@ -293,34 +317,48 @@ export default function ModelPerformance() {
 
   const featScatterOption = useMemo(() => {
     if (!featDistRaw.length || !activeFeat) return null
-    const data0 = [], data1 = []
+    const dataLow = [], dataHigh = []
     for (const r of featDistRaw) {
       const x = parseFloat(r[activeFeat])
       const y = parseFloat(r.health)
       if (!isFinite(x) || !isFinite(y)) continue
-      if (parseInt(r.is_defect) === 1) data1.push([x, y])
-      else data0.push([x, y])
+      const grade = gradeMap[r.ufs_serial]
+      if (grade === 'grade1') dataHigh.push([x, y])
+      else if (grade === 'grade4') dataLow.push([x, y])
+    }
+    // grade 정보 없으면 is_defect fallback
+    if (!dataLow.length && !dataHigh.length) {
+      for (const r of featDistRaw) {
+        const x = parseFloat(r[activeFeat])
+        const y = parseFloat(r.health)
+        if (!isFinite(x) || !isFinite(y)) continue
+        if (parseInt(r.is_defect) === 1) dataHigh.push([x, y])
+        else dataLow.push([x, y])
+      }
     }
     const sample = (arr, n) => arr.length <= n ? arr
       : arr.filter((_, i) => i % Math.ceil(arr.length / n) === 0).slice(0, n)
     return {
-      tooltip: { formatter: p => `${activeFeat}: ${p.data[0].toFixed(4)}<br/>불량값: ${p.data[1].toFixed(6)}` },
-      legend: { data: ['정상(Y=0)', '불량(Y>0)'], top: 0, textStyle: { fontSize: 10 } },
+      tooltip: { formatter: p => `${activeFeat}: ${p.data[0].toFixed(4)}<br/>health: ${p.data[1].toFixed(6)}` },
+      legend: {
+        data: ['저위험 (Grade 4)', '고위험 (Grade 1)'],
+        top: 0, textStyle: { fontSize: 10 },
+      },
       grid: { top: 28, bottom: 36, left: 52, right: 16 },
       xAxis: {
         type: 'value', name: activeFeat, nameTextStyle: { fontSize: 10, color: '#94A3B8' },
         axisLabel: { fontSize: 9, color: '#94A3B8' }, splitLine: { lineStyle: { color: '#F1F5F9' } },
       },
       yAxis: {
-        type: 'value', name: '불량값(health)', nameTextStyle: { fontSize: 9, color: '#94A3B8' },
+        type: 'value', name: 'health', nameTextStyle: { fontSize: 9, color: '#94A3B8' },
         axisLabel: { fontSize: 9, color: '#94A3B8' }, splitLine: { lineStyle: { color: '#F1F5F9' } },
       },
       series: [
-        { name: '정상(Y=0)', type: 'scatter', data: sample(data0, 400), symbolSize: 4, itemStyle: { color: 'rgba(59,130,246,0.4)' } },
-        { name: '불량(Y>0)', type: 'scatter', data: sample(data1, 300), symbolSize: 5, itemStyle: { color: 'rgba(239,68,68,0.7)' } },
+        { name: '저위험 (Grade 4)', type: 'scatter', data: sample(dataLow, 400), symbolSize: 4, itemStyle: { color: 'rgba(59,130,246,0.4)' } },
+        { name: '고위험 (Grade 1)', type: 'scatter', data: sample(dataHigh, 300), symbolSize: 5, itemStyle: { color: 'rgba(239,68,68,0.7)' } },
       ],
     }
-  }, [featDistRaw, activeFeat])
+  }, [featDistRaw, activeFeat, gradeMap])
 
   if (!metrics) {
     return (
