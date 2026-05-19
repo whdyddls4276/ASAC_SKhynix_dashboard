@@ -70,14 +70,11 @@ function computeThresholds(units) {
   const g2 = defectThresh
   const g3 = trainPreds[Math.floor(n * 0.50)]  ?? 0
 
-  // 최신주: 모든 스플릿(train/val/test) 데이터 포함
-  // 날짜 기준으로 최신주 판정: 모든 데이터의 date 컬럼 최댓값
-  const maxDate = units.length ? units.map(u => u.date).sort().pop() : null
-  const latestUnits = maxDate ? units.filter(u => u.date === maxDate) : units
-  const dangerPreds = latestUnits.map(u => parseFloat(u.reg_pred)).filter(p => p >= defectThresh).sort((a, b) => a - b)
+  // 컨셉: 전체 데이터 = "이번주(WW37)" → 모든 unit을 이번주 검사 대상으로 간주
+  const dangerPreds = units.map(u => parseFloat(u.reg_pred)).filter(p => p >= defectThresh).sort((a, b) => a - b)
   const highThresh = dangerPreds.length ? dangerPreds[Math.floor(dangerPreds.length * 0.9)] : defectThresh
 
-  return { defectThresh, highThresh, g1, g2, g3, latestDate: maxDate }
+  return { defectThresh, highThresh, g1, g2, g3 }
 }
 
 function KpiCard({ label, value, sub, color }) {
@@ -110,23 +107,19 @@ export default function Overview() {
   const { data: trendRaw, loading: loadingTrend } = useCSV('/trend_data.csv')
   const { data: shapRaw, loading: loadingShap } = useCSV('/shap_beeswarm.csv')
 
-  const { defectThresh, highThresh, g1, g2, g3, latestDate } = useMemo(() => {
-    if (!units.length) return { defectThresh: 0, highThresh: 0, g1: 0, g2: 0, g3: 0, latestDate: null }
+  const { defectThresh, highThresh, g1, g2, g3 } = useMemo(() => {
+    if (!units.length) return { defectThresh: 0, highThresh: 0, g1: 0, g2: 0, g3: 0 }
     return computeThresholds(units)
   }, [units])
 
   const thresholds = useMemo(() => ({ g1, g2, g3 }), [g1, g2, g3])
 
-  // KPI (1팀 방식: ppm 기준) - 모든 스플릿 데이터 기준
+  // KPI - 전체 데이터를 "이번주(WW37)" 컨셉으로 사용
   const kpi = useMemo(() => {
-    if (!units.length || latestDate === null) return null
+    if (!units.length) return null
 
-    // 최신주의 모든 데이터 (train/val/test 포함)
-    const latestUnits = units.filter(u => u.date === latestDate)
-    const total = latestUnits.length
-    if (total === 0) return null
-
-    const ppmValues = latestUnits.map(u => parseFloat(u.reg_pred) * 1_000_000)
+    const total = units.length
+    const ppmValues = units.map(u => parseFloat(u.reg_pred) * 1_000_000)
     const meanPpm = ppmValues.reduce((s, v) => s + v, 0) / ppmValues.length
 
     const sorted = [...ppmValues].sort((a, b) => a - b)
@@ -136,8 +129,8 @@ export default function Overview() {
     const nRisk = ppmValues.filter(v => v > p95Ppm).length
     const fmtPpm = (v) => `${Math.round(v).toLocaleString()} ppm`
 
-    return { total, meanPpm, p95Ppm, nRisk, latestDate, fmtPpm }
-  }, [units, latestDate])
+    return { total, meanPpm, p95Ppm, nRisk, fmtPpm }
+  }, [units])
 
   // 트렌드: 주차별 집계 — 막대=생산량(아래), 꺾은선=불량ppm(위, 3구간 색상)
   const trendOption = useMemo(() => {
@@ -536,13 +529,13 @@ export default function Overview() {
         <KpiCard
           label="이번주 검사 unit"
           value={kpi.total.toLocaleString()}
-          sub={`최신 Lot 대상`}
+          sub={`WW37 전체 대상`}
           color="#F59E0B"
         />
         <KpiCard
           label="평균 예측 ppm"
           value={kpi.fmtPpm(kpi.meanPpm)}
-          sub={`${kpi.latestDate} 기준`}
+          sub={`WW37 기준`}
           color="#3B82F6"
         />
         <KpiCard
