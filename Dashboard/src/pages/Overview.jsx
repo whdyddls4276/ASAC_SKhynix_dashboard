@@ -542,7 +542,7 @@ export default function Overview() {
         <KpiCard
           label="평균 예측 ppm"
           value={kpi.fmtPpm(kpi.meanPpm)}
-          sub={`Lot ${latestLot} 기준`}
+          sub={`${kpi.latestDate} 기준`}
           color="#3B82F6"
         />
         <KpiCard
