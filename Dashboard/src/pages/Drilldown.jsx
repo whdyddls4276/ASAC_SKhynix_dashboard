@@ -196,31 +196,27 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
   )
 }
 
-// ── SHAP 더미 바 (feature_importance 기반 + pred 가중) ─
-function ShapBar({ features, pred, threshold }) {
-  if (!features.length) return null
-  const isRisk = pred > threshold
-  // pred 크기 비례로 importance에 noise 섞어 unit별로 달라 보이게
-  const seed = Math.round(pred * 1e8) % 97
-  const bars = features.slice(0, 10).map((f, i) => {
-    const base = parseFloat(f.lgbm_gain) || 1
-    const noise = 1 + ((seed * (i + 3)) % 40 - 20) / 100
-    const val = base * noise * (isRisk ? 1.4 : 0.7)
-    return { feature: f.feature, val, pos: val >= 0 }
-  }).sort((a, b) => Math.abs(b.val) - Math.abs(a.val))
-  const maxAbs = Math.max(...bars.map(b => Math.abs(b.val)), 1)
+// ── SHAP 바 (shap_data.csv의 lgbm_gain 기반 실제 순위) ─
+function ShapBar({ shapData }) {
+  if (!shapData.length) return null
+  const bars = shapData.slice(0, 10).map(f => ({
+    feature: f.feature,
+    val: parseFloat(f.effect_norm) || 0,
+    gain: parseFloat(f.lgbm_gain) || 0,
+  })).sort((a, b) => Math.abs(b.gain) - Math.abs(a.gain))
+  const maxGain = Math.max(...bars.map(b => b.gain), 1)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
       {bars.map(b => {
-        const w = Math.round(Math.abs(b.val) / maxAbs * 100)
-        const clr = b.pos ? '#ef4444' : '#3b82f6'
+        const w = Math.round(b.gain / maxGain * 100)
+        const clr = b.val >= 0 ? '#ef4444' : '#3b82f6'
         return (
           <div key={b.feature} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
             <span style={{ width: 60, textAlign: 'right', fontFamily: 'monospace', color: '#374151', flexShrink: 0 }}>{b.feature}</span>
             <div style={{ flex: 1, background: '#f1f5f9', height: 10, borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ width: `${w}%`, height: '100%', background: clr, borderRadius: 2 }} />
             </div>
-            <span style={{ width: 36, fontSize: 10, color: clr, fontWeight: 700, textAlign: 'right' }}>{b.pos ? '+' : '-'}{w}</span>
+            <span style={{ width: 36, fontSize: 10, color: clr, fontWeight: 700, textAlign: 'right' }}>{b.val >= 0 ? '+' : ''}{b.val.toFixed(2)}</span>
           </div>
         )
       })}
@@ -229,11 +225,29 @@ function ShapBar({ features, pred, threshold }) {
 }
 
 // ── Unit 진단 패널 (1팀 우측 패널 포팅) ──────────────
-function UnitReport({ ufsSerial, allDies, scale, onClose, features }) {
+function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, unitData }) {
   const dies = useMemo(() =>
     ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
     [ufsSerial, allDies]
   )
+
+  // dashboard_units.csv에서 anomaly_score, CI 조회
+  const anomalyScore = useMemo(() => {
+    if (!ufsSerial || !unitData?.length) return null
+    const row = unitData.find(u => u.ufs_serial === ufsSerial)
+    const v = row ? parseFloat(row.anomaly_score) : NaN
+    return isFinite(v) ? v : null
+  }, [ufsSerial, unitData])
+
+  const ciData = useMemo(() => {
+    if (!ufsSerial || !unitData?.length) return null
+    const row = unitData.find(u => u.ufs_serial === ufsSerial)
+    if (!row) return null
+    const lo = parseFloat(row.ci_low)
+    const hi = parseFloat(row.ci_high)
+    if (!isFinite(lo) || !isFinite(hi)) return null
+    return { lo: Math.round(lo * 1e6), hi: Math.round(hi * 1e6) }
+  }, [ufsSerial, unitData])
 
   if (!ufsSerial) return (
     <div className="dd-report-empty">
@@ -245,12 +259,16 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, features }) {
     <div className="dd-report-empty">데이터 없음</div>
   )
 
-  const pred = parseFloat(dies[0].pred)
+  // unit 예측값 = 4개 die pred 평균
+  const predVals = dies.map(d => parseFloat(d.pred)).filter(isFinite)
+  const pred = predVals.length ? predVals.reduce((a, b) => a + b, 0) / predVals.length : 0
   const ppm = Math.round(pred * 1e6)
   const isRisk = pred > scale.threshold
   const waferNo = dies[0].wafer_no ?? null
   const runId   = dies[0].run_id ?? null
-  const clfProba = dies[0].clf_proba !== undefined ? parseFloat(dies[0].clf_proba) : null
+  // 불량 확률: 4개 die clf_proba 평균
+  const clfVals = dies.map(d => d.clf_proba !== undefined ? parseFloat(d.clf_proba) : null).filter(v => v !== null && isFinite(v))
+  const clfProba = clfVals.length ? clfVals.reduce((a, b) => a + b, 0) / clfVals.length : null
 
   // 가장 위험한 die (같은 ufs_serial 내)
   const worstDie = dies.reduce((best, d) =>
@@ -274,26 +292,29 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, features }) {
         </div>
         <div className="dd-verdict-pred">
           {ppm.toLocaleString()} ppm
-          <span style={{ fontSize: 10, color: '#64748b', marginLeft: 8 }}>
-            95% CI [{Math.round(ppm * 0.90).toLocaleString()} ~ {Math.round(ppm * 1.10).toLocaleString()}]
-          </span>
+          {ciData ? (
+            <span style={{ fontSize: 10, color: '#64748b', marginLeft: 8 }}>
+              95% CI [{ciData.lo.toLocaleString()} ~ {ciData.hi.toLocaleString()}]
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 8 }}>CI 산출 중…</span>
+          )}
         </div>
       </div>
 
-      {/* 주요 기여 변수 (feature importance 기반 추정) */}
-      <div className="dd-section">
-        <div className="dd-section-title">주요 기여 변수 Top 10</div>
-        <ShapBar features={features} pred={pred} threshold={scale.threshold} />
+      {/* 주요 기여 변수 (전체 모델 SHAP 순위 — unit별 실제 기여도 아님) */}
+      <div className="dd-section dummy-outline" style={{ padding: '6px 4px 4px' }}>
+        <div className="dd-section-title">주요 기여 변수 Top 10 <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 700 }}>모델 전체 순위</span></div>
+        <ShapBar shapData={shapData} />
       </div>
 
-      {/* 이상도 점수 (pred 기반 추정) */}
-      {(() => {
-        const span = Math.max(scale.predMax - scale.predMin, 1e-9)
-        const score = Math.round(Math.min((pred - scale.predMin) / span, 1) * 100)
+      {/* 이상도 점수 (IsolationForest — dashboard_units.csv anomaly_score) */}
+      {anomalyScore !== null && (() => {
+        const score = Math.round(anomalyScore)
         const scoreColor = score >= 70 ? '#dc2626' : score >= 40 ? '#f97316' : '#16a34a'
         return (
           <div className="dd-section-box">
-            <div className="dd-section-title">이상도 점수</div>
+            <div className="dd-section-title">이상도 점수 <span style={{ fontSize: 9, color: '#64748b' }}>IsolationForest · 0~100</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
               <div style={{ fontSize: 28, fontWeight: 900, color: scoreColor, fontFamily: 'monospace' }}>{score}</div>
               <div style={{ flex: 1 }}>
@@ -338,8 +359,69 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, features }) {
         </div>
       )}
 
-      <button className="dd-report-btn" disabled>📄 보고서 생성</button>
+      <ReportButton ufsSerial={ufsSerial} ppm={ppm} isRisk={isRisk} worstDie={worstDie} grade={
+        unitData?.find?.(u => u.ufs_serial === ufsSerial)?.grade ?? null
+      } />
     </div>
+  )
+}
+
+// ── 보고서 생성 버튼 ─────────────────────────────────
+const AI_AGENT_URL = 'http://localhost:8000'
+
+function ReportButton({ ufsSerial, ppm, isRisk, worstDie, grade }) {
+  const [status, setStatus] = useState('idle')  // idle | loading | done | error
+
+  async function handleReport() {
+    setStatus('loading')
+    try {
+      const report_data = {
+        unit: {
+          ufs_serial: ufsSerial,
+          ppm,
+          risk: isRisk ? 'HIGH' : 'LOW',
+          grade: grade ?? '',
+          worst_die: worstDie ? `(${worstDie.die_x}, ${worstDie.die_y}) · ${Math.round(parseFloat(worstDie.pred) * 1e6).toLocaleString()} ppm` : '',
+        },
+        generated_at: new Date().toLocaleString('ko-KR'),
+      }
+
+      const res = await fetch(`${AI_AGENT_URL}/report/pptx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_data, filename: `보고서_${ufsSerial}.pptx` }),
+      })
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `보고서_${ufsSerial}.pptx`
+      a.click()
+      URL.revokeObjectURL(url)
+      setStatus('done')
+      setTimeout(() => setStatus('idle'), 3000)
+    } catch (e) {
+      console.error('보고서 생성 실패:', e)
+      setStatus('error')
+      setTimeout(() => setStatus('idle'), 4000)
+    }
+  }
+
+  const label = status === 'loading' ? '⏳ 생성 중…' : status === 'done' ? '✅ 완료' : status === 'error' ? '❌ 실패 (AI Agent 서버 확인)' : '📄 보고서 생성'
+  const disabled = status === 'loading'
+
+  return (
+    <button
+      className={`dd-report-btn${status === 'error' ? ' dd-report-btn-err' : ''}`}
+      onClick={handleReport}
+      disabled={disabled}
+      title="AI Agent 서버(localhost:8000)에서 PPTX 보고서 생성"
+    >
+      {label}
+    </button>
   )
 }
 
@@ -355,7 +437,8 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
 
   // 포지션 바 (unit 선택 시)
   const sorted = [...dies].sort((a, b) => parseInt(a.position || 0) - parseInt(b.position || 0))
-  const posMaxPpm = Math.max(...sorted.map(d => Math.round(parseFloat(d.pred) * 1e6)), 1)
+  // 바 길이 기준: scale.predMax 기준 통일 (임계선 위치와 동일 스케일)
+  const posMaxPpm = Math.round(scale.predMax * 1e6) || 1
 
   if (!ufsSerial) {
     return (
@@ -448,7 +531,8 @@ function UnitDieComparison({ ufsSerial, allDies, scale, selectedDie, onSelectDie
   if (!ufsSerial || !dies.length) return null
 
   const sorted = [...dies].sort((a, b) => parseInt(a.position || 0) - parseInt(b.position || 0))
-  const maxPpm = Math.max(...sorted.map(d => Math.round(parseFloat(d.pred) * 1e6)), 1)
+  // scale.predMax 기준으로 통일 (임계선과 같은 스케일)
+  const maxPpm = Math.round(scale.predMax * 1e6) || 1
 
   return (
     <div className="dd-unit-compare">
@@ -603,7 +687,8 @@ function DieReport({ die, scale, onClose }) {
 // ── 메인 ─────────────────────────────────────────────
 export default function Drilldown() {
   const { data: dieData, loading: loadingDie } = useCSV('/wafer_map.csv')
-  const { data: fiData } = useCSV('/feature_importance.csv')
+  const { data: shapData } = useCSV('/shap_data.csv')
+  const { data: unitData } = useCSV('/dashboard_units.csv')
 
   const [selectedLot, setSelectedLot]   = useState(null)
   const [selectedKey, setSelectedKey]   = useState(null)
@@ -715,6 +800,14 @@ export default function Drilldown() {
             >
               {lotSort === 'risk_desc' ? '▼ 위험률순' : lotSort === 'risk_asc' ? '▲ 위험률순' : '· 번호순'}
             </button>
+          </div>
+
+          {/* 컬럼 헤더 */}
+          <div className="dd-tree-col-header">
+            <span className="dd-col-lot">LOT</span>
+            <span className="dd-col-bar">불량비율</span>
+            <span className="dd-col-pct">%</span>
+            <span className="dd-col-ppm">avg PPM</span>
           </div>
 
           <div className="dd-tree-list">
@@ -888,7 +981,8 @@ export default function Drilldown() {
               ufsSerial={selectedUnit}
               allDies={dieData}
               scale={scale}
-              features={fiData}
+              shapData={shapData}
+              unitData={unitData}
               onClose={selectedUnit ? () => { setSelectedUnit(null); setSelectedDie(null) } : undefined}
             />
           </div>

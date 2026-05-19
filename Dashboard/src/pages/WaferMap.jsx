@@ -54,10 +54,11 @@ export default function WaferMap() {
     const chart = waferChartRef.current?.getEchartsInstance?.()
     if (!chart) return
     const center = chart.convertToPixel('grid', [0, 0])
+    // NORM_R=1.0 기준 픽셀 반경 (PAD 제외한 실제 웨이퍼 경계)
     const edgeX  = chart.convertToPixel('grid', [NORM_R, 0])
     const rx = Math.abs(edgeX[0] - center[0])
     if (!rx || isNaN(rx)) return
-    chart.setOption({ graphic: [{ type: 'circle', shape: { cx: center[0], cy: center[1], r: rx }, style: { fill: 'none', stroke: '#94A3B8', lineWidth: 2.5 }, z: 100 }] })
+    chart.setOption({ graphic: [{ type: 'circle', shape: { cx: center[0], cy: center[1], r: rx }, style: { fill: 'none', stroke: '#94A3B8', lineWidth: 2 }, z: 100 }] })
   }, [])
 
   useEffect(() => {
@@ -71,10 +72,7 @@ export default function WaferMap() {
     if (!dies.length) return null
     // 날짜 목록 (val + 합성 lot만, train/test 제외)
     const dateMap = {}
-    dies.filter(d => {
-      const lot = Math.round(parseFloat(d.run_id))
-      return d.split === 'val' || lot >= 101
-    }).forEach(d => {
+    dies.forEach(d => {
       const dateStr = lotToDate(Math.round(parseFloat(d.run_id)))
       if (!dateMap[dateStr]) dateMap[dateStr] = { danger: 0, total: 0 }
       dateMap[dateStr].total++
@@ -165,17 +163,27 @@ export default function WaferMap() {
     const filtered = raw
     if (!filtered.length) return null
     const maxPred = Math.max(...filtered.map(d => parseFloat(d.pred)))
-    const PAD = 0.08
+    // die 수에 따라 심볼 크기 동적 계산 (외곽 짤림 방지 위해 여백 확보)
+    const PAD = 0.15
+    // 웨이퍼 전체 x 범위 대비 die 하나의 비율로 심볼 폭 추정
+    const xVals = filtered.map(d => parseFloat(d.die_x))
+    const yVals = filtered.map(d => parseFloat(d.die_y))
+    const xRange = Math.max(...xVals) - Math.min(...xVals) + 1
+    const yRange = Math.max(...yVals) - Math.min(...yVals) + 1
+    // 500px 캔버스 기준, 그리드 영역 ~380px, die 하나 폭
+    const CANVAS = 380
+    const symW = Math.max(3, Math.floor(CANVAS / xRange) - 1)
+    const symH = Math.max(3, Math.floor(CANVAS / yRange) - 1)
     return {
       tooltip: { formatter: p => `die(${p.data.origX}, ${p.data.origY})<br/>예측 불량지수: ${parseFloat(p.data.value[2]).toFixed(6)}` },
       visualMap: { min: 0, max: maxPred || 0.01, dimension: 2, calculable: true, orient: 'horizontal', left: 'center', bottom: 8, inRange: { color: ['#22C55E', '#FCD34D', '#EF4444'] }, textStyle: { fontSize: 10 } },
-      grid: { top: 10, bottom: 60, left: 10, right: 10, containLabel: false },
+      grid: { top: 20, bottom: 70, left: 20, right: 20, containLabel: false },
       xAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
       yAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
       series: [{
         type: 'scatter',
         data: filtered.map(d => ({ value: [normX(parseFloat(d.die_x)), normY(parseFloat(d.die_y)), parseFloat(d.pred)], origX: parseFloat(d.die_x), origY: parseFloat(d.die_y) })),
-        symbol: 'rect', symbolSize: [8, 20], emphasis: { scale: false },
+        symbol: 'rect', symbolSize: [symW, symH], emphasis: { scale: false },
       }],
     }
   }, [dies, selLot, selWafer])

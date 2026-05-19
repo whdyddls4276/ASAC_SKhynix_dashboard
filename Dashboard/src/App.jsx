@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import TopBar from './components/TopBar'
 import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
@@ -6,6 +6,8 @@ import Overview from './pages/Overview'
 import WaferMap from './pages/WaferMap'
 import ModelPerformance from './pages/ModelPerformance'
 import Drilldown from './pages/Drilldown'
+import { DieMapPage, PositionPage, WaferZonePage } from './pages/LocationAnalysis'
+import { useCSV } from './hooks/useCSV'
 import './App.css'
 
 function PlaceholderPage({ title }) {
@@ -22,11 +24,37 @@ export default function App() {
   const [activePage, setActivePage] = useState('overview')
   const [notifOpen, setNotifOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const { data: units } = useCSV('/dashboard_units.csv')
+
+  // 실제 위험 Lot 알림: lot별 평균 reg_pred 상위 4개
+  const notifItems = useMemo(() => {
+    if (!units.length) return []
+    const lotMap = {}
+    units.forEach(u => {
+      const lot = String(u.run_id)
+      if (!lotMap[lot]) lotMap[lot] = { lot, predSum: 0, count: 0, riskCount: 0 }
+      const pred = parseFloat(u.reg_pred)
+      if (isFinite(pred)) { lotMap[lot].predSum += pred; lotMap[lot].count++ }
+      if (u.risk === 'HIGH') lotMap[lot].riskCount++
+    })
+    return Object.values(lotMap)
+      .map(l => ({
+        lot:      `LOT-${l.lot}`,
+        avgPpm:   l.count ? Math.round(l.predSum / l.count * 1e6) : 0,
+        riskCount: l.riskCount,
+        level:    l.riskCount > 50 ? 'HIGH' : l.riskCount > 20 ? 'MED' : 'LOW',
+      }))
+      .sort((a, b) => b.avgPpm - a.avgPpm)
+      .slice(0, 4)
+  }, [units])
   function renderPageWithProps(page) {
     switch (page) {
       case 'overview':        return <Overview />
       case 'wafer-map':       return <WaferMap />
 case 'feat-importance': return <ModelPerformance />
+      case 'loc-die':         return <DieMapPage />
+      case 'loc-position':    return <PositionPage />
+      case 'loc-zone':        return <WaferZonePage />
 case 'drilldown':
       case 'lot-level':
       case 'wafer-level':
@@ -55,7 +83,7 @@ case 'drilldown':
       </div>
 
       {!chatOpen && (
-        <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI 어시스턴트 (더미)">
+        <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI Agent (localhost:8000)">
           💬
         </button>
       )}
@@ -66,33 +94,27 @@ case 'drilldown':
           <div className="np-title">🔔 위험 감지 알림</div>
           <button className="np-close" onClick={() => setNotifOpen(false)}>✕</button>
         </div>
-        <div style={{
-          margin: '8px 12px',
-          padding: '7px 12px',
-          background: '#FEF2F2',
-          border: '1.5px solid #EF4444',
-          borderRadius: 6,
-          fontSize: 11,
-          color: '#B91C1C',
-          fontWeight: 600,
-        }}>
-          🔴 더미 알림 — 실제 예측 결과 기반 알림 로직 미구현
+        <div style={{ margin: '6px 12px 0', fontSize: 10, color: '#94A3B8' }}>
+          예측 ppm 기준 위험 Lot 상위 4개 · dashboard_units.csv
         </div>
         <div className="np-list">
-          {[
-            { lot:'LOT-2024A', time:'14:32', level:'HIGH', msg:'불량 확률 78% — 즉시 확인 필요' },
-            { lot:'LOT-2024B', time:'13:58', level:'MED',  msg:'불량 확률 52%' },
-            { lot:'WFR-044',   time:'13:21', level:'MED',  msg:'Position 3 이상 감지' },
-            { lot:'LOT-2023F', time:'12:44', level:'LOW',  msg:'주의 수준 — 모니터링 중' },
-          ].map((n,i) => (
+          {notifItems.map((n, i) => (
             <div key={i} className="np-item">
               <div className="np-top">
                 <span className={`np-lot level-${n.level.toLowerCase()}`}>{n.lot}</span>
-                <span className="np-time">{n.time} <span className={`badge badge-${n.level.toLowerCase()}`}>{n.level}</span></span>
+                <span className="np-time">
+                  <span className={`badge badge-${n.level.toLowerCase()}`}>{n.level}</span>
+                </span>
               </div>
-              <div className="np-msg">{n.msg}</div>
+              <div className="np-msg">
+                평균 {n.avgPpm.toLocaleString()} ppm
+                {n.riskCount > 0 && ` · HIGH risk unit ${n.riskCount}개`}
+              </div>
             </div>
           ))}
+          {notifItems.length === 0 && (
+            <div style={{ padding: 16, color: '#94A3B8', fontSize: 12 }}>데이터 로딩 중…</div>
+          )}
         </div>
       </div>
     </div>

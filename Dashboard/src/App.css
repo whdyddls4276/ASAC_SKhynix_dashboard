@@ -1,3 +1,39 @@
+/* ── 더미 표시 유틸리티 ── */
+.dummy-outline {
+  outline: 2px dashed #EF4444 !important;
+  outline-offset: -2px;
+  position: relative;
+}
+.dummy-outline::before {
+  content: '🔴 DUMMY';
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: #EF4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 0 0 0 4px;
+  z-index: 10;
+  pointer-events: none;
+  letter-spacing: 0.5px;
+}
+.dummy-page-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #FEF2F2;
+  border-bottom: 2px solid #EF4444;
+  color: #B91C1C;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .app {
   display: flex;
   flex-direction: column;

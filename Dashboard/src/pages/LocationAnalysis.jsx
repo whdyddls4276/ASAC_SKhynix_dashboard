@@ -108,22 +108,10 @@ export function PositionPage() {
 /* ── Lot별 ── */
 export function LotPage() {
   return (
-    <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, outline: '3px solid #EF4444', outlineOffset: '-3px' }}>
+      <div className="dummy-page-banner">🔴 DUMMY PAGE — run_wf_xy 파싱 후 실제 Lot ID 연결 필요</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📦 Lot별 분석</div>
       <div style={{ fontSize: 13, color: 'var(--text3)' }}>Lot별 위험 unit 수 및 불량률을 비교합니다.</div>
-
-      {/* 전체 페이지 더미 표시 */}
-      <div style={{
-        padding: '10px 16px',
-        background: '#FEF2F2',
-        border: '2px solid #EF4444',
-        borderRadius: 8,
-        fontSize: 12,
-        color: '#B91C1C',
-        fontWeight: 600,
-      }}>
-        🔴 이 페이지 전체가 더미입니다 — run_wf_xy 파싱 후 실제 Lot ID를 연결해야 구현 가능합니다.
-      </div>
 
       <div style={{
         padding: '48px 24px',
@@ -147,22 +135,10 @@ export function LotPage() {
 /* ── Wafer별 ── */
 export function WaferPage() {
   return (
-    <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, outline: '3px solid #EF4444', outlineOffset: '-3px' }}>
+      <div className="dummy-page-banner">🔴 DUMMY PAGE — run_wf_xy 파싱 후 실제 Wafer 번호 연결 필요</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>🧿 Wafer별 분석</div>
       <div style={{ fontSize: 13, color: 'var(--text3)' }}>Wafer별 불량 분포 및 Position 드릴다운을 제공합니다.</div>
-
-      {/* 전체 페이지 더미 표시 */}
-      <div style={{
-        padding: '10px 16px',
-        background: '#FEF2F2',
-        border: '2px solid #EF4444',
-        borderRadius: 8,
-        fontSize: 12,
-        color: '#B91C1C',
-        fontWeight: 600,
-      }}>
-        🔴 이 페이지 전체가 더미입니다 — run_wf_xy 파싱 후 실제 Wafer 번호를 연결해야 구현 가능합니다.
-      </div>
 
       <div style={{
         padding: '48px 24px',
@@ -380,6 +356,185 @@ export function UnitMapPage() {
             }} />
           </div>
         </div>
+      </ChartCard>
+    </div>
+  )
+}
+
+/* ── Die 좌표 히트맵 (location_stats.csv 실데이터) ── */
+export function DieMapPage() {
+  const { data: locData, loading } = useCSV('/location_stats.csv')
+
+  const { heatData, xLabels, yLabels, maxPpm, avgPpm, highCells } = useMemo(() => {
+    if (!locData.length) return { heatData: [], xLabels: [], yLabels: [], maxPpm: 0, avgPpm: 0, highCells: 0 }
+
+    const xs = locData.map(d => parseInt(d.die_x)).filter(isFinite)
+    const ys = locData.map(d => parseInt(d.die_y)).filter(isFinite)
+    const xMin = Math.min(...xs), xMax = Math.max(...xs)
+    const yMin = Math.min(...ys), yMax = Math.max(...ys)
+
+    const xLabels = [...Array(xMax - xMin + 1)].map((_, i) => xMin + i)
+    const yLabels = [...Array(yMax - yMin + 1)].map((_, i) => yMin + i)
+
+    const ppmVals = locData.map(d => parseFloat(d.ppm_mean)).filter(isFinite)
+    const maxPpm  = Math.max(...ppmVals, 1)
+    const avgPpm  = ppmVals.length ? Math.round(ppmVals.reduce((a, b) => a + b, 0) / ppmVals.length) : 0
+
+    const heatData = locData.map(d => [
+      parseInt(d.die_x) - xMin,
+      parseInt(d.die_y) - yMin,
+      parseFloat(d.ppm_mean) || 0,
+    ])
+
+    const riskPpm = maxPpm * 0.292  // 29.2% threshold 근사
+    const highCells = locData.filter(d => parseFloat(d.risk_rate) > 30).length
+
+    return { heatData, xLabels, yLabels, maxPpm, avgPpm, highCells }
+  }, [locData])
+
+  const xMin = heatData.length ? Math.min(...locData.map(d => parseInt(d.die_x))) : 0
+  const yMin = heatData.length ? Math.min(...locData.map(d => parseInt(d.die_y))) : 0
+  const locIndex = useMemo(() => {
+    const m = {}
+    locData.forEach(d => { m[`${d.die_x},${d.die_y}`] = d })
+    return m
+  }, [locData])
+
+  if (loading) return (
+    <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>데이터 로딩 중…</div>
+  )
+  if (!heatData.length) return (
+    <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>location_stats.csv 없음</div>
+  )
+
+  const hmOpt = {
+    tooltip: {
+      formatter: p => {
+        const realX = p.data[0] + xMin
+        const realY = p.data[1] + yMin
+        const d = locIndex[`${realX},${realY}`] || {}
+        return [
+          `Die (${realX}, ${realY})`,
+          `평균 PPM: <b>${Math.round(p.data[2]).toLocaleString()}</b>`,
+          `최대 PPM: ${Math.round(parseFloat(d.ppm_max) || 0).toLocaleString()}`,
+          `위험률: ${parseFloat(d.risk_rate || 0).toFixed(1)}%`,
+          `샘플 수: ${parseInt(d.count || 0).toLocaleString()}`,
+          `반경: ${parseFloat(d.radial_dist || 0).toFixed(1)}`,
+        ].join('<br/>')
+      }
+    },
+    visualMap: {
+      min: 0, max: maxPpm,
+      calculable: true,
+      orient: 'horizontal', bottom: 4, left: 'center',
+      inRange: { color: ['#eff6ff', '#bfdbfe', '#fef3c7', '#fca5a5', '#dc2626'] },
+      textStyle: { fontSize: 10, color: '#94A3B8' },
+      text: [`${Math.round(maxPpm).toLocaleString()} ppm`, '0'],
+    },
+    grid: { top: 20, left: 40, right: 30, bottom: 70 },
+    xAxis: {
+      type: 'category', data: xLabels,
+      axisLabel: { fontSize: 8, color: '#94A3B8', interval: Math.floor(xLabels.length / 10) },
+      splitLine: { show: false },
+      name: 'die_x', nameTextStyle: { fontSize: 10, color: '#94A3B8' },
+    },
+    yAxis: {
+      type: 'category', data: yLabels,
+      axisLabel: { fontSize: 8, color: '#94A3B8', interval: Math.floor(yLabels.length / 10) },
+      splitLine: { show: false },
+      name: 'die_y', nameTextStyle: { fontSize: 10, color: '#94A3B8' },
+    },
+    series: [{
+      type: 'heatmap', data: heatData,
+      itemStyle: { borderColor: '#fff', borderWidth: 0.3 },
+      emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.3)' } },
+    }],
+  }
+
+  // 반경별 집계
+  const radialBins = useMemo(() => {
+    if (!locData.length) return []
+    const bins = [
+      { label: '0-3', min: 0, max: 3 },
+      { label: '3-6', min: 3, max: 6 },
+      { label: '6-9', min: 6, max: 9 },
+      { label: '9-12', min: 9, max: 12 },
+      { label: '12+', min: 12, max: Infinity },
+    ]
+    return bins.map(bin => {
+      const rows = locData.filter(d => {
+        const r = parseFloat(d.radial_dist)
+        return isFinite(r) && r >= bin.min && r < bin.max
+      })
+      const ppmVals = rows.map(d => parseFloat(d.ppm_mean)).filter(isFinite)
+      return {
+        label: bin.label,
+        avgPpm: ppmVals.length ? Math.round(ppmVals.reduce((a, b) => a + b, 0) / ppmVals.length) : 0,
+        cellCount: rows.length,
+        avgRisk: rows.length
+          ? parseFloat((rows.map(d => parseFloat(d.risk_rate) || 0).reduce((a, b) => a + b, 0) / rows.length).toFixed(1))
+          : 0,
+      }
+    })
+  }, [locData])
+
+  const radialOpt = {
+    tooltip: { trigger: 'axis', formatter: p => `반경 ${p[0].name}<br/>평균 PPM: ${p[0].value.toLocaleString()}<br/>위험률: ${radialBins[p[0].dataIndex]?.avgRisk}%` },
+    grid: { top: 20, left: 60, right: 30, bottom: 30 },
+    xAxis: { type: 'category', data: radialBins.map(b => b.label), axisLabel: { fontSize: 10, color: '#475569' }, name: '반경', nameTextStyle: { fontSize: 10, color: '#94A3B8' } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 10, color: '#94A3B8', formatter: v => `${v.toLocaleString()}` }, splitLine: { lineStyle: { color: '#F1F5F9' } } },
+    series: [{
+      type: 'bar', data: radialBins.map(b => b.avgPpm), barMaxWidth: 40,
+      itemStyle: { color: p => ['#22c55e','#84cc16','#eab308','#f97316','#dc2626'][p.dataIndex], borderRadius: [4, 4, 0, 0] },
+      label: { show: true, position: 'top', fontSize: 10, formatter: p => p.value.toLocaleString() },
+    }],
+  }
+
+  return (
+    <div className="loc-page">
+      {/* 요약 수치 */}
+      <div style={{ display: 'flex', gap: 12 }}>
+        {[
+          { label: 'Die 좌표 수', val: locData.length.toLocaleString(), color: '#3b82f6' },
+          { label: '평균 PPM', val: avgPpm.toLocaleString(), color: '#f97316' },
+          { label: '최대 PPM', val: Math.round(maxPpm).toLocaleString(), color: '#dc2626' },
+          { label: '위험률>30% 셀', val: highCells.toLocaleString(), color: '#8b5cf6' },
+        ].map((s, i) => (
+          <div key={i} style={{
+            flex: 1, padding: '10px 14px',
+            background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 8,
+          }}>
+            <div style={{ fontSize: 10, color: '#94A3B8', marginBottom: 3 }}>{s.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: 'DM Mono,monospace' }}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+
+      <ChartCard title="🗺 Die 좌표별 평균 예측 PPM" tag="location_stats.csv">
+        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+          셀 색상: 밝은 파랑(낮음) → 노랑 → 빨강(높음). 마우스 올리면 상세 수치 표시.
+        </div>
+        <ReactECharts option={hmOpt} style={{ height: 460 }} />
+      </ChartCard>
+
+      <ChartCard title="📡 반경별 평균 PPM (Edge 효과)" tag="die_x/die_y 중심 거리">
+        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
+          웨이퍼 중심(반경 0)에서 외곽(반경 12+)으로 갈수록 PPM이 높아지는지 확인합니다.
+        </div>
+        <ReactECharts option={radialOpt} style={{ height: 200 }} />
+        <table className="loc-table" style={{ marginTop: 8 }}>
+          <thead><tr><th>반경 구간</th><th>셀 수</th><th>평균 PPM</th><th>평균 위험률</th></tr></thead>
+          <tbody>
+            {radialBins.map((b, i) => (
+              <tr key={i}>
+                <td style={{ fontWeight: 600 }}>{b.label}</td>
+                <td style={{ fontFamily: 'DM Mono,monospace' }}>{b.cellCount}</td>
+                <td style={{ fontFamily: 'DM Mono,monospace', color: b.avgPpm > avgPpm ? '#dc2626' : '#16a34a', fontWeight: 600 }}>{b.avgPpm.toLocaleString()}</td>
+                <td style={{ fontFamily: 'DM Mono,monospace' }}>{b.avgRisk}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </ChartCard>
     </div>
   )

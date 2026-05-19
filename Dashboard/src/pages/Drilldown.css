@@ -8,7 +8,7 @@
 
 .dd-body-3col {
   display: grid;
-  grid-template-columns: 260px 1fr 560px;
+  grid-template-columns: 280px 1fr 560px;
   flex: 1;
   overflow: hidden;
   height: 100%;
@@ -137,6 +137,21 @@
   border-color: var(--accent);
 }
 
+/* ── 트리 컬럼 헤더 ── */
+.dd-tree-col-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.dd-col-lot  { font-size: 9px; font-weight: 700; color: var(--text3); flex-shrink: 0; min-width: 62px; }
+.dd-col-bar  { font-size: 9px; font-weight: 700; color: var(--text3); flex: 1; }
+.dd-col-pct  { font-size: 9px; font-weight: 700; color: var(--text3); flex-shrink: 0; width: 34px; text-align: right; }
+.dd-col-ppm  { font-size: 9px; font-weight: 700; color: var(--text3); flex-shrink: 0; width: 40px; text-align: right; }
+
 /* ── 아코디언 트리 ── */
 .dd-tree-list {
   flex: 1;
@@ -180,10 +195,10 @@
 }
 
 .dd-lot-name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
-  min-width: 56px;
+  min-width: 62px;
 }
 
 /* 미니 위험도 바 */
@@ -222,6 +237,7 @@
   flex-shrink: 0;
   width: 40px;
   text-align: right;
+  white-space: nowrap;
 }
 
 /* Wafer 서브 리스트 */

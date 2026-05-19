@@ -70,9 +70,9 @@ function computeThresholds(units) {
   const g2 = defectThresh
   const g3 = trainPreds[Math.floor(n * 0.50)]  ?? 0
 
-  const valUnits = units.filter(u => u.split === 'val')
-  const latestLot = valUnits.length ? Math.max(...valUnits.map(u => parseFloat(u.run_id))) : null
-  const latestUnits = valUnits.filter(u => parseFloat(u.run_id) === latestLot)
+  // 최신 lot: train/val/test 전체 기준
+  const latestLot = units.length ? Math.max(...units.map(u => parseFloat(u.run_id))) : null
+  const latestUnits = units.filter(u => parseFloat(u.run_id) === latestLot)
   const dangerPreds = latestUnits.map(u => parseFloat(u.reg_pred)).filter(p => p >= defectThresh).sort((a, b) => a - b)
   const highThresh = dangerPreds.length ? dangerPreds[Math.floor(dangerPreds.length * 0.9)] : defectThresh
 
@@ -120,7 +120,7 @@ export default function Overview() {
   const kpi = useMemo(() => {
     if (!units.length || latestLot === null) return null
 
-    const latestUnits = units.filter(u => u.split === 'val' && parseFloat(u.run_id) === latestLot)
+    const latestUnits = units.filter(u => parseFloat(u.run_id) === latestLot)
     const total = latestUnits.length
     if (total === 0) return null
 
@@ -259,7 +259,7 @@ export default function Overview() {
           barMaxWidth: 28,
         },
         {
-          // 실측 구간: 회색 실선
+          // 실측 구간: 회색 실선 + 회색 배경
           name: '실측 구간',
           type: 'line',
           yAxisIndex: 1,
@@ -269,9 +269,16 @@ export default function Overview() {
           lineStyle: { color: '#94A3B8', width: 2.5 },
           itemStyle: { color: '#94A3B8' },
           symbolSize: 5,
+          markArea: lastTrueIdx >= 0 ? {
+            silent: true,
+            data: [[
+              { xAxis: 0, itemStyle: { color: 'rgba(148,163,184,0.10)' } },
+              { xAxis: lastTrueIdx },
+            ]],
+          } : undefined,
         },
         {
-          // 예측 구간: 파란 실선
+          // 예측 구간: 파란 실선 + 파란 배경
           name: '예측 구간',
           type: 'line',
           yAxisIndex: 1,
@@ -281,9 +288,16 @@ export default function Overview() {
           lineStyle: { color: '#3B82F6', width: 2.5 },
           itemStyle: { color: '#3B82F6' },
           symbolSize: 5,
+          markArea: lastTrueIdx >= 0 && lastTrueIdx < n - 2 ? {
+            silent: true,
+            data: [[
+              { xAxis: lastTrueIdx, itemStyle: { color: 'rgba(59,130,246,0.08)' } },
+              { xAxis: n - 2 },
+            ]],
+          } : undefined,
         },
         {
-          // 최신 주차: 빨간 강조
+          // 최신 주차: 빨간 강조 + 빨간 배경
           name: '최신 주차',
           type: 'line',
           yAxisIndex: 1,
@@ -294,6 +308,13 @@ export default function Overview() {
           itemStyle: { color: '#DC2626' },
           symbolSize: (_, params) => params.dataIndex === n - 1 ? 12 : 5,
           symbol: (_, params) => params.dataIndex === n - 1 ? 'circle' : 'circle',
+          markArea: {
+            silent: true,
+            data: [[
+              { xAxis: n - 2, itemStyle: { color: 'rgba(220,38,38,0.10)' } },
+              { xAxis: n - 1 },
+            ]],
+          },
           markPoint: {
             data: [{ coord: [wwLabels[n - 1], predAvg[n - 1]], value: `${Math.round(predAvg[n-1]/1000)}k`, itemStyle: { color: '#DC2626' }, label: { color: '#fff', fontSize: 9, fontWeight: 700 } }],
             symbolSize: 36,
@@ -347,9 +368,9 @@ export default function Overview() {
   const gradeTrendOption = useMemo(() => {
     if (!units.length || g1 === 0) return null
 
-    // train+val의 모든 lot, run_id 순 정렬
+    // train+val+test 모든 lot, run_id 순 정렬
     const lotMap = {}
-    units.filter(u => u.split === 'train' || u.split === 'val').forEach(u => {
+    units.forEach(u => {
       const lot = String(u.run_id)
       if (!lotMap[lot]) lotMap[lot] = { grade1: 0, grade2: 0, grade3: 0, grade4: 0, total: 0 }
       const grade = getGrade(parseFloat(u.reg_pred), { g1, g2, g3 })
@@ -361,9 +382,11 @@ export default function Overview() {
     const lotLabels = lotEntries.map(([lot]) => `L${lot}`)
     const mkRate = (key) => lotEntries.map(([, d]) => d.total ? +((d[key] / d.total) * 100).toFixed(1) : 0)
 
-    // val 시작 lot 인덱스 (구분선용)
-    const valLots = new Set(units.filter(u => u.split === 'val').map(u => String(u.run_id)))
-    const valStartIdx = lotEntries.findIndex(([lot]) => valLots.has(lot))
+    // val/test 시작 lot 인덱스 (구분선용)
+    const valLots  = new Set(units.filter(u => u.split === 'val').map(u => String(u.run_id)))
+    const testLots = new Set(units.filter(u => u.split === 'test').map(u => String(u.run_id)))
+    const valStartIdx  = lotEntries.findIndex(([lot]) => valLots.has(lot))
+    const testStartIdx = lotEntries.findIndex(([lot]) => testLots.has(lot))
 
     const mkLine = (key, color) => ({
       name: key === 'grade1' ? 'Grade 1' : key === 'grade2' ? 'Grade 2' : key === 'grade3' ? 'Grade 3' : 'Grade 4',
@@ -373,10 +396,14 @@ export default function Overview() {
       lineStyle: { color, width: 2 },
       itemStyle: { color },
       symbolSize: 4,
-      markLine: key === 'grade1' && valStartIdx >= 0 ? {
+      markLine: key === 'grade1' ? {
         silent: true, symbol: 'none',
-        data: [{ xAxis: valStartIdx - 0.5, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 },
-          label: { show: true, formatter: '검증→', fontSize: 9, color: '#94A3B8' } }]
+        data: [
+          ...(valStartIdx >= 0 ? [{ xAxis: valStartIdx - 0.5, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 },
+            label: { show: true, formatter: 'val→', fontSize: 9, color: '#94A3B8' } }] : []),
+          ...(testStartIdx >= 0 ? [{ xAxis: testStartIdx - 0.5, lineStyle: { color: '#F97316', type: 'dashed', width: 1.5 },
+            label: { show: true, formatter: 'test→', fontSize: 9, color: '#F97316' } }] : []),
+        ]
       } : undefined,
     })
 

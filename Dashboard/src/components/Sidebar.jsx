@@ -5,6 +5,14 @@ const MENU = [
   { id: 'overview',        label: '개요' },
   { id: 'drilldown',       label: '계층별 정밀 분석' },
   { id: 'feat-importance', label: '모델 분석' },
+  {
+    id: 'location', label: '위치 분석',
+    children: [
+      { id: 'loc-die',      label: 'Die 좌표 히트맵' },
+      { id: 'loc-position', label: 'Position별 분석' },
+      { id: 'loc-zone',     label: 'Wafer × Zone' },
+    ],
+  },
 ]
 
 export default function Sidebar({ activePage, setActivePage }) {

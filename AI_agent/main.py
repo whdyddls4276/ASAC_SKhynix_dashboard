@@ -4,6 +4,7 @@ FastAPI 앱 진입점.
 - POST /report/pptx: 마크다운 → PPTX 변환 후 다운로드
 """
 import json
+import asyncio
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -17,6 +18,41 @@ from report import build_pptx
 load_dotenv()
 
 app = FastAPI(title="SK Hynix AI Agent")
+
+# ── 서버 시작 시 report_data 백그라운드 프리빌드 ──────────────
+_preview_cache: dict = {}
+
+async def _prebuild_preview():
+    """서버 시작 직후 백그라운드에서 실데이터 report_data 조립."""
+    global _preview_cache
+    try:
+        from agent import _build_report_data
+        from report import build_html
+        from tools import scan_data, get_importance, analyze_features, _load
+
+        def _warmup():
+            # xs 파일(27초) 포함 전체 캐시 워밍업
+            _load("compet_xs_data.csv")
+            _load("dashboard_units.csv")
+            _load("feature_importance.csv")
+            return {
+                "scan_data":        scan_data(),
+                "get_importance":   get_importance(top_n=10),
+                "analyze_features": analyze_features(top_n=10),
+            }
+
+        cache = await asyncio.to_thread(_warmup)
+        report_data = _build_report_data(cache)
+        html = build_html(report_data)
+        _preview_cache["html"] = html
+        _preview_cache["report_data"] = report_data
+        print("[preview] 실데이터 프리빌드 완료")
+    except Exception as e:
+        print(f"[preview] 프리빌드 실패: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(_prebuild_preview())
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +68,21 @@ class ChatRequest(BaseModel):
     tool_cache: dict = {}
     context: str = ""        # "report_edit" 이면 보고서 수정 모드
     current_html: str = ""   # 현재 보고서 HTML (수정 컨텍스트)
+    current_report_data: dict = {}  # 현재 보고서 데이터 (수정 누적용)
+
+
+class InteractRequest(BaseModel):
+    """보고서 인터랙션 이벤트 (드래그/우클릭/hover 버튼)."""
+    action: str            # "add" | "modify" | "period" | "explain"
+    sid: str = ""          # 대상 섹션 ID
+    label: str = ""        # 섹션 표시명
+    position: str = ""     # "left_col" | "right_col" (add 시)
+    drag: dict = {}        # 드래그 좌표 {x,y,w,h}
+    layout: list = []      # 전체 섹션 좌표 스냅샷
+    prompt: str = ""       # JS가 생성한 자연어 요청
+    history: list = []
+    tool_cache: dict = {}
+    current_report_data: dict = {}
 
 
 class ReportRequest(BaseModel):
@@ -49,7 +100,10 @@ async def chat(req: ChatRequest):
         try:
             if req.context == "report_edit":
                 from agent import run_report_editor
-                gen = run_report_editor(req.message, req.history, req.tool_cache, req.current_html)
+                gen = run_report_editor(
+                    req.message, req.history, req.tool_cache,
+                    req.current_html, req.current_report_data
+                )
             else:
                 gen = run_agent(req.message, req.history, req.tool_cache)
             async for event in gen:
@@ -103,37 +157,66 @@ async def pptx_preflight():
 
 @app.get("/report/preview")
 async def preview_report():
-    """개발용: 더미 데이터로 바로 HTML 보고서 반환 (API 비용 없음)."""
-    from report import build_html
-    dummy = {
-        "meta": {"title": "Field Health 불량 예측 분석 보고서 [DEV]",
-                 "model": "Two-Stage Model", "val_rmse": "0.005736", "test_rmse": "0.008427"},
-        "scan": {
-            "total_units": 8749, "high_count": 1823, "high_ratio": 20.8,
-            "med_count": 2341, "low_count": 4585,
-            "top_lot": 42, "top_lot_high_count": 187,
-            "top_wafer": {"lot": 42, "wafer": 3, "high_count": 51},
-        },
-        "importance": {"features": [
-            {"feature": f"X{n}", "lgbm_rank": i+1, "lgbm_gain": 5000 - i*300}
-            for i, n in enumerate([1083,739,552,445,102,234,891,778,331,620,
-                                    107,883,441,229,756])
-        ]},
-        "analysis": {
-            "compare_group": "MED",
-            "high_n": 1823, "low_n": 2341,
-            "top_features": [
-                {"feature": "X1083", "high_mean": 0.082, "low_mean": 0.035, "ratio": 2.34, "pval": 0.0001, "importance_rank": 1},
-                {"feature": "X739",  "high_mean": 0.071, "low_mean": 0.041, "ratio": 1.73, "pval": 0.0003, "importance_rank": 2},
-                {"feature": "X552",  "high_mean": 0.065, "low_mean": 0.038, "ratio": 1.71, "pval": 0.0012, "importance_rank": 3},
-                {"feature": "X445",  "high_mean": 0.059, "low_mean": 0.037, "ratio": 1.59, "pval": 0.0021, "importance_rank": 4},
-                {"feature": "X102",  "high_mean": 0.054, "low_mean": 0.036, "ratio": 1.50, "pval": 0.0045, "importance_rank": 5},
-            ],
-        },
-        "actions": [],
-    }
-    html = build_html(dummy)
-    return Response(content=html, media_type="text/html; charset=utf-8")
+    """실데이터로 HTML + report_data JSON 반환 (캐시 즉시 응답, 없으면 대기)."""
+    # 캐시가 아직 없으면 최대 60초 대기
+    for _ in range(60):
+        if _preview_cache:
+            return _preview_cache
+        await asyncio.sleep(1)
+    # 60초 후에도 없으면 빈 응답
+    return {"html": "<p>데이터 로딩 중입니다. 잠시 후 다시 시도해주세요.</p>", "report_data": {}}
+
+
+@app.post("/report/interact")
+async def report_interact(req: InteractRequest):
+    """
+    보고서 인터랙션 이벤트 → run_report_editor로 전달.
+    드래그/우클릭/hover 버튼에서 발생한 이벤트를 처리하고 SSE로 응답.
+    """
+    from agent import run_report_editor, REPORT_EDITOR_SYSTEM
+
+    # 레이아웃 정보를 시스템 컨텍스트로 주입
+    layout_ctx = ""
+    if req.layout:
+        lines = ["## 현재 보고서 레이아웃 (섹션 좌표)"]
+        for s in req.layout:
+            r = s.get("rect", {})
+            lines.append(f"- [{s['sid']}] {s.get('label','')} : x={r.get('x')}, y={r.get('y')}, w={r.get('w')}, h={r.get('h')}")
+        layout_ctx = "\n".join(lines)
+
+    if req.drag:
+        layout_ctx += f"\n\n드래그 선택 영역: x={req.drag.get('x')}, y={req.drag.get('y')}, w={req.drag.get('w')}, h={req.drag.get('h')}"
+
+    # action에 따라 프롬프트 보강
+    action_hint = {
+        "add":     "\n\n[요청 유형: 새 섹션 추가] 위치, 차트 형태, 데이터 중 불명확한 것이 있으면 먼저 질문하세요.",
+        "modify":  "\n\n[요청 유형: 기존 섹션 수정] 구체적인 수정 내용을 먼저 물어보세요.",
+        "period":  "\n\n[요청 유형: 기간 변경] 몇 주/일치로 변경할지 먼저 확인하세요.",
+        "explain": "\n\n[요청 유형: 데이터 설명] 해당 섹션의 데이터를 친절히 설명해주세요.",
+    }.get(req.action, "")
+
+    message = req.prompt + action_hint
+    if layout_ctx:
+        message = layout_ctx + "\n\n" + message
+
+    async def event_stream():
+        try:
+            gen = run_report_editor(
+                message, req.history, req.tool_cache,
+                "", req.current_report_data
+            )
+            async for event in gen:
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type':'error','message':str(e)}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/health")

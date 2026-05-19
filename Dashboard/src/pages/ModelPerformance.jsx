@@ -36,7 +36,7 @@ function KpiBox({ label, value, sub }) {
 export default function ModelPerformance() {
   const { data: metricsRaw }  = useCSV('/metrics.csv')
   const { data: fiRaw }       = useCSV('/feature_importance.csv')
-  const { data: shapBarRaw }  = useCSV('/shap_bar.csv')
+  const { data: shapBarRaw }  = useCSV('/shap_data.csv')
   const { data: unitsRaw }    = useCSV('/dashboard_units.csv')
   const { data: featDistRaw } = useCSV('/feature_dist.csv')
 
@@ -105,24 +105,24 @@ export default function ModelPerformance() {
     }
   }, [top20Fi, selFeat])
 
-  // ── SHAP 전체 (shapBarRaw 있는 만큼 전부) ──
+  // ── SHAP (shap_data.csv 기준, feature_dist와 동일 피처명) ──
   const top20Shap = useMemo(() => {
     if (!shapBarRaw.length) return []
     return [...shapBarRaw]
-      .sort((a, b) => parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap))
+      .sort((a, b) => parseFloat(b.lgbm_gain) - parseFloat(a.lgbm_gain))
   }, [shapBarRaw])
 
   const shapOption = useMemo(() => {
     if (!top20Shap.length) return null
     const reversed = [...top20Shap].reverse()
-    const xMax = Math.max(...reversed.map(d => parseFloat(d.mean_abs_shap)))
-    const xBound = Math.ceil(xMax * 1.2 * 1000) / 1000
+    const xMax = Math.max(...reversed.map(d => Math.abs(parseFloat(d.effect_norm))))
+    const xBound = Math.ceil(xMax * 1.2 * 100) / 100 || 1
     return {
       tooltip: {
         trigger: 'axis', axisPointer: { type: 'shadow' },
         formatter: p => {
           const v = parseFloat(p[0].value)
-          return `<b>${p[0].name}</b><br/>평균 기여도: ${v.toFixed(5)}<br/>${v >= 0 ? '▲ 불량 증가 방향' : '▼ 불량 감소 방향'}`
+          return `<b>${p[0].name}</b><br/>SHAP 기여도: ${v.toFixed(4)}<br/>${v >= 0 ? '▲ 불량 증가 방향' : '▼ 불량 감소 방향'}`
         },
       },
       grid: { top: 8, bottom: 20, left: 8, right: 16, containLabel: true },
@@ -141,9 +141,9 @@ export default function ModelPerformance() {
       series: [{
         type: 'bar',
         data: reversed.map(d => {
-          const v = parseFloat(d.mean_shap)
+          const v = parseFloat(d.effect_norm)
           return {
-            value: +v.toFixed(5),
+            value: +v.toFixed(4),
             itemStyle: {
               color: d.feature === selFeat
                 ? '#7C3AED'

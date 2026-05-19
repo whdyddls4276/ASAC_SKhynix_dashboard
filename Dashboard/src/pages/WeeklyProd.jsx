@@ -64,8 +64,8 @@ export default function WeeklyProd() {
   const { weeklyData, summary } = useMemo(() => {
     if (!units.length) return { weeklyData: [], summary: null }
 
-    // train + val만 (test는 미래)
-    const filtered = units.filter(u => u.split === 'train' || u.split === 'val')
+    // train + val + test 전체 사용
+    const filtered = units
 
     // unit별 날짜 붙이기
     const withDate = filtered.map(u => ({
