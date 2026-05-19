@@ -53,6 +53,7 @@ export default function ModelPerformance() {
     }
     return {
       ensemble_val: get('reg', 'ensemble', 'val'),
+      stacking_val: get('reg', 'stacking', 'val'),
       lgbm_val:     get('reg', 'lgbm',     'val'),
     }
   }, [metricsRaw])
@@ -368,7 +369,7 @@ export default function ModelPerformance() {
     )
   }
 
-  const bestVal     = metrics.ensemble_val ?? metrics.lgbm_val ?? 0
+  const bestVal     = metrics.stacking_val ?? metrics.ensemble_val ?? metrics.lgbm_val ?? 0
   const beatBase    = bestVal < BASELINE_RMSE
   const improvement = (((BASELINE_RMSE - bestVal) / BASELINE_RMSE) * 100).toFixed(1)
 
