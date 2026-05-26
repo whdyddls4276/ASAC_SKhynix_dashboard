@@ -39,7 +39,7 @@ const NORM_R = 1.0
 function normX(x) { return (x - WAFER_CX) / WAFER_RX }
 function normY(y) { return (y - WAFER_CY) / WAFER_RY }
 
-const DANGER_THRESH = 0.003412
+// dangerThresh는 데이터 로드 후 동적으로 Q3 계산 (아래 dangerThresh useMemo 참조)
 const CARD = { background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }
 
 export default function WaferMap() {
@@ -49,6 +49,16 @@ export default function WaferMap() {
   const [selLot,  setSelLot]    = useState(null)   // number
   const [selWafer, setSelWafer] = useState(null)   // number
   const waferChartRef = useRef(null)
+
+  // 위험 임계값: 전체 die pred의 Q3
+  const dangerThresh = useMemo(() => {
+    const allPreds = dies
+      .map(d => parseFloat(d.pred))
+      .filter(isFinite)
+      .sort((a, b) => a - b)
+    if (!allPreds.length) return 0
+    return allPreds[Math.floor(allPreds.length * 0.75)] ?? 0
+  }, [dies])
 
   const drawCircle = useCallback(() => {
     const chart = waferChartRef.current?.getEchartsInstance?.()
@@ -76,7 +86,7 @@ export default function WaferMap() {
       const dateStr = lotToDate(Math.round(parseFloat(d.run_id)))
       if (!dateMap[dateStr]) dateMap[dateStr] = { danger: 0, total: 0 }
       dateMap[dateStr].total++
-      if (parseFloat(d.pred) > DANGER_THRESH) dateMap[dateStr].danger++
+      if (parseFloat(d.pred) > dangerThresh) dateMap[dateStr].danger++
     })
     // 최근 14개 날짜만
     const sorted = Object.entries(dateMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-14)
@@ -94,7 +104,7 @@ export default function WaferMap() {
         barMaxWidth: 28,
       }],
     }
-  }, [dies, selDate])
+  }, [dies, selDate, dangerThresh])
 
   // 선택 날짜의 로트별 위험 unit 수
   const lotBarOption = useMemo(() => {
@@ -105,7 +115,7 @@ export default function WaferMap() {
       const lot = Math.round(parseFloat(d.run_id))
       if (!lotMap[lot]) lotMap[lot] = { danger: 0, total: 0 }
       lotMap[lot].total++
-      if (parseFloat(d.pred) > DANGER_THRESH) lotMap[lot].danger++
+      if (parseFloat(d.pred) > dangerThresh) lotMap[lot].danger++
     })
     const sorted = Object.entries(lotMap).sort((a, b) => Number(a[0]) - Number(b[0]))
     return {
@@ -122,7 +132,7 @@ export default function WaferMap() {
         barMaxWidth: 36,
       }],
     }
-  }, [dies, selDate, selLot])
+  }, [dies, selDate, selLot, dangerThresh])
 
   // 선택 로트의 웨이퍼별 위험 unit 수
   const waferBarOption = useMemo(() => {
@@ -133,7 +143,7 @@ export default function WaferMap() {
       const w = Math.round(parseFloat(d.wafer_no))
       if (!waferMap[w]) waferMap[w] = { danger: 0, total: 0 }
       waferMap[w].total++
-      if (parseFloat(d.pred) > DANGER_THRESH) waferMap[w].danger++
+      if (parseFloat(d.pred) > dangerThresh) waferMap[w].danger++
     })
     const sorted = Object.entries(waferMap).sort((a, b) => Number(a[0]) - Number(b[0]))
     return {

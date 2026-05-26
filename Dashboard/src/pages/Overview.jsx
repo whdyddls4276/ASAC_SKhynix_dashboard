@@ -40,42 +40,41 @@ function lotToDate(lot) {
   return d.toISOString().slice(0, 10)
 }
 
-// grade 기준 (train 전체 reg_pred 분위수 기반, 고정)
-// grade1: 0~50%       (안전)
-// grade2: 50~70.8%    (관찰)
-// grade3: 70.8~99.95% (위험)
-// grade4: 99.95%~     (임계 초과 = Critical)
+// grade 기준 (train reg_pred IQR 기반)
+// grade1: pred < Q2              → 정상
+// grade2: Q2 <= pred < Q3        → 조심
+// grade3: Q3 <= pred < Q3+1.5IQR → 위험
+// grade4: pred >= Q3+1.5IQR      → 매우위험
 export const GRADE_COLORS = {
-  grade1: { bg: '#F0FDF4', border: '#86EFAC', text: '#166534', bar: '#22C55E', label: 'Grade 1' },
-  grade2: { bg: '#FEF9C3', border: '#EAB308', text: '#713F12', bar: '#EAB308', label: 'Grade 2' },
-  grade3: { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E', bar: '#F59E0B', label: 'Grade 3' },
-  grade4: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C', bar: '#EF4444', label: 'Grade 4' },
+  grade1: { bg: '#F0FDF4', border: '#86EFAC', text: '#166534', bar: '#22C55E', label: '정상 (G1)' },
+  grade2: { bg: '#FEF9C3', border: '#EAB308', text: '#713F12', bar: '#EAB308', label: '조심 (G2)' },
+  grade3: { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E', bar: '#F59E0B', label: '위험 (G3)' },
+  grade4: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C', bar: '#EF4444', label: '매우위험 (G4)' },
 }
 
 export function getGrade(pred, thresholds) {
-  const { g1, g2, g3 } = thresholds
-  // g1=p50, g2=p70.8, g3=p99.95 (오름차순)
-  if (pred >= g3) return 'grade4'  // p99.95 이상 = Critical
-  if (pred >= g2) return 'grade3'  // p70.8 이상 = High Risk
-  if (pred >= g1) return 'grade2'  // p50 이상 = Monitoring
-  return 'grade1'                  // p50 미만 = Safe
+  const { q2, q3, upperFence } = thresholds
+  if (pred >= upperFence) return 'grade4'  // Q3+1.5IQR 이상 = 매우위험
+  if (pred >= q3)         return 'grade3'  // Q3 이상       = 위험
+  if (pred >= q2)         return 'grade2'  // Q2 이상       = 조심
+  return 'grade1'                          // Q2 미만       = 정상
 }
 
-// threshold 계산 (train 전체 reg_pred 분위수 기반)
+// threshold 계산 (train reg_pred IQR 기반)
 function computeThresholds(units) {
-  const trainUnits = units.filter(u => u.split === 'train')
-  const trainPreds = trainUnits.map(u => parseFloat(u.reg_pred)).sort((a, b) => a - b)
-  const n = trainPreds.length
-  const g1 = trainPreds[Math.floor(n * 0.50)]    ?? 0   // p50
-  const g2 = trainPreds[Math.floor(n * 0.708)]   ?? 0   // p70.8
-  const g3 = trainPreds[Math.floor(n * 0.9995)]  ?? 0   // p99.95 (임계값)
-  const defectThresh = g3   // 임계값 = p99.95
+  const allPreds = units
+    .map(u => parseFloat(u.reg_pred))
+    .filter(v => isFinite(v))
+    .sort((a, b) => a - b)
+  const n = allPreds.length
+  const q1         = allPreds[Math.floor(n * 0.25)] ?? 0
+  const q2         = allPreds[Math.floor(n * 0.50)] ?? 0
+  const q3         = allPreds[Math.floor(n * 0.75)] ?? 0
+  const iqr        = q3 - q1
+  const upperFence = q3 + 1.5 * iqr   // Q3+1.5IQR = 매우위험 경계
+  const defectThresh = q3              // 대표 임계값 = Q3
 
-  // highThresh: 임계 초과 중 상위 10%
-  const dangerPreds = units.map(u => parseFloat(u.reg_pred)).filter(p => p >= defectThresh).sort((a, b) => a - b)
-  const highThresh = dangerPreds.length ? dangerPreds[Math.floor(dangerPreds.length * 0.9)] : defectThresh
-
-  return { defectThresh, highThresh, g1, g2, g3 }
+  return { defectThresh, q1, q2, q3, iqr, upperFence }
 }
 
 function KpiCard({ label, value, sub, color }) {
@@ -139,12 +138,12 @@ export default function Overview({ onNavigateDrilldown }) {
   const { data: trendRaw, loading: loadingTrend } = useCSV('/trend_data.csv')
   const { data: shapRaw, loading: loadingShap } = useCSV('/shap_beeswarm.csv')
 
-  const { defectThresh, highThresh, g1, g2, g3 } = useMemo(() => {
-    if (!units.length) return { defectThresh: 0, highThresh: 0, g1: 0, g2: 0, g3: 0 }
+  const { defectThresh, q1, q2, q3, iqr, upperFence } = useMemo(() => {
+    if (!units.length) return { defectThresh: 0, q1: 0, q2: 0, q3: 0, iqr: 0, upperFence: 0 }
     return computeThresholds(units)
   }, [units])
 
-  const thresholds = useMemo(() => ({ g1, g2, g3 }), [g1, g2, g3])
+  const thresholds = useMemo(() => ({ q2, q3, upperFence }), [q2, q3, upperFence])
 
   // KPI
   const kpi = useMemo(() => {
@@ -189,12 +188,12 @@ export default function Overview({ onNavigateDrilldown }) {
       itemStyle: { color: GRADE_COLORS[g]?.bar },
     }))
 
-    // 도넛 3: 예측 위험도 분포 (전체 유닛 grade 기준, grade3+4 = 위험)
+    // 도넛 3: 예측 위험도 분포 (전체 유닛 grade 기준)
     const pie3 = [
       { name: '정상 (G1)', value: gradeCount.grade1, itemStyle: { color: GRADE_COLORS.grade1.bar } },
-      { name: '관찰 (G2)', value: gradeCount.grade2, itemStyle: { color: GRADE_COLORS.grade2.bar } },
+      { name: '조심 (G2)', value: gradeCount.grade2, itemStyle: { color: GRADE_COLORS.grade2.bar } },
       { name: '위험 (G3)', value: gradeCount.grade3, itemStyle: { color: GRADE_COLORS.grade3.bar } },
-      { name: '임계 (G4)', value: gradeCount.grade4, itemStyle: { color: GRADE_COLORS.grade4.bar } },
+      { name: '매우위험 (G4)', value: gradeCount.grade4, itemStyle: { color: GRADE_COLORS.grade4.bar } },
     ]
 
     return { thisWeekCount, avg4wPpm, futurePpm, fmtPpm, pie1, pie2, pie3 }
@@ -228,7 +227,6 @@ export default function Overview({ onNavigateDrilldown }) {
     })
 
     const weeks = Object.entries(weekMap).sort(([a], [b]) => a.localeCompare(b))
-    const LAST_WW = 37
     const totalWeeks = weeks.length
     const wwLabels = weeks.map((_, i) => `WW${LAST_WW - (totalWeeks - 1 - i)}`)
     const dateLabels = weeks.map(([, w]) => w.label)
@@ -472,14 +470,14 @@ export default function Overview({ onNavigateDrilldown }) {
 
   // Lot별 grade 비율 스택 바 (dashboard_units.csv 실데이터)
   const gradeTrendOption = useMemo(() => {
-    if (!units.length || g1 === 0) return null
+    if (!units.length || q2 === 0) return null
 
     // train+val+test 모든 lot, run_id 순 정렬
     const lotMap = {}
     units.forEach(u => {
       const lot = String(u.run_id)
       if (!lotMap[lot]) lotMap[lot] = { grade1: 0, grade2: 0, grade3: 0, grade4: 0, total: 0 }
-      const grade = getGrade(parseFloat(u.reg_pred), { g1, g2, g3 })
+      const grade = getGrade(parseFloat(u.reg_pred), { q2, q3, upperFence })
       lotMap[lot][grade]++
       lotMap[lot].total++
     })
@@ -495,7 +493,7 @@ export default function Overview({ onNavigateDrilldown }) {
     const testStartIdx = lotEntries.findIndex(([lot]) => testLots.has(lot))
 
     const mkLine = (key, color) => ({
-      name: key === 'grade1' ? 'Grade 1' : key === 'grade2' ? 'Grade 2' : key === 'grade3' ? 'Grade 3' : 'Grade 4',
+      name: key === 'grade1' ? '정상 (G1)' : key === 'grade2' ? '조심 (G2)' : key === 'grade3' ? '위험 (G3)' : '매우위험 (G4)',
       type: 'line',
       data: mkRate(key),
       smooth: true,
@@ -523,7 +521,7 @@ export default function Overview({ onNavigateDrilldown }) {
             params.map(p => `${p.marker} ${p.seriesName}: ${p.value}%`).join('<br/>')
         },
       },
-      legend: { data: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'], top: 4, textStyle: { fontSize: 11 } },
+      legend: { data: ['정상 (G1)', '조심 (G2)', '위험 (G3)', '매우위험 (G4)'], top: 4, textStyle: { fontSize: 11 } },
       grid: { top: 36, bottom: 40, left: 50, right: 16 },
       xAxis: {
         type: 'category',
@@ -546,11 +544,11 @@ export default function Overview({ onNavigateDrilldown }) {
         mkLine('grade4', GRADE_COLORS.grade4.bar),
       ],
     }
-  }, [units, g1, g2, g3])
+  }, [units, q2, q3, upperFence])
 
   // 임계 초과 유닛 SHAP Top10 수평 바 (shap_beeswarm.csv 기반)
   const shapWaterfallOption = useMemo(() => {
-    if (!shapRaw.length || !units.length || g3 === 0) return null
+    if (!shapRaw.length || !units.length || upperFence === 0) return null
 
     // Grade 4 (임계초과) 유닛 serial 목록
     const criticalSerials = new Set(
@@ -623,7 +621,7 @@ export default function Overview({ onNavigateDrilldown }) {
         label: { show: false },
       }],
     }
-  }, [shapRaw, units, g1, g2, g3])
+  }, [shapRaw, units, q2, q3, upperFence])
 
   if (loadingUnits || loadingTrend || !kpi || kpi.thisWeekCount == null) {
     return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:11 }}>데이터 로딩 중…</div>

@@ -46,32 +46,13 @@ export default function ModelPerformance() {
     fetch('/feature_violin.json').then(r => r.json()).then(setViolinRaw).catch(() => {})
   }, [])
 
-  // lot scatter: 피처 선택 시 lazy load (피처별 파일)
-  const [lotMeta, setLotMeta]         = useState(null)
-  const [lotScatterPts, setLotScatterPts] = useState(null)
-  const [lotScatterFeat, setLotScatterFeat] = useState(null)
-  const [lotScatterLoading, setLotScatterLoading] = useState(false)
-  useEffect(() => {
-    fetch('/lot_scatter/meta.json').then(r => r.json()).then(setLotMeta).catch(() => {})
-  }, [])
-  const activeLotFeat = selFeat ?? null
-  useEffect(() => {
-    if (!activeLotFeat) return
-    if (activeLotFeat === lotScatterFeat) return
-    setLotScatterLoading(true)
-    setLotScatterPts(null)
-    fetch(`/lot_scatter/${activeLotFeat}.json`).then(r => r.json()).then(pts => {
-      setLotScatterPts(pts)
-      setLotScatterFeat(activeLotFeat)
-      setLotScatterLoading(false)
-    }).catch(() => setLotScatterLoading(false))
-  }, [activeLotFeat])
 
   // 바이올린용 드롭다운 피처 선택 (selFeat 없으면 첫 번째 피처)
   const violinFeats = useMemo(() => [...new Set(violinRaw.map(r => r.feature))], [violinRaw])
   const violinFeat  = useMemo(() => {
-    if (selFeat && violinFeats.includes(selFeat)) return selFeat
-    return violinFeats[0] ?? null
+    if (!selFeat) return null
+    if (violinFeats.includes(selFeat)) return selFeat
+    return null
   }, [selFeat, violinFeats])
 
   // ── metrics ──
@@ -213,11 +194,9 @@ export default function ModelPerformance() {
   }, [featDistRaw])
 
   const activeFeat = useMemo(() => {
-    if (!featDistCols.length) return null
-    // 클릭한 피처가 feature_dist 컬럼에 있으면 사용
-    if (selFeat && featDistCols.includes(selFeat)) return selFeat
-    // 없으면 feature_dist 첫 번째 컬럼
-    return featDistCols[0]
+    if (!selFeat || !featDistCols.length) return null
+    if (featDistCols.includes(selFeat)) return selFeat
+    return null
   }, [selFeat, featDistCols])
 
   // grade1/grade4 구분을 위한 ufs_serial → grade 맵
@@ -227,7 +206,7 @@ export default function ModelPerformance() {
     return m
   }, [unitsRaw])
 
-  // ── 고위험(grade1) vs 저위험(grade4) 피처값 분포 — 밀도 라인 차트 ──
+  // ── 고위험(grade4) vs 저위험(grade1) 피처값 분포 — 밀도 라인 차트 ──
   const riskDistOption = useMemo(() => {
     if (!featDistRaw.length || !activeFeat) return null
 
@@ -236,8 +215,8 @@ export default function ModelPerformance() {
       const x = parseFloat(r[activeFeat])
       if (!isFinite(x)) continue
       const grade = gradeMap[r.ufs_serial]
-      if (grade === 'grade1') highVals.push(x)
-      else if (grade === 'grade4') lowVals.push(x)
+      if (grade === 'grade4') highVals.push(x)
+      else if (grade === 'grade1') lowVals.push(x)
     }
     // grade 정보 없으면 is_defect fallback
     if (!highVals.length && !lowVals.length) {
@@ -361,8 +340,8 @@ export default function ModelPerformance() {
       const y = parseFloat(r.health)
       if (!isFinite(x) || !isFinite(y)) continue
       const grade = gradeMap[r.ufs_serial]
-      if (grade === 'grade1') dataHigh.push([x, y])
-      else if (grade === 'grade4') dataLow.push([x, y])
+      if (grade === 'grade4') dataHigh.push([x, y])
+      else if (grade === 'grade1') dataLow.push([x, y])
     }
     // grade 정보 없으면 is_defect fallback
     if (!dataLow.length && !dataHigh.length) {
@@ -475,55 +454,6 @@ export default function ModelPerformance() {
     }
   }, [violinRaw, violinFeat])
 
-  // ── Lot scatter 옵션 ──
-  const lotScatterOption = useMemo(() => {
-    if (!lotScatterPts || !lotMeta || !lotScatterFeat) return null
-    const lots = lotMeta.lots
-    const GRADE_COLOR = { grade1: '#22C55E', grade2: '#EAB308', grade3: '#F97316', grade4: '#EF4444' }
-
-    const byGrade = {}
-    for (const [xi, y, grade] of lotScatterPts) {
-      if (!byGrade[grade]) byGrade[grade] = []
-      byGrade[grade].push([lots[xi], y])
-    }
-
-    return {
-      tooltip: {
-        trigger: 'item',
-        formatter: p => {
-          if (!p.data || p.data[0] == null) return ''
-          return `Lot ${p.data[0]}<br/>${lotScatterFeat}: ${p.data[1]}<br/>Grade: ${p.seriesName}`
-        },
-      },
-      legend: {
-        top: 4, right: 8, textStyle: { fontSize: 12 },
-        data: Object.keys(byGrade),
-      },
-      grid: { top: 32, bottom: 60, left: 60, right: 16 },
-      xAxis: {
-        type: 'category',
-        data: lots,
-        name: 'Lot', nameTextStyle: { fontSize: 10, color: '#94A3B8' },
-        axisLabel: { fontSize: 9, color: '#94A3B8', rotate: 45, interval: Math.floor(lots.length / 20) },
-        splitLine: { show: false },
-      },
-      yAxis: {
-        type: 'value',
-        name: lotScatterFeat, nameTextStyle: { fontSize: 10, color: '#94A3B8' },
-        axisLabel: { fontSize: 10, color: '#94A3B8' },
-        splitLine: { lineStyle: { color: '#F1F5F9' } },
-      },
-      series: Object.entries(byGrade).map(([grade, pts]) => ({
-        name: grade,
-        type: 'scatter',
-        data: pts,
-        symbolSize: 3,
-        large: true,
-        largeThreshold: 1000,
-        itemStyle: { color: GRADE_COLOR[grade] ?? '#94A3B8', opacity: 0.5 },
-      })),
-    }
-  }, [lotScatterPts, lotMeta, lotScatterFeat])
 
   if (!metrics) {
     return (
@@ -554,10 +484,10 @@ export default function ModelPerformance() {
         />
       </div>
 
-      {/* ── Row 2+3: 2×2 차트 그리드 ── */}
+      {/* ── Row 2: 피처 중요도 + SHAP (항상 표시) ── */}
       <div className="mp-grid-2x2">
 
-        {/* 좌상: 피처 중요도 — 박스 안 스크롤 */}
+        {/* 좌: 피처 중요도 — 박스 안 스크롤 */}
         <ChartCard title="피처 중요도 순위" scrollable>
           {fiOption
             ? <ReactECharts
@@ -568,7 +498,7 @@ export default function ModelPerformance() {
             : <div className="mp-empty">feature_importance.csv 없음</div>}
         </ChartCard>
 
-        {/* 우상: SHAP 분석 — 박스 안 스크롤 */}
+        {/* 우: SHAP 분석 — 박스 안 스크롤 */}
         <ChartCard title="SHAP 기여도 분석" scrollable>
           {shapOption
             ? <ReactECharts
@@ -579,38 +509,37 @@ export default function ModelPerformance() {
             : <div className="mp-empty">shap_bar.csv 없음</div>}
         </ChartCard>
 
-        {/* 좌하: 고위험 vs 저위험 분포 */}
-        <ChartCard title={`피처 분포 · ${activeFeat ?? ''}`}>
-          {riskDistOption
-            ? <ReactECharts option={riskDistOption} style={{ height: 360 }} />
-            : <div className="mp-empty">dashboard_units.csv 없음</div>}
-        </ChartCard>
-
-        {/* 우하: 피처 월별 분포 바이올린 */}
-        <ChartCard title="피처 월별 분포" tag={
-          <select
-            value={violinFeat ?? ''}
-            onChange={e => setSelFeat(e.target.value)}
-            style={{ fontSize: 13, color: '#475569', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}
-          >
-            {violinFeats.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
-        }>
-          {violinOption
-            ? <ReactECharts option={violinOption} style={{ height: 360 }} />
-            : <div className="mp-empty">feature_violin.csv 없음</div>}
-        </ChartCard>
-
       </div>
 
-      {/* ── 하단: Lot별 피처 산점도 ── */}
-      <ChartCard title={`Lot별 피처 분포 · ${lotScatterFeat ?? '피처를 클릭하세요'}`} tag={lotScatterLoading ? '로딩 중…' : undefined}>
-        {lotScatterOption
-          ? <ReactECharts option={lotScatterOption} style={{ height: 400 }} />
-          : <div className="mp-empty" style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {lotScatterLoading ? '데이터 로딩 중…' : '좌측 피처 중요도 차트에서 피처를 클릭하세요'}
-            </div>}
-      </ChartCard>
+      {/* ── Row 3: 피처 클릭 시에만 표시 ── */}
+      {activeFeat && (
+        <div className="mp-grid-2x2">
+
+          {/* 좌: 고위험 vs 저위험 분포 */}
+          <ChartCard title={`피처 분포 · ${activeFeat}`}>
+            {riskDistOption
+              ? <ReactECharts option={riskDistOption} style={{ height: 360 }} />
+              : <div className="mp-empty">dashboard_units.csv 없음</div>}
+          </ChartCard>
+
+          {/* 우: 피처 월별 분포 바이올린 */}
+          <ChartCard title="피처 월별 분포" tag={
+            <select
+              value={violinFeat ?? ''}
+              onChange={e => setSelFeat(e.target.value)}
+              style={{ fontSize: 13, color: '#475569', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}
+            >
+              {violinFeats.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          }>
+            {violinOption
+              ? <ReactECharts option={violinOption} style={{ height: 360 }} />
+              : <div className="mp-empty">feature_violin.csv 없음</div>}
+          </ChartCard>
+
+        </div>
+      )}
+
 
     </div>
   )

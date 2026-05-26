@@ -20,9 +20,9 @@ const NORMAL_STOPS = [
   [1.0, [165, 215, 220]],
 ]
 const RISK_STOPS = [
-  [0.0, [254, 240, 138]],
-  [0.5, [251, 146, 60]],
-  [1.0, [220, 38, 38]],
+  [0.0,  [254, 240, 138]],
+  [0.75, [251, 146, 60]],
+  [1.0,  [220, 38, 38]],
 ]
 
 function interp(stops, t) {
@@ -54,7 +54,7 @@ function predColor(pred, predMin, predMax, threshold) {
 }
 
 const COLOR_LEGEND_GRADIENT =
-  'linear-gradient(to right, #f3f4f6, #dbeafe, #a5d7dc, #fef08a, #fb923c, #dc2626)'
+  'linear-gradient(to right, #f3f4f6, #dbeafe, #a5d7dc, #fef08a, #fef08a, #fb923c, #dc2626)'
 
 // ── 스케일 계산 ───────────────────────────────────────
 function computeScale(allDies) {
@@ -63,8 +63,10 @@ function computeScale(allDies) {
   preds.sort((a, b) => a - b)
   const predMin = preds[0]
   const predMax = preds[preds.length - 1]
-  // threshold = p70.8 (위험 판정 기준, 모든 페이지 통일)
-  const threshold = preds[Math.floor(preds.length * 0.708)] ?? predMin
+  // threshold = Q3 (IQR 기반 위험 판정 기준)
+  const q1 = preds[Math.floor(preds.length * 0.25)] ?? predMin
+  const q3 = preds[Math.floor(preds.length * 0.75)] ?? predMin
+  const threshold = q3
   // 전체 데이터의 die 좌표 범위 (다이 종횡비 고정용) — 큰 배열 spread 회피용 루프
   let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity
   for (const d of allDies) {
@@ -257,22 +259,13 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
     [ufsSerial, allDies]
   )
 
-  // dashboard_units.csv에서 anomaly_score, CI 조회
-  const anomalyScore = useMemo(() => {
-    if (!ufsSerial || !unitData?.length) return null
+  // dashboard_units.csv에서 anomaly_score 조회
+  const { anomalyScore } = useMemo(() => {
+    if (!ufsSerial || !unitData?.length) return { anomalyScore: null }
     const row = unitData.find(u => u.ufs_serial === ufsSerial)
-    const v = row ? parseFloat(row.anomaly_score) : NaN
-    return isFinite(v) ? v : null
-  }, [ufsSerial, unitData])
-
-  const ciData = useMemo(() => {
-    if (!ufsSerial || !unitData?.length) return null
-    const row = unitData.find(u => u.ufs_serial === ufsSerial)
-    if (!row) return null
-    const lo = parseFloat(row.ci_low)
-    const hi = parseFloat(row.ci_high)
-    if (!isFinite(lo) || !isFinite(hi)) return null
-    return { lo: Math.round(lo * 1e6), hi: Math.round(hi * 1e6) }
+    if (!row) return { anomalyScore: null }
+    const v = parseFloat(row.anomaly_score)
+    return { anomalyScore: isFinite(v) ? v : null }
   }, [ufsSerial, unitData])
 
   if (!ufsSerial) return (
@@ -318,13 +311,6 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
         </div>
         <div className="dd-verdict-pred">
           {ppm.toLocaleString()} ppm
-          {ciData ? (
-            <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>
-              95% CI [{ciData.lo.toLocaleString()} ~ {ciData.hi.toLocaleString()}]
-            </span>
-          ) : (
-            <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>CI 산출 중…</span>
-          )}
         </div>
       </div>
 
@@ -436,8 +422,7 @@ function ReportButton({ ufsSerial, ppm, isRisk, worstDie, grade }) {
       URL.revokeObjectURL(url)
       setStatus('done')
       setTimeout(() => setStatus('idle'), 3000)
-    } catch (e) {
-      console.error('보고서 생성 실패:', e)
+    } catch {
       setStatus('error')
       setTimeout(() => setStatus('idle'), 4000)
     }
@@ -488,17 +473,22 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
         <div className="dd-bottom-thresh-label">
           <span className="dd-bottom-thresh-title">임계값 (τ)</span>
           <span className="dd-bottom-thresh-val">{thPpm.toLocaleString()} ppm</span>
-          <span className="dd-bottom-thresh-sub">train 상위 29.2% 기준</span>
+          <span className="dd-bottom-thresh-sub">전체 pred Q3 기준</span>
         </div>
         <div className="dd-bottom-thresh-bar-wrap">
-          <div className="dd-bottom-thresh-gradient" style={{ background: COLOR_LEGEND_GRADIENT }} />
-          <div className="dd-bottom-thresh-marker"
-            style={{ left: `${Math.round((scale.threshold / (scale.predMax || 1)) * 100)}%` }}>
+          {/* 정상 50% + 위험 50% 고정 분할 */}
+          <div style={{ display: 'flex', width: '100%', height: 12, borderRadius: 4, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+            <div style={{ width: '50%', height: '100%', background: 'linear-gradient(to right, #f3f4f6, #dbeafe, #a5d7dc)' }} />
+            <div style={{ width: '50%', height: '100%', background: 'linear-gradient(to right, #fef08a, #fef08a, #fb923c, #dc2626)' }} />
+          </div>
+          {/* 마커: 항상 50% */}
+          <div className="dd-bottom-thresh-marker" style={{ left: '50%' }}>
             <div className="dd-bottom-thresh-marker-line" />
             <div className="dd-bottom-thresh-marker-label">{thPpm.toLocaleString()}</div>
           </div>
           <div className="dd-bottom-thresh-ends">
-            <span>0</span>
+            <span>0 ppm</span>
+            <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', color: '#92400E', fontSize: 10 }}>← 정상 | 위험 →</span>
             <span>{maxPpm.toLocaleString()} ppm</span>
           </div>
         </div>
@@ -517,11 +507,16 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
               const ppm    = Math.round(pred * 1e6)
               const isRisk = pred > scale.threshold
               const pos    = die.position || '?'
-              const barW   = Math.round((ppm / posMaxPpm) * 100)
               const isDieSel = selectedDie &&
                 String(die.die_x) === String(selectedDie.die_x) &&
                 String(die.die_y) === String(selectedDie.die_y)
               const fillColor = predColor(pred, scale.predMin, scale.predMax, scale.threshold)
+
+              // threshold가 항상 50%가 되도록 좌우 스케일 분리
+              const thresh = scale.threshold
+              const barW = isRisk
+                ? 50 + Math.round(((pred - thresh) / Math.max(1e-9, scale.predMax - thresh)) * 50)
+                : Math.round((pred / Math.max(1e-9, thresh)) * 50)
 
               return (
                 <div
@@ -540,9 +535,8 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
                   </div>
                   <div className="dd-bpos-track">
                     <div className="dd-bpos-fill"
-                      style={{ width: `${barW}%`, background: isRisk ? '#EF4444' : '#60A5FA' }} />
-                    <div className="dd-bpos-thresh-line"
-                      style={{ left: `${Math.round((scale.threshold / (scale.predMax || 1)) * 100)}%` }} />
+                      style={{ width: `${barW}%`, background: fillColor }} />
+                    <div className="dd-bpos-thresh-line" style={{ left: '50%' }} />
                   </div>
                 </div>
               )
@@ -550,75 +544,6 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-// ── 선택 Unit의 4-Die Position 세로 뷰 (우측 패널용 compact) ─
-function UnitDieComparison({ ufsSerial, allDies, scale, selectedDie, onSelectDie }) {
-  const dies = useMemo(() =>
-    ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
-    [ufsSerial, allDies]
-  )
-
-  if (!ufsSerial || !dies.length) return null
-
-  const sorted = [...dies].sort((a, b) => parseInt(a.position || 0) - parseInt(b.position || 0))
-  // scale.predMax 기준으로 통일 (임계선과 같은 스케일)
-  const maxPpm = Math.round(scale.predMax * 1e6) || 1
-
-  return (
-    <div className="dd-unit-compare">
-      <div className="dd-unit-compare-title">
-        <span className="dd-unit-compare-serial">{ufsSerial}</span>
-        <span className="dd-unit-compare-sub">Position별 예측</span>
-      </div>
-      <div className="dd-pos-list">
-        {sorted.map(die => {
-          const pred   = parseFloat(die.pred)
-          const ppm    = Math.round(pred * 1e6)
-          const isRisk = pred > scale.threshold
-          const clf    = die.clf_proba !== undefined ? parseFloat(die.clf_proba) : null
-          const pos    = die.position || '?'
-          const isDieSel = selectedDie &&
-            String(die.die_x) === String(selectedDie.die_x) &&
-            String(die.die_y) === String(selectedDie.die_y)
-
-          const fillColor = predColor(pred, scale.predMin, scale.predMax, scale.threshold)
-          const barW = Math.round((ppm / maxPpm) * 100)
-
-          return (
-            <div
-              key={`${die.die_x}-${die.die_y}`}
-              className={`dd-pos-row ${isDieSel ? 'selected' : ''} ${isRisk ? 'risk' : ''}`}
-              onClick={() => onSelectDie?.(die)}
-            >
-              <div className="dd-pos-arrow">{isDieSel ? '▶' : ''}</div>
-              <div className="dd-pos-num">P{pos}</div>
-              <div className="dd-pos-chip" style={{ background: fillColor }} />
-              <div className="dd-pos-bar-wrap">
-                <div className="dd-pos-bar-track">
-                  <div
-                    className="dd-pos-bar-fill"
-                    style={{ width: `${barW}%`, background: isRisk ? '#EF4444' : '#60A5FA' }}
-                  />
-                  <div
-                    className="dd-pos-bar-threshold"
-                    style={{ left: `${Math.round((scale.threshold / (scale.predMax || 1)) * 100)}%` }}
-                  />
-                </div>
-                <div className={`dd-pos-bar-label ${isRisk ? 'danger' : ''}`}>
-                  {ppm.toLocaleString()} <span className="dd-pos-unit">ppm</span>
-                  {clf !== null && (
-                    <span className="dd-pos-clf"> · {(clf * 100).toFixed(0)}%</span>
-                  )}
-                </div>
-              </div>
-              <div className="dd-pos-coord">({die.die_x},{die.die_y})</div>
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }
@@ -720,7 +645,7 @@ function DieReport({ die, scale, onClose }) {
 // ── 메인 ─────────────────────────────────────────────
 export default function Drilldown({ initialSelection }) {
   const { data: summaryData, loading: loadingSummary } = useCSV('/dashboard_lot_summary.csv')
-  const { data: shapData } = useCSV('/shap_data.csv')
+  const { data: shapData } = useCSV('/shap_bar.csv')
   const { data: unitData } = useCSV('/dashboard_units.csv')
 
   const [globalScale, setGlobalScale] = useState(null)
@@ -829,10 +754,6 @@ export default function Drilldown({ initialSelection }) {
 
   useEffect(() => { setSelectedUnit(null); setSelectedDie(null) }, [selectedKey])
   useEffect(() => { if (selectedUnit) setShapBeeswarmEnabled(true) }, [selectedUnit])
-
-  function handleSelectDie(die) {
-    setSelectedDie(die)
-  }
 
   // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
   // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
@@ -977,7 +898,7 @@ export default function Drilldown({ initialSelection }) {
                 allDies={[]}
                 scale={scale}
                 selectedDie={null}
-                onSelectDie={handleSelectDie}
+                onSelectDie={setSelectedDie}
               />
             </div>
           )}
@@ -996,7 +917,7 @@ export default function Drilldown({ initialSelection }) {
                   selectedUnit={selectedUnit}
                   onSelectUnit={setSelectedUnit}
                   selectedDie={selectedDie}
-                  onSelectDie={handleSelectDie}
+                  onSelectDie={setSelectedDie}
                 />
               </div>
               <WaferBottomPanel
@@ -1004,7 +925,7 @@ export default function Drilldown({ initialSelection }) {
                 allDies={selectedDies}
                 scale={scale}
                 selectedDie={selectedDie}
-                onSelectDie={handleSelectDie}
+                onSelectDie={setSelectedDie}
               />
             </div>
           )}
@@ -1034,7 +955,7 @@ export default function Drilldown({ initialSelection }) {
                 allDies={lotAccumDies}
                 scale={scale}
                 selectedDie={null}
-                onSelectDie={handleSelectDie}
+                onSelectDie={setSelectedDie}
               />
             </div>
           )}
