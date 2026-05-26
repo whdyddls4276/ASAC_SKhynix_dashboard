@@ -3,8 +3,6 @@
   flex-direction: column;
   gap: 14px;
   padding: 18px 22px;
-  overflow-y: auto;
-  flex: 1;
 }
 
 /* ── KPI 행 ── */
@@ -41,14 +39,14 @@
 }
 
 .mp-kpi-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #374151;
   margin-top: 4px;
   font-weight: 600;
 }
 
 .mp-kpi-sub {
-  font-size: 9px;
+  font-size: 11px;
   color: #94A3B8;
   font-family: 'JetBrains Mono', monospace;
   margin-top: 3px;
@@ -74,7 +72,7 @@
 }
 .mp-chart-card:hover { box-shadow: 0 2px 14px rgba(59,130,246,0.07); }
 
-.mp-cc-header {
+.mp-cc-header{
   display: flex;
   align-items: center;
   gap: 8px;
@@ -84,15 +82,15 @@
   flex-shrink: 0;
 }
 
-.mp-cc-title {
-  font-size: 13px;
+.mp-cc-title{
+  font-size: 14px;
   font-weight: 700;
   color: var(--text);
   flex: 1;
 }
 
 .mp-cc-tag {
-  font-size: 10px;
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   padding: 2px 7px;
   border-radius: 4px;
@@ -110,7 +108,7 @@
 /* 7개 항목 높이(~245px)만 보이고, 안에서 스크롤 */
 .mp-cc-scroll {
   padding: 10px 14px;
-  height: 245px;        /* 화면에 보이는 고정 높이 (항목 1개 ≈ 28px × 7 + 여백) */
+  height: 345px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -122,7 +120,7 @@
 
 /* ── 빈 상태 ── */
 .mp-empty {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
   padding: 24px;
   text-align: center;

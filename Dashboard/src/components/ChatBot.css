@@ -26,7 +26,7 @@
 }
 
 .cb-title {
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text);
 }
@@ -37,7 +37,7 @@
   border: 1px solid var(--border);
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -60,7 +60,7 @@
 .cb-tab {
   flex: 1;
   padding: 10px 0;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   border: none;
   background: transparent;
@@ -102,7 +102,7 @@
   border-radius: 8px;
   background: linear-gradient(135deg, var(--accent), var(--accent-light));
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -113,7 +113,7 @@
 .cb-bubble {
   max-width: 80%;
   padding: 9px 13px;
-  font-size: 13px;
+  font-size: 10px;
   line-height: 1.55;
 }
 
@@ -146,7 +146,7 @@
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: 10px;
   font-family: 'Inter', 'Noto Sans KR', sans-serif;
   resize: none;
   outline: none;
@@ -166,7 +166,7 @@
   border: none;
   background: var(--accent);
   color: #fff;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: background .15s, transform .1s;
@@ -189,7 +189,7 @@
   background: #F0F9FF;
   border-color: #BAE6FD;
   color: #0369A1;
-  font-size: 12px;
+  font-size: 10px;
   font-style: italic;
 }
 
@@ -203,10 +203,10 @@
 .cb-bubble ul, .cb-bubble ol { padding-left: 16px; margin: 4px 0; }
 .cb-bubble li { margin: 2px 0; }
 .cb-bubble strong { color: var(--text); font-weight: 600; }
-.cb-bubble table { border-collapse: collapse; font-size: 12px; width: 100%; margin: 6px 0; }
+.cb-bubble table { border-collapse: collapse; font-size: 10px; width: 100%; margin: 6px 0; }
 .cb-bubble th { background: var(--accent); color: #fff; padding: 4px 8px; text-align: left; }
 .cb-bubble td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
-.cb-bubble code { background: #F1F5F9; border-radius: 3px; padding: 1px 4px; font-size: 11px; }
+.cb-bubble code { background: #F1F5F9; border-radius: 3px; padding: 1px 4px; font-size: 12px; }
 
 /* PI 확인 버튼 그룹 */
 .cb-buttons {
@@ -222,7 +222,7 @@
   border: 1px solid var(--accent);
   background: transparent;
   color: var(--accent);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   cursor: pointer;
   transition: background .15s, color .15s;
@@ -243,7 +243,7 @@
   border: none;
   background: var(--accent);
   color: #fff;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: background .15s, transform .1s;

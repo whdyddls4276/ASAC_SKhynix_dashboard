@@ -106,7 +106,7 @@ export function ImportancePage() {
 
     return {
       tooltip: { trigger: 'axis', formatter: p => `${p[0].name}<br/>Grade1: ${p[0].value}%<br/>나머지: ${p[1]?.value ?? 0}%` },
-      legend: { data: ['Grade 1(최고위험)', '나머지(Grade 2~4)'], top: 0, right: 0, textStyle: { fontSize: 10 }, itemHeight: 8 },
+      legend: { data: ['Grade 1(최고위험)', '나머지(Grade 2~4)'], top: 0, right: 0, textStyle: { fontSize: 12 }, itemHeight: 8 },
       grid: { top: 24, left: 44, right: 16, bottom: 24 },
       xAxis: { type: 'category', data: bins.map(b => b.toFixed(1)), axisLabel: { fontSize: 8, color: '#94A3B8', rotate: 30 }, boundaryGap: false },
       yAxis: { type: 'value', name: '비율(%)', nameTextStyle: { fontSize: 9 }, axisLabel: { fontSize: 9, color: '#94A3B8' }, splitLine: { lineStyle: { color: '#F1F5F9' } } },
@@ -156,7 +156,7 @@ export function ImportancePage() {
           }
         }
       }),
-      label: { show: true, position: 'right', fontSize: 9, formatter: p => Number(p.value).toFixed(2), color: '#475569' },
+      label: { show: true, position: 'right', fontSize: 11, formatter: p => Number(p.value).toFixed(2), color: '#475569' },
     }],
   }), [lgbmTop, lgbmNames, selectedFeat])
 
@@ -195,7 +195,7 @@ export function ImportancePage() {
   }, [shapTop, shapNames, selectedFeat])
 
   if (loading) return (
-    <div className="feat-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8', fontSize: 14 }}>
+    <div className="feat-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8', fontSize: 11 }}>
       데이터 로딩 중…
     </div>
   )
@@ -265,7 +265,7 @@ export function ImportancePage() {
       >
         {distOpt
           ? <ReactECharts option={distOpt} style={{ height: 220 }} />
-          : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 220, color: '#94A3B8', fontSize: 12 }}>
+          : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 220, color: '#94A3B8', fontSize: 11 }}>
               위 막대를 클릭하면 분포가 표시됩니다
             </div>
         }

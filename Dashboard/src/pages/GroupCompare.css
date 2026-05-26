@@ -5,16 +5,16 @@
   gap: 20px;
 }
 
-.gc-header { display: flex; flex-direction: column; gap: 4px; }
+.gc-header{ display: flex; flex-direction: column; gap: 4px; }
 
-.gc-title {
-  font-size: 18px;
+.gc-title{
+  font-size: 17px;
   font-weight: 700;
   color: var(--text);
 }
 
 .gc-desc {
-  font-size: 13px;
+  font-size: 10px;
   color: var(--text3);
 }
 
@@ -23,7 +23,7 @@
   background: #FFFBEB;
   border: 1px solid #FDE68A;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 10px;
   color: #92400E;
 }
 
@@ -37,8 +37,8 @@
   gap: 16px;
 }
 
-.gc-card-title {
-  font-size: 14px;
+.gc-card-title{
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
 }
@@ -57,7 +57,7 @@
 
 .gc-bar-label {
   width: 60px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text2);
   font-family: 'DM Mono', monospace;
@@ -88,7 +88,7 @@
 .gc-bar.normal { background: #22C55E; }
 
 .gc-bar-val {
-  font-size: 11px;
+  font-size: 12px;
   font-family: 'DM Mono', monospace;
   font-weight: 600;
 }
@@ -98,7 +98,7 @@
 
 .gc-ratio {
   width: 40px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--accent);
   text-align: right;
@@ -109,7 +109,7 @@
 .gc-legend {
   display: flex;
   gap: 16px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text3);
 }
 
@@ -120,13 +120,13 @@
 .gc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 10px;
 }
 
 .gc-table th {
   text-align: left;
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text3);
   border-bottom: 1px solid var(--border);

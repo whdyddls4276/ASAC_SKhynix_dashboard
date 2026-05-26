@@ -101,10 +101,10 @@ export function DailyPage() {
       `<b>${params[0]?.axisValue}</b><br/>` +
       params.map(p => `${p.seriesName}: ${p.value}${p.seriesName.includes('불량률') ? '%' : '건'}`).join('<br/>')
     },
-    legend: { data:['불량 unit','불량률(%)'], bottom:36, textStyle:{ fontSize:11, color:'#475569' } },
+    legend: { data:['불량 unit','불량률(%)'], bottom:36, textStyle:{ fontSize:13, color:'#475569' } },
     dataZoom: [
       { type:'slider', bottom:8, height:18, start:0, end:30,
-        textStyle:{ fontSize:9, color:'#94A3B8' }, borderColor:'#E2E8F0', fillerColor:'rgba(59,130,246,.1)' },
+        textStyle:{ fontSize:11, color:'#94A3B8' }, borderColor:'#E2E8F0', fillerColor:'rgba(59,130,246,.1)' },
       { type:'inside', start:0, end:30 },
     ],
     grid: { top:16, left:52, right:52, bottom:80 },
@@ -133,7 +133,7 @@ export function DailyPage() {
       `<b>${params[0]?.axisValue}</b><br/>` +
       params.filter(p => p.value != null).map(p => `${p.seriesName}: ${p.value}`).join('<br/>')
     },
-    legend: { data:['불량률(%)','clf_proba'], bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
+    legend: { data:['불량률(%)','clf_proba'], bottom:0, textStyle:{ fontSize:13, color:'#475569' } },
     grid: { top:16, left:52, right:52, bottom:44 },
     xAxis: { type:'category', data:vtDates, axisLabel:{ fontSize:11, color:'#475569' } },
     yAxis: [
@@ -145,7 +145,7 @@ export function DailyPage() {
       { name:'불량률(%)', type:'bar', data:valTest.map(r => r.defect_rate), barMaxWidth:40,
         itemStyle:{ color: p => p.dataIndex < bySplit.val.length ? 'rgba(139,92,246,.8)' : 'rgba(6,182,212,.8)',
           borderRadius:[3,3,0,0] },
-        label:{ show:true, position:'top', fontSize:11, formatter:'{c}%', color:'#475569' } },
+        label:{ show:true, position:'top', fontSize:13, formatter:'{c}%', color:'#475569' } },
       { name:'clf_proba', type:'line', yAxisIndex:1, data:valTest.map(r => r.proba_mean.toFixed(4)),
         smooth:true, symbol:'circle', symbolSize:8,
         lineStyle:{ color:'#F97316', width:2 }, itemStyle:{ color:'#F97316' } },
@@ -162,7 +162,7 @@ export function DailyPage() {
       </div>
 
       <ChartCard title="📅 Train 일별 불량 추이" tag="2025-10 ~ 2026-04-10 · 드래그로 범위 조절">
-        <div style={{ fontSize:11, color:'#94A3B8', marginBottom:6 }}>
+        <div style={{ fontSize:13, color:'#94A3B8', marginBottom:6 }}>
           막대 = 불량 unit 수 &nbsp;·&nbsp; 빨간선 = 불량률(%) &nbsp;·&nbsp;
           <span style={{ color:'#3B82F6', fontWeight:600 }}>하단 슬라이더로 기간 조절</span>
         </div>
@@ -170,7 +170,7 @@ export function DailyPage() {
       </ChartCard>
 
       <ChartCard title="🔍 Val · Test 일별 불량률" tag="결과 미확정 · 최근 2주">
-        <div style={{ fontSize:11, color:'#94A3B8', marginBottom:6 }}>
+        <div style={{ fontSize:13, color:'#94A3B8', marginBottom:6 }}>
           <span style={{ color:'#8B5CF6' }}>■</span> Val (04/14~04/17) &nbsp;
           <span style={{ color:'#06B6D4' }}>■</span> Test (04/21~04/24) &nbsp;·&nbsp;
           주황선 = 평균 clf_proba
@@ -206,7 +206,7 @@ export function MonthlyPage() {
       `<b>${params[0].axisValue}</b><br/>` +
       params.map(p => `${p.seriesName}: ${p.value}${p.seriesName.includes('불량률') ? '%' : '건'}`).join('<br/>')
     },
-    legend: { data:['불량 unit','불량률(%)'], bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
+    legend: { data:['불량 unit','불량률(%)'], bottom:0, textStyle:{ fontSize:13, color:'#475569' } },
     grid: { top:16, left:52, right:52, bottom:44 },
     xAxis: { type:'category', data:months, axisLabel:{ fontSize:11, color:'#475569' } },
     yAxis: [
@@ -221,11 +221,11 @@ export function MonthlyPage() {
           const colors = ['#93C5FD','#60A5FA','#3B82F6','#2563EB','#1D4ED8','#1E40AF','#172554']
           return colors[p.dataIndex % colors.length]
         }, borderRadius:[4,4,0,0] },
-        label:{ show:true, position:'top', fontSize:10, formatter:'{c}건', color:'#475569' } },
+        label:{ show:true, position:'top', fontSize:12, formatter:'{c}건', color:'#475569' } },
       { name:'불량률(%)', type:'line', yAxisIndex:1, data:monthRates,
         smooth:true, symbol:'circle', symbolSize:8,
         lineStyle:{ color:'#EF4444', width:2.5 }, itemStyle:{ color:'#EF4444' },
-        label:{ show:true, position:'top', fontSize:10, formatter:'{c}%', color:'#EF4444' } },
+        label:{ show:true, position:'top', fontSize:12, formatter:'{c}%', color:'#EF4444' } },
     ],
   }
 
@@ -242,7 +242,7 @@ export function MonthlyPage() {
       symbol:'circle', symbolSize:8,
       lineStyle:{ color:'#F97316', width:2.5 }, itemStyle:{ color:'#F97316' },
       areaStyle:{ color:'rgba(249,115,22,.08)' },
-      label:{ show:true, position:'top', fontSize:9, formatter:'{c}', color:'#F97316' },
+      label:{ show:true, position:'top', fontSize:11, formatter:'{c}', color:'#F97316' },
     }],
   }
 
@@ -260,18 +260,18 @@ export function MonthlyPage() {
       </ChartCard>
 
       <ChartCard title="📈 월별 평균 clf_proba 추이" tag="모델 예측 확률">
-        <div style={{ fontSize:11, color:'#94A3B8', marginBottom:6 }}>
+        <div style={{ fontSize:13, color:'#94A3B8', marginBottom:6 }}>
           불량률이 높은 달에 clf_proba도 높으면 모델 예측이 실제 패턴을 잘 반영하는 것
         </div>
         <ReactECharts option={probaOpt} style={{ height:200 }} />
       </ChartCard>
 
       <ChartCard title="📋 월별 상세 집계" tag="Train">
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
           <thead>
             <tr>
               {['월','총 unit','불량 unit','불량률','평균 clf_proba'].map(h => (
-                <th key={h} style={{ padding:'7px 12px', textAlign:'left', fontSize:10, fontWeight:600,
+                <th key={h} style={{ padding:'7px 12px', textAlign:'left', fontSize:12, fontWeight:600,
                   color:'#94A3B8', borderBottom:'1.5px solid #E2E8F0', background:'#F8FAFC', textTransform:'uppercase' }}>{h}</th>
               ))}
             </tr>
@@ -324,19 +324,19 @@ export function YearlyPage() {
   const barOpt = {
     tooltip: { trigger:'axis', formatter: p => `${p[0].name}: ${p[0].value}%` },
     grid: { top:10, left:52, right:30, bottom:30 },
-    xAxis: { type:'category', data:labels, axisLabel:{ fontSize:13, color:'#475569', fontWeight:600 } },
+    xAxis: { type:'category', data:labels, axisLabel:{ fontSize:9, color:'#475569', fontWeight:600 } },
     yAxis: { type:'value', axisLabel:{ fontSize:10, color:'#94A3B8', formatter:'{value}%' },
       splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
     series: [{
       type:'bar', data: splits.map(sp => agg[sp].rate), barMaxWidth:56,
       itemStyle: { color: p => colors[p.dataIndex], borderRadius:[5,5,0,0] },
-      label: { show:true, position:'top', fontSize:13, formatter:'{c}%', color:'#475569', fontWeight:700 },
+      label: { show:true, position:'top', fontSize:11, formatter:'{c}%', color:'#475569', fontWeight:700 },
     }],
   }
 
   const pieOpt = {
     tooltip: { trigger:'item', formatter: '{b}: {c}건 ({d}%)' },
-    legend: { bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
+    legend: { bottom:0, textStyle:{ fontSize:13, color:'#475569' } },
     series: [{
       type:'pie', radius:['40%','68%'], center:['50%','44%'],
       data: splits.map((sp, i) => ({
@@ -344,7 +344,7 @@ export function YearlyPage() {
         itemStyle: { color: colors[i] },
       })),
       label: { show:false },
-      emphasis: { label: { show:true, fontSize:13, fontWeight:'bold' } },
+      emphasis: { label: { show:true, fontSize:11, fontWeight:'bold' } },
     }],
   }
 
@@ -373,12 +373,12 @@ export function YearlyPage() {
     tooltip: { formatter: p => `${months[p.data[0]]} · ${labels[p.data[1]]}<br/>불량률: ${p.data[2]}%` },
     visualMap: { min:0, max:Math.ceil(maxRate), orient:'horizontal', bottom:0, left:'center',
       inRange:{ color:['#EFF6FF','#BFDBFE','#60A5FA','#F97316','#EF4444'] },
-      textStyle:{ fontSize:10, color:'#94A3B8' }, text:['높음','낮음'] },
+      textStyle:{ fontSize:12, color:'#94A3B8' }, text:['높음','낮음'] },
     grid: { top:16, left:70, right:20, bottom:60 },
     xAxis: { type:'category', data:months, axisLabel:{ fontSize:11, color:'#475569' } },
-    yAxis: { type:'category', data:labels, axisLabel:{ fontSize:12, color:'#475569', fontWeight:600 } },
+    yAxis: { type:'category', data:labels, axisLabel:{ fontSize:9, color:'#475569', fontWeight:600 } },
     series: [{ type:'heatmap', data:hmData,
-      label: { show:true, fontSize:11, fontWeight:600, formatter: p => p.data[2] > 0 ? p.data[2] + '%' : '' },
+      label: { show:true, fontSize:13, fontWeight:600, formatter: p => p.data[2] > 0 ? p.data[2] + '%' : '' },
       emphasis:{ itemStyle:{ shadowBlur:8 } } }],
   }
 
@@ -410,11 +410,11 @@ export function YearlyPage() {
       </ChartCard>
 
       <ChartCard title="📋 Split별 상세" tag="실데이터">
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
           <thead>
             <tr>
               {['Split','총 unit','불량 unit','불량률','평균 clf_proba','기간'].map(h => (
-                <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600,
+                <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:12, fontWeight:600,
                   color:'#94A3B8', borderBottom:'1.5px solid #E2E8F0', background:'#F8FAFC', textTransform:'uppercase' }}>{h}</th>
               ))}
             </tr>
@@ -431,7 +431,7 @@ export function YearlyPage() {
                 <td style={{ padding:'10px 12px', fontFamily:'DM Mono,monospace', color:'#EF4444' }}>{agg[sp].defect.toLocaleString()}</td>
                 <td style={{ padding:'10px 12px', fontFamily:'DM Mono,monospace', fontWeight:700, color }}>{agg[sp].rate}%</td>
                 <td style={{ padding:'10px 12px', fontFamily:'DM Mono,monospace' }}>{agg[sp].proba_avg}</td>
-                <td style={{ padding:'10px 12px', color:'#94A3B8', fontSize:11 }}>{period}</td>
+                <td style={{ padding:'10px 12px', color:'#94A3B8', fontSize:13 }}>{period}</td>
               </tr>
             ))}
           </tbody>

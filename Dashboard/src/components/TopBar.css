@@ -15,7 +15,7 @@
 
 .logo {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--accent);
   letter-spacing: 1px;
@@ -28,7 +28,7 @@
 }
 
 .topbar-title {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text3);
   font-weight: 400;
 }
@@ -36,7 +36,7 @@
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 
 .date-pill {
-  font-size: 11px;
+  font-size: 10px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text3);
   padding: 5px 12px;
@@ -56,7 +56,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 12px;
   transition: border-color .15s, box-shadow .15s;
   color: var(--text2);
 }
@@ -99,15 +99,15 @@
   border-radius: 8px;
   background: linear-gradient(135deg, var(--accent), var(--accent-light));
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.profile-name { font-size: 13px; font-weight: 500; color: var(--text); }
-.profile-arrow { font-size: 9px; color: var(--text3); }
+.profile-name { font-size: 11px; font-weight: 500; color: var(--text); }
+.profile-arrow { font-size: 11px; color: var(--text3); }
 
 .profile-dropdown {
   position: absolute;
@@ -124,7 +124,7 @@
 
 .pd-item {
   padding: 10px 14px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text2);
   cursor: pointer;
   transition: background .15s;

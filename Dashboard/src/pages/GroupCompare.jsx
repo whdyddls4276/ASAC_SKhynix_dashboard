@@ -40,7 +40,7 @@ export default function GroupCompare() {
         <div className="gc-title">📈 그룹 비교</div>
         <div className="gc-desc">
           불량(HIGH 리스크) / 정상(MED 리스크) 그룹 간 피처 중앙값 차이 —
-          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 6 }}>lgbm_gain 상위 10개 · shap_data.csv 기반</span>
+          <span style={{ fontSize: 13, color: '#64748b', marginLeft: 6 }}>lgbm_gain 상위 10개 · shap_data.csv 기반</span>
         </div>
       </div>
 

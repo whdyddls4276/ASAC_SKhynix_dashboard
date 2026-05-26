@@ -30,7 +30,7 @@
 }
 
 .rm-toolbar-title {
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 600;
   color: #fff;
   white-space: nowrap;
@@ -45,7 +45,7 @@
 .rm-tool-btn {
   padding: 6px 14px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid rgba(255,255,255,0.25);
@@ -88,7 +88,7 @@
   padding: 7px 20px;
   background: #EFF6FF;
   border-bottom: 1px solid #BFDBFE;
-  font-size: 12px;
+  font-size: 10px;
   color: #1E3A5F;
   display: flex;
   gap: 16px;
@@ -143,7 +143,7 @@
   padding: 12px 16px;
   background: #F8FAFC;
   border-bottom: 1px solid #E2E8F0;
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 600;
   color: #1E3A5F;
   flex-shrink: 0;
@@ -175,7 +175,7 @@
   border-radius: 50%;
   background: #1E3A5F;
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -187,7 +187,7 @@
   max-width: 220px;
   padding: 9px 12px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
@@ -207,6 +207,14 @@
 
 .rm-bubble.streaming {
   border-bottom: 2px solid #3B82F6;
+}
+
+.rm-bubble.tool {
+  background: #F1F5F9;
+  color: #475569;
+  font-size: 10px;
+  font-style: italic;
+  border: 1px dashed #CBD5E1;
 }
 
 /* 타이핑 애니메이션 */
@@ -250,7 +258,7 @@
   border: 1px solid #CBD5E1;
   border-radius: 8px;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.5;
   outline: none;
   font-family: inherit;
@@ -268,7 +276,7 @@
   color: #fff;
   border: none;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;

@@ -6,6 +6,7 @@ export function useCSV(path) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!path) { setData([]); setLoading(false); return }
     setLoading(true)
     fetch(path)
       .then(r => {

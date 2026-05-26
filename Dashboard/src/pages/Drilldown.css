@@ -8,7 +8,7 @@
 
 .dd-body-3col {
   display: grid;
-  grid-template-columns: 280px 1fr 560px;
+  grid-template-columns: 330px 1fr 600px;
   flex: 1;
   overflow: hidden;
   height: 100%;
@@ -28,8 +28,8 @@
 .dd-right-panel  { border-left: 1px solid var(--border); }
 .dd-center-panel { overflow: visible; }
 
-.dd-panel-title {
-  font-size: 13px;
+.dd-panel-title{
+  font-size: 14px;
   font-weight: 700;
   color: var(--text);
   padding: 12px 14px 0;
@@ -37,8 +37,8 @@
 }
 
 /* ── 우측 패널 섹션 타이틀 ── */
-.dd-right-panel-title {
-  font-size: 11px;
+.dd-right-panel-title{
+  font-size: 14px;
   font-weight: 700;
   color: var(--text2);
   padding: 8px 14px 4px;
@@ -67,7 +67,7 @@
   display: flex;
 }
 
-.dd-panel-header {
+.dd-panel-header{
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -76,7 +76,7 @@
   margin-bottom: 8px;
 }
 
-.dd-panel-header-right {
+.dd-panel-header-right{
   display: flex;
   align-items: center;
   gap: 8px;
@@ -101,7 +101,7 @@
 
 
 .dd-map-hint {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
   padding: 24px;
   text-align: center;
@@ -128,8 +128,8 @@
   border-radius: 5px;
   background: var(--surface);
   color: var(--text);
-  font-size: 11px;
-  padding: 5px 8px;
+  font-size: 12px;
+  padding: 6px 10px;
   box-sizing: border-box;
 }
 .dd-search-input:focus {
@@ -138,7 +138,7 @@
 }
 
 /* ── 트리 컬럼 헤더 ── */
-.dd-tree-col-header {
+.dd-tree-col-header{
   display: flex;
   align-items: center;
   gap: 5px;
@@ -147,10 +147,10 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.dd-col-lot  { font-size: 9px; font-weight: 700; color: var(--text3); flex-shrink: 0; min-width: 62px; }
-.dd-col-bar  { font-size: 9px; font-weight: 700; color: var(--text3); flex: 1; }
-.dd-col-pct  { font-size: 9px; font-weight: 700; color: var(--text3); flex-shrink: 0; width: 34px; text-align: right; }
-.dd-col-ppm  { font-size: 9px; font-weight: 700; color: var(--text3); flex-shrink: 0; width: 40px; text-align: right; }
+.dd-col-lot  { font-size: 10px; font-weight: 700; color: var(--text3); flex-shrink: 0; min-width: 68px; }
+.dd-col-bar  { font-size: 10px; font-weight: 700; color: var(--text3); flex: 1; }
+.dd-col-pct  { font-size: 10px; font-weight: 700; color: var(--text3); flex-shrink: 0; width: 44px; text-align: right; }
+.dd-col-ppm  { font-size: 10px; font-weight: 700; color: var(--text3); flex-shrink: 0; width: 52px; text-align: right; }
 
 /* ── 아코디언 트리 ── */
 .dd-tree-list {
@@ -161,7 +161,7 @@
 
 .dd-tree-hint {
   padding: 12px;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
 }
 
@@ -188,7 +188,7 @@
 .dd-lot-btn.selected { background: var(--accent-pale); }
 
 .dd-lot-arrow {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text3);
   flex-shrink: 0;
   width: 10px;
@@ -198,7 +198,7 @@
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
-  min-width: 62px;
+  min-width: 68px;
 }
 
 /* 미니 위험도 바 */
@@ -223,7 +223,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
   flex-shrink: 0;
-  width: 34px;
+  width: 44px;
   text-align: right;
 }
 .dd-lot-pct.ok     { color: var(--text3); }
@@ -231,11 +231,11 @@
 .dd-lot-pct.danger { color: #DC2626; }
 
 .dd-lot-ppm {
-  font-size: 9px;
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text3);
   flex-shrink: 0;
-  width: 40px;
+  width: 52px;
   text-align: right;
   white-space: nowrap;
 }
@@ -271,11 +271,11 @@
   font-size: 11px;
   font-family: 'JetBrains Mono', monospace;
   flex-shrink: 0;
-  min-width: 32px;
+  min-width: 36px;
 }
 
 .dd-wafer-sort-btn {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text3);
   background: none;
   border: 1px solid var(--border);
@@ -306,7 +306,7 @@
   color: #854D0E;
   border: 1px solid #FDE68A;
 }
-.dd-chip.tbd.sm { font-size: 9px; padding: 1px 4px; }
+.dd-chip.tbd.sm { font-size: 10px; padding: 1px 4px; }
 .dd-chip.danger { background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }
 .dd-chip.info   { background: var(--accent-pale); color: var(--accent); border: 1px solid var(--accent-mid); }
 
@@ -326,7 +326,9 @@
   min-width: 0;
   min-height: 0;
   aspect-ratio: 1 / 1;
-  max-height: 100%;
+  max-height: 95%;
+  max-width: 95%;
+  margin: 0 auto;
   overflow: visible;
   /* 라벨이 wrap 밖으로 나가도 잘리지 않도록 */
   contain: none;
@@ -343,7 +345,7 @@
 }
 
 .dd-wmap-empty {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
   padding: 24px;
   text-align: center;
@@ -352,14 +354,14 @@
 .dd-wmap-legend {
   font-size: 10px;
   color: var(--text);
-  min-width: 160px;
-  max-width: 200px;
+  min-width: 180px;
+  max-width: 220px;
 }
 
-.dd-wmap-legend-title {
+.dd-wmap-legend-title{
   font-weight: 600;
   margin-bottom: 8px;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .dd-wmap-legend-section { margin-bottom: 8px; }
@@ -395,7 +397,7 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text3);
   line-height: 1.7;
 }
@@ -412,7 +414,7 @@
 
 .dd-report-empty {
   padding: 16px 14px;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
 }
 
@@ -442,7 +444,7 @@
 }
 
 .dd-verdict-badge {
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: -0.3px;
 }
@@ -450,7 +452,7 @@
 .dd-verdict-badge.normal { color: #16A34A; }
 
 /* Die 진단 compact 헤더 (verdict 대체) */
-.dd-die-header {
+.dd-die-header{
   padding: 8px 12px;
   border-radius: 7px;
   border: 1.5px solid;
@@ -461,14 +463,14 @@
 .dd-die-header.risk   { background: #FEF2F2; border-color: #EF4444; }
 .dd-die-header.normal { background: #F0FDF4; border-color: #86EFAC; }
 
-.dd-die-header-row {
+.dd-die-header-row{
   display: flex;
   align-items: center;
   gap: 7px;
 }
 
 .dd-die-coord-main {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text);
@@ -476,7 +478,7 @@
 }
 
 .dd-verdict-serial {
-  font-size: 10px;
+  font-size: 11px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text3);
   line-height: 1.6;
@@ -488,7 +490,7 @@
   display: block;
 }
 .dd-verdict-serial-sub {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text3);
   display: block;
 }
@@ -507,7 +509,7 @@
 .dd-report-close:hover { background: var(--surface2); color: var(--text); }
 
 .dd-verdict-pred {
-  font-size: 13px;
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
   color: var(--text);
@@ -523,7 +525,7 @@
   gap: 2px;
   padding: 1px 5px;
   border-radius: 8px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
 }
 .dd-verdict-chip.tbd {
@@ -535,8 +537,8 @@
 .dd-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 
 .dd-section { }
-.dd-section-title {
-  font-size: 11px;
+.dd-section-title{
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 5px;
@@ -563,7 +565,7 @@
 }
 
 .dd-section-desc {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text3);
   line-height: 1.5;
 }
@@ -573,9 +575,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 0;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 10px;
 }
 .dd-detail-row:last-child { border-bottom: none; }
 .dd-detail-key { color: var(--text3); }
@@ -583,7 +585,7 @@
 .dd-detail-val.danger { color: #DC2626; }
 
 .dd-worst-die {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text);
 }
 .dd-worst-die .danger { color: #DC2626; font-weight: 700; }
@@ -595,7 +597,7 @@
   border-radius: 6px;
   background: var(--surface2);
   color: var(--text3);
-  font-size: 11px;
+  font-size: 10px;
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -613,7 +615,7 @@
   flex-shrink: 0;
 }
 
-.dd-unit-compare-title {
+.dd-unit-compare-title{
   display: flex;
   align-items: center;
   gap: 6px;
@@ -628,7 +630,7 @@
 }
 
 .dd-unit-compare-sub {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text3);
 }
 
@@ -656,13 +658,13 @@
 
 .dd-pos-arrow {
   width: 8px;
-  font-size: 8px;
+  font-size: 12px;
   color: #7C3AED;
   flex-shrink: 0;
 }
 
 .dd-pos-num {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
@@ -719,13 +721,13 @@
 .dd-pos-bar-label.danger { color: #DC2626; }
 
 .dd-pos-unit {
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 400;
   color: var(--text3);
 }
 
 .dd-pos-clf {
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--text3);
 }
@@ -760,21 +762,21 @@
   min-width: 110px;
 }
 
-.dd-bottom-thresh-title {
-  font-size: 11px;
+.dd-bottom-thresh-title{
+  font-size: 14px;
   font-weight: 700;
   color: var(--text);
 }
 
 .dd-bottom-thresh-val {
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 800;
   font-family: 'JetBrains Mono', monospace;
   color: #F97316;
 }
 
 .dd-bottom-thresh-sub {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--text3);
 }
 
@@ -810,7 +812,7 @@
 }
 
 .dd-bottom-thresh-marker-label {
-  font-size: 9px;
+  font-size: 10px;
   font-family: 'JetBrains Mono', monospace;
   color: #F97316;
   font-weight: 700;
@@ -821,7 +823,7 @@
 .dd-bottom-thresh-ends {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
   margin-top: 14px;
@@ -830,14 +832,14 @@
 /* 포지션 그리드 */
 .dd-bottom-pos { display: flex; flex-direction: column; gap: 5px; }
 
-.dd-bottom-pos-title {
-  font-size: 11px;
+.dd-bottom-pos-title{
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
 }
 
 .dd-bottom-pos-serial {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
   font-weight: 400;
@@ -865,14 +867,14 @@
 .dd-bpos-row.risk { background: #FFF7F7; }
 .dd-bpos-row.risk.selected { border-color: #DC2626; background: #FEF2F2; }
 
-.dd-bpos-header {
+.dd-bpos-header{
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
 .dd-bpos-num {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text);
@@ -898,13 +900,13 @@
 .dd-bpos-ppm.danger { color: #DC2626; }
 
 .dd-bpos-coord {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
 }
 
 .dd-bpos-sel-arrow {
-  font-size: 9px;
+  font-size: 10px;
   color: #7C3AED;
   flex-shrink: 0;
 }
@@ -934,7 +936,7 @@
 }
 
 .dd-bottom-hint {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
   padding: 4px 0;
 }
@@ -948,11 +950,11 @@
 }
 
 /* 섹션 타이틀 — 각 열 맨 위 고정 */
-.dd-right-panel .dd-right-panel-title {
+.dd-right-panel .dd-right-panel-title{
   border-bottom: 1.5px solid var(--border);
   background: var(--surface2);
   padding: 7px 12px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text2);
   text-transform: uppercase;

@@ -176,7 +176,7 @@ export default function WaferMap() {
     const symH = Math.max(3, Math.floor(CANVAS / yRange) - 1)
     return {
       tooltip: { formatter: p => `die(${p.data.origX}, ${p.data.origY})<br/>예측 불량지수: ${parseFloat(p.data.value[2]).toFixed(6)}` },
-      visualMap: { min: 0, max: maxPred || 0.01, dimension: 2, calculable: true, orient: 'horizontal', left: 'center', bottom: 8, inRange: { color: ['#22C55E', '#FCD34D', '#EF4444'] }, textStyle: { fontSize: 10 } },
+      visualMap: { min: 0, max: maxPred || 0.01, dimension: 2, calculable: true, orient: 'horizontal', left: 'center', bottom: 8, inRange: { color: ['#22C55E', '#FCD34D', '#EF4444'] }, textStyle: { fontSize: 12 } },
       grid: { top: 20, bottom: 70, left: 20, right: 20, containLabel: false },
       xAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
       yAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
@@ -189,7 +189,7 @@ export default function WaferMap() {
   }, [dies, selLot, selWafer])
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8', fontSize: 14 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8', fontSize: 11 }}>
       데이터 로딩 중…
     </div>
   )
@@ -200,13 +200,13 @@ export default function WaferMap() {
         <div className="wm-title">🗺 웨이퍼맵</div>
         <div className="wm-desc">날짜 → 로트 → 웨이퍼 → 웨이퍼맵 순으로 드릴다운합니다.</div>
       </div>
-      <div style={{ fontSize:11, color:'#64748B', marginBottom:8 }}>
+      <div style={{ fontSize:13, color:'#64748B', marginBottom:8 }}>
         📅 기준일: 2026-05-07 — 최근 WT 완료분 기준
       </div>
 
       {/* Step 1: 최근 2주 날짜별 위험 unit 수 */}
       <div style={CARD}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
           📅 최근 2주 날짜별 위험 unit 수 — 막대 클릭 시 로트 상세
           {selDate && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: {selDate}</span>}
         </div>
@@ -214,14 +214,14 @@ export default function WaferMap() {
           ? <ReactECharts option={dateBarOption} style={{ height: 220 }}
               onEvents={{ click: p => { setSelDate(p.data.date); setSelLot(null); setSelWafer(null) } }}
             />
-          : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
+          : <div style={{ color: '#94A3B8', fontSize: 11, textAlign: 'center', padding: 40 }}>데이터 없음</div>
         }
       </div>
 
       {/* Step 2: 로트별 위험 unit 수 */}
       {selDate && (
         <div style={CARD}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
             🏭 {selDate} — 로트별 위험 unit 수 — 막대 클릭 시 웨이퍼 상세
             {selLot && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Lot {selLot}</span>}
           </div>
@@ -229,7 +229,7 @@ export default function WaferMap() {
             ? <ReactECharts option={lotBarOption} style={{ height: 220 }}
                 onEvents={{ click: p => { setSelLot(p.data.lot); setSelWafer(null) } }}
               />
-            : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
+            : <div style={{ color: '#94A3B8', fontSize: 11, textAlign: 'center', padding: 40 }}>데이터 없음</div>
           }
         </div>
       )}
@@ -237,7 +237,7 @@ export default function WaferMap() {
       {/* Step 3: 웨이퍼별 위험 unit 수 */}
       {selLot && (
         <div style={CARD}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
             🏭 Lot {selLot} ({selDate}) — 웨이퍼별 위험 unit 수 — 막대 클릭 시 웨이퍼맵
             {selWafer && <span style={{ marginLeft: 8, color: '#6366F1' }}>선택: Wafer {selWafer}</span>}
           </div>
@@ -245,7 +245,7 @@ export default function WaferMap() {
             ? <ReactECharts option={waferBarOption} style={{ height: 220 }}
                 onEvents={{ click: p => setSelWafer(p.data.wafer) }}
               />
-            : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
+            : <div style={{ color: '#94A3B8', fontSize: 11, textAlign: 'center', padding: 40 }}>데이터 없음</div>
           }
         </div>
       )}
@@ -253,15 +253,15 @@ export default function WaferMap() {
       {/* Step 4: 웨이퍼맵 */}
       {selLot && selWafer && (
         <div style={{ ...CARD, marginBottom: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
             🗺 Lot {selLot} — Wafer {selWafer} 웨이퍼맵
-            <span style={{ marginLeft: 8, fontSize: 11, color: '#64748B', fontWeight: 400 }}>색상: 예측 불량지수 (초록→노랑→빨강)</span>
+            <span style={{ marginLeft: 8, fontSize: 13, color: '#64748B', fontWeight: 400 }}>색상: 예측 불량지수 (초록→노랑→빨강)</span>
           </div>
           {waferMapOption
             ? <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <ReactECharts ref={waferChartRef} option={waferMapOption} style={{ width: 500, height: 500 }} onChartReady={drawCircle} />
               </div>
-            : <div style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>데이터 없음</div>
+            : <div style={{ color: '#94A3B8', fontSize: 11, textAlign: 'center', padding: 40 }}>데이터 없음</div>
           }
         </div>
       )}

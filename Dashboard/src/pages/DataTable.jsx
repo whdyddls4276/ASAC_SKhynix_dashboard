@@ -9,7 +9,7 @@ function GradeBadge({ grade }) {
   const c = GRADE_COLORS[grade] || GRADE_COLORS.grade4
   return (
     <span style={{
-      fontSize: 9,
+      fontSize: 11,
       padding: '2px 7px',
       borderRadius: 3,
       fontWeight: 600,
@@ -105,7 +105,7 @@ export default function DataTablePage() {
         background: '#FFFBEB',
         border: '1.5px solid #F59E0B',
         borderRadius: 6,
-        fontSize: 11,
+        fontSize: 13,
         color: '#92400E',
         marginBottom: 8,
       }}>
@@ -122,8 +122,8 @@ export default function DataTablePage() {
             { label:'Grade 3',        value: summary.g3.toLocaleString(),    color: GRADE_COLORS.grade3.text },
           ].map((s, i) => (
             <div key={i} className="dt-stat" style={{ borderTop:`3px solid ${s.color}` }}>
-              <div style={{ fontSize:20, fontWeight:700, fontFamily:'DM Mono,monospace', color:s.color }}>{s.value}</div>
-              <div style={{ fontSize:11, color:'#64748B', marginTop:2 }}>{s.label}</div>
+              <div style={{ fontSize:17, fontWeight:700, fontFamily:'DM Mono,monospace', color:s.color }}>{s.value}</div>
+              <div style={{ fontSize:13, color:'#64748B', marginTop:2 }}>{s.label}</div>
             </div>
           ))}
         </div>

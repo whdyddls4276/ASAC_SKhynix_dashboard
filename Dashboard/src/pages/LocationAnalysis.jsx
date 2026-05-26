@@ -43,7 +43,7 @@ export function PositionPage() {
   }, [data])
 
   if (loading || !posData.length) {
-    return <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>데이터 로딩 중…</div>
+    return <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:11 }}>데이터 로딩 중…</div>
   }
 
   const maxRate = Math.max(...posData.map(d => d.rate))
@@ -51,7 +51,7 @@ export function PositionPage() {
   const barOpt = {
     tooltip: { trigger:'axis', formatter: p => `${p[0].name}<br/>불량률: ${p[0].value}%<br/>불량 건수: ${posData[p[0].dataIndex].count.toLocaleString()}건` },
     grid: { top:20, left:90, right:60, bottom:20 },
-    xAxis: { type:'value', max: parseFloat((maxRate * 1.3).toFixed(1)), axisLabel:{ formatter:'{value}%', fontSize:10, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
+    xAxis: { type:'value', max: parseFloat((maxRate * 1.3).toFixed(1)), axisLabel:{ formatter:'{value}%', fontSize:12, color:'#94A3B8' }, splitLine:{ lineStyle:{ color:'#F1F5F9' } } },
     yAxis: { type:'category', data:posData.map(d=>d.pos), axisLabel:{ fontSize:11, color:'#475569' } },
     series: [{
       type:'bar', data:posData.map(d=>d.rate), barMaxWidth:28,
@@ -59,7 +59,7 @@ export function PositionPage() {
         color: p => ['#3B82F6','#F97316','#EF4444','#8B5CF6'][p.dataIndex],
         borderRadius:[0,5,5,0],
       },
-      label:{ show:true, position:'right', formatter:'{c}%', fontSize:11, color:'#475569' },
+      label:{ show:true, position:'right', formatter:'{c}%', fontSize:13, color:'#475569' },
     }],
   }
 
@@ -110,8 +110,8 @@ export function LotPage() {
   return (
     <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, outline: '3px solid #EF4444', outlineOffset: '-3px' }}>
       <div className="dummy-page-banner">🔴 DUMMY PAGE — run_wf_xy 파싱 후 실제 Lot ID 연결 필요</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📦 Lot별 분석</div>
-      <div style={{ fontSize: 13, color: 'var(--text3)' }}>Lot별 위험 unit 수 및 불량률을 비교합니다.</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>📦 Lot별 분석</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)' }}>Lot별 위험 unit 수 및 불량률을 비교합니다.</div>
 
       <div style={{
         padding: '48px 24px',
@@ -120,10 +120,10 @@ export function LotPage() {
         borderRadius: 12,
         textAlign: 'center',
         color: '#B91C1C',
-        fontSize: 13,
+        fontSize: 11,
       }}>
         🔴 Lot별 바차트 (구현 예정)<br/>
-        <span style={{ fontSize: 11, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
+        <span style={{ fontSize: 13, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
           run_wf_xy → Lot ID 파싱 → lot별 불량 unit 수 / 불량률 바차트<br/>
           선택한 lot → wafer별 드릴다운
         </span>
@@ -137,8 +137,8 @@ export function WaferPage() {
   return (
     <div className="loc-page" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, outline: '3px solid #EF4444', outlineOffset: '-3px' }}>
       <div className="dummy-page-banner">🔴 DUMMY PAGE — run_wf_xy 파싱 후 실제 Wafer 번호 연결 필요</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>🧿 Wafer별 분석</div>
-      <div style={{ fontSize: 13, color: 'var(--text3)' }}>Wafer별 불량 분포 및 Position 드릴다운을 제공합니다.</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>🧿 Wafer별 분석</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)' }}>Wafer별 불량 분포 및 Position 드릴다운을 제공합니다.</div>
 
       <div style={{
         padding: '48px 24px',
@@ -147,10 +147,10 @@ export function WaferPage() {
         borderRadius: 12,
         textAlign: 'center',
         color: '#B91C1C',
-        fontSize: 13,
+        fontSize: 11,
       }}>
         🔴 Wafer별 히트맵 (구현 예정)<br/>
-        <span style={{ fontSize: 11, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
+        <span style={{ fontSize: 13, marginTop: 8, display: 'block', color: '#9CA3AF' }}>
           run_wf_xy → Wafer 번호 파싱 → wafer별 불량률 히트맵<br/>
           선택한 wafer → position별 드릴다운
         </span>
@@ -216,7 +216,7 @@ export function UnitMapPage() {
       calculable: true,
       orient: 'horizontal', bottom: 8, left: 'center',
       inRange: { color: ['#FFFFFF','#FFE4E4','#FCA5A5','#F87171','#EF4444'] },
-      textStyle: { fontSize: 10, color: '#94A3B8' },
+      textStyle: { fontSize: 12, color: '#94A3B8' },
       text: ['불량(1.0)','정상(0.0)'],
     },
     grid: { top: 0, left: 0, right: 0, bottom: 55 },
@@ -257,7 +257,7 @@ export function UnitMapPage() {
   }, [])
 
   if (loading) {
-    return <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>데이터 로딩 중…</div>
+    return <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:11 }}>데이터 로딩 중…</div>
   }
 
   // position별 불량률 요약
@@ -274,13 +274,13 @@ export function UnitMapPage() {
           background: '#FFFBEB',
           border: '1.5px solid #F59E0B',
           borderRadius: 6,
-          fontSize: 11,
+          fontSize: 13,
           color: '#92400E',
           marginBottom: 10,
         }}>
           🟡 <b>근사 시각화</b> — die_x/die_y 실좌표 없음. position(1~4)을 4분면에 매핑하고 노이즈를 추가한 근사치입니다. 실제 웨이퍼 좌표 데이터 연결 시 교체 필요.
         </div>
-        <div style={{ fontSize:11, color:'#94A3B8', marginBottom:8, display:'flex', gap:16, flexWrap:'wrap' }}>
+        <div style={{ fontSize:13, color:'#94A3B8', marginBottom:8, display:'flex', gap:16, flexWrap:'wrap' }}>
           {posSummary.map(s => (
             <span key={s.pos}>
               <span style={{ color:s.color, fontWeight:700 }}>{s.pos}</span>: 평균 {s.proba}%
@@ -401,10 +401,10 @@ export function DieMapPage() {
   }, [locData])
 
   if (loading) return (
-    <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>데이터 로딩 중…</div>
+    <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:11 }}>데이터 로딩 중…</div>
   )
   if (!heatData.length) return (
-    <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>location_stats.csv 없음</div>
+    <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:11 }}>location_stats.csv 없음</div>
   )
 
   const hmOpt = {
@@ -428,7 +428,7 @@ export function DieMapPage() {
       calculable: true,
       orient: 'horizontal', bottom: 4, left: 'center',
       inRange: { color: ['#eff6ff', '#bfdbfe', '#fef3c7', '#fca5a5', '#dc2626'] },
-      textStyle: { fontSize: 10, color: '#94A3B8' },
+      textStyle: { fontSize: 12, color: '#94A3B8' },
       text: [`${Math.round(maxPpm).toLocaleString()} ppm`, '0'],
     },
     grid: { top: 20, left: 40, right: 30, bottom: 70 },
@@ -486,7 +486,7 @@ export function DieMapPage() {
     series: [{
       type: 'bar', data: radialBins.map(b => b.avgPpm), barMaxWidth: 40,
       itemStyle: { color: p => ['#22c55e','#84cc16','#eab308','#f97316','#dc2626'][p.dataIndex], borderRadius: [4, 4, 0, 0] },
-      label: { show: true, position: 'top', fontSize: 10, formatter: p => p.value.toLocaleString() },
+      label: { show: true, position: 'top', fontSize: 12, formatter: p => p.value.toLocaleString() },
     }],
   }
 
@@ -504,21 +504,21 @@ export function DieMapPage() {
             flex: 1, padding: '10px 14px',
             background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 8,
           }}>
-            <div style={{ fontSize: 10, color: '#94A3B8', marginBottom: 3 }}>{s.label}</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: 'DM Mono,monospace' }}>{s.val}</div>
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 3 }}>{s.label}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: s.color, fontFamily: 'DM Mono,monospace' }}>{s.val}</div>
           </div>
         ))}
       </div>
 
       <ChartCard title="🗺 Die 좌표별 평균 예측 PPM" tag="location_stats.csv">
-        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>
           셀 색상: 밝은 파랑(낮음) → 노랑 → 빨강(높음). 마우스 올리면 상세 수치 표시.
         </div>
         <ReactECharts option={hmOpt} style={{ height: 460 }} />
       </ChartCard>
 
       <ChartCard title="📡 반경별 평균 PPM (Edge 효과)" tag="die_x/die_y 중심 거리">
-        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
           웨이퍼 중심(반경 0)에서 외곽(반경 12+)으로 갈수록 PPM이 높아지는지 확인합니다.
         </div>
         <ReactECharts option={radialOpt} style={{ height: 200 }} />
@@ -597,14 +597,14 @@ export function WaferZonePage() {
   }, [data])
 
   if (loading || !waferPosData.wafers.length) {
-    return <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>데이터 로딩 중…</div>
+    return <div className="loc-page" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:11 }}>데이터 로딩 중…</div>
   }
 
   const waferOpt = {
     tooltip: { formatter: p => `${waferPosData.wafers[p.data[1]]} · ${waferPosData.positions[p.data[0]]}<br/>평균 불량확률: ${(p.data[2]*100).toFixed(1)}%` },
     visualMap: { min:0, max:1, orient:'horizontal', bottom:0, left:'center',
       inRange:{ color:['#F0FDF4','#FFF7ED','#FEF2F2','#EF4444'] },
-      textStyle:{ fontSize:10, color:'#94A3B8' }, text:['불량','정상'] },
+      textStyle:{ fontSize:12, color:'#94A3B8' }, text:['불량','정상'] },
     grid: { top:10, left:50, right:20, bottom:60 },
     xAxis: { type:'category', data:waferPosData.positions, axisLabel:{ fontSize:11, color:'#475569' } },
     yAxis: { type:'category', data:waferPosData.wafers, axisLabel:{ fontSize:10, color:'#94A3B8' } },
@@ -614,7 +614,7 @@ export function WaferZonePage() {
   const totalZone = zoneData.center + zoneData.middle + zoneData.edge || 1
   const zoneOpt = {
     tooltip: { trigger:'item', formatter:'{b}: {c}건 ({d}%)' },
-    legend: { bottom:0, textStyle:{ fontSize:11, color:'#475569' } },
+    legend: { bottom:0, textStyle:{ fontSize:13, color:'#475569' } },
     series: [{
       type:'pie', radius:['30%','70%'], center:['50%','45%'],
       data:[
@@ -622,7 +622,7 @@ export function WaferZonePage() {
         { value:zoneData.middle, name:'Serial 중간 1/3 (Middle)', itemStyle:{ color:'#F97316' } },
         { value:zoneData.edge,   name:'Serial 상위 1/3 (Edge)',   itemStyle:{ color:'#EF4444' } },
       ],
-      label:{ fontSize:11 },
+      label:{ fontSize:13 },
     }],
   }
 
@@ -634,7 +634,7 @@ export function WaferZonePage() {
           background: '#FFFBEB',
           border: '1.5px solid #F59E0B',
           borderRadius: 6,
-          fontSize: 11,
+          fontSize: 13,
           color: '#92400E',
           marginBottom: 10,
         }}>
@@ -655,10 +655,10 @@ export function WaferZonePage() {
             ].map((z,i) => (
               <div key={i} style={{ marginBottom:12, padding:'8px 10px', borderRadius:8, border:'1px solid #E2E8F0' }}>
                 <div style={{ display:'flex', justifyContent:'space-between' }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:z.color }}>{z.zone}</span>
-                  <span style={{ fontSize:12, fontFamily:'DM Mono,monospace', fontWeight:700, color:z.color }}>{z.rate}%</span>
+                  <span style={{ fontSize:13, fontWeight:600, color:z.color }}>{z.zone}</span>
+                  <span style={{ fontSize:11, fontFamily:'DM Mono,monospace', fontWeight:700, color:z.color }}>{z.rate}%</span>
                 </div>
-                <div style={{ fontSize:10, color:'#94A3B8', marginTop:3 }}>{z.desc} ({z.count.toLocaleString()}건)</div>
+                <div style={{ fontSize:12, color:'#94A3B8', marginTop:3 }}>{z.desc} ({z.count.toLocaleString()}건)</div>
               </div>
             ))}
           </div>

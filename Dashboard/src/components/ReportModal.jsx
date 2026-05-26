@@ -3,187 +3,150 @@ import './ReportModal.css'
 
 const API_URL = 'http://localhost:8000'
 
-// HTML 보고서에 주입할 클릭+드래그 감지 스크립트
+// HTML 보고서에 주입할 인터랙티브 스크립트
+//  - 차트 편집 모드: report.py가 자체 구현. 부모는 'SET_CHART_EDIT_MODE'를 직접 전송.
+//  - 아래는 텍스트 편집(B-2) / 차트 메모(B-3) 전용 스크립트.
 const INJECT_SCRIPT = `
 <script>
+
+// ── 인라인 텍스트 편집 ─────────────────────────────────────
 (function() {
-  var overlays = [];   // 선택된 박스 하이라이트 (여러 개 가능)
-  var dragBox  = null;
-  var selectMode = false;
-  var dragStart  = null;
-  var hoverEl    = null;
-
-  // ── 유틸 ──────────────────────────────────────────────────
-  function getLabel(el) {
-    if (el.dataset && el.dataset.section) return el.dataset.section;
-    var tag = el.tagName.toLowerCase();
-    if (tag === 'canvas') return '차트 영역';
-    if (tag === 'table')  return '표 영역';
-    var txt = (el.innerText || el.textContent || '').trim().substring(0, 40);
-    return txt || '선택된 영역';
+  var editMode = false;
+  var EDITABLE_TAGS = ['H1','H2','H3','H4','H5','H6','P','SPAN','TD','TH','LI','CAPTION','FIGCAPTION','DT','DD'];
+  function isEditable(el) {
+    if (!el || !el.tagName) return false;
+    if (el.closest('[data-no-edit]')) return false;
+    if (el.closest('canvas, svg, script, style')) return false;
+    return EDITABLE_TAGS.indexOf(el.tagName) !== -1;
   }
-
-  function clearAll() {
-    overlays.forEach(function(o) { o.remove(); });
-    overlays = [];
-    if (dragBox) { dragBox.remove(); dragBox = null; }
-    dragStart = null;
+  function flashHover(el, on) {
+    if (!el) return;
+    el.style.outline = on ? '1px dashed #10B981' : '';
+    el.style.cursor  = on ? 'text' : '';
   }
+  var lastHover = null;
+  document.addEventListener('mouseover', function(e) {
+    if (!editMode) return;
+    if (lastHover) flashHover(lastHover, false);
+    if (isEditable(e.target)) { lastHover = e.target; flashHover(lastHover, true); }
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (!editMode) return;
+    if (lastHover) { flashHover(lastHover, false); lastHover = null; }
+  });
+  document.addEventListener('dblclick', function(e) {
+    if (!editMode) return;
+    var el = isEditable(e.target) ? e.target : null;
+    if (!el) return;
+    e.preventDefault(); e.stopPropagation();
+    el.setAttribute('contenteditable','true');
+    el.style.background = '#FEF9C3';
+    el.style.outline    = '2px solid #F59E0B';
+    el.focus();
+    var range = document.createRange(); range.selectNodeContents(el);
+    var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    function commit() {
+      el.removeAttribute('contenteditable');
+      el.style.background = '';
+      el.style.outline    = '';
+      el.removeEventListener('blur', commit);
+      el.removeEventListener('keydown', onKey);
+      window.parent.postMessage({
+        type: 'INLINE_EDIT',
+        html: document.documentElement.outerHTML,
+      }, '*');
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape') { ev.preventDefault(); el.blur(); }
+      if (ev.key === 'Enter' && !ev.shiftKey && el.tagName !== 'P' && el.tagName !== 'LI') {
+        ev.preventDefault(); el.blur();
+      }
+    }
+    el.addEventListener('blur', commit);
+    el.addEventListener('keydown', onKey);
+  }, true);
+  window.addEventListener('message', function(e) {
+    if (!e.data) return;
+    if (e.data.type === 'SET_EDIT_MODE') {
+      editMode = !!e.data.value;
+      document.body.style.cursor = editMode ? 'text' : '';
+      if (!editMode && lastHover) { flashHover(lastHover, false); lastHover = null; }
+    }
+  });
+})();
 
-  // 단일 요소에 파란 테두리 오버레이
-  function addHighlight(el) {
-    var rect = el.getBoundingClientRect();
-    var o = document.createElement('div');
-    o.style.cssText = [
-      'position:fixed','pointer-events:none','z-index:9999','box-sizing:border-box',
-      'border:2px solid #3B82F6','background:rgba(59,130,246,0.08)','border-radius:4px',
-      'transition:all .1s',
-      'top:'   + rect.top    + 'px',
-      'left:'  + rect.left   + 'px',
-      'width:' + rect.width  + 'px',
-      'height:'+ rect.height + 'px',
-    ].join(';');
-    document.body.appendChild(o);
-    overlays.push(o);
-  }
-
-  // data-section 있는 가장 가까운 조상 찾기
-  function findSection(target) {
+// ── 차트 캡션·주석 추가 ────────────────────────────────────
+(function() {
+  var noteMode = false;
+  function findChart(target) {
     var cur = target;
     while (cur && cur !== document.body) {
+      if (cur.tagName === 'CANVAS' || cur.tagName === 'SVG') return cur;
       if (cur.dataset && cur.dataset.section) return cur;
-      cur = cur.parentElement;
-    }
-    // fallback: canvas > table
-    cur = target;
-    while (cur && cur !== document.body) {
-      if (['canvas','table'].includes(cur.tagName.toLowerCase())) return cur;
       cur = cur.parentElement;
     }
     return null;
   }
-
-  // ── 부모 메시지 ───────────────────────────────────────────
-  window.addEventListener('message', function(e) {
-    if (!e.data) return;
-    if (e.data.type === 'SET_SELECT_MODE') {
-      selectMode = e.data.value;
-      if (!selectMode) clearAll();
-      document.body.style.cursor = selectMode ? 'crosshair' : '';
-    }
-    if (e.data.type === 'CLEAR_SELECT') clearAll();
-  });
-
-  // ── 클릭 선택 (8px 미만 이동) ─────────────────────────────
-  document.addEventListener('click', function(e) {
-    if (!selectMode || dragStart) return;
-    e.stopPropagation(); e.preventDefault();
-    var el = findSection(e.target);
-    if (!el) return;
-    clearAll();
-    addHighlight(el);
-    window.parent.postMessage({
-      type: 'SECTION_SELECTED', label: getLabel(el), mode: 'click'
-    }, '*');
-  }, true);
-
-  // ── 드래그 시작 ───────────────────────────────────────────
-  document.addEventListener('mousedown', function(e) {
-    if (!selectMode) return;
-    e.preventDefault();
-    dragStart = { x: e.clientX, y: e.clientY };
-    dragBox = document.createElement('div');
-    dragBox.style.cssText = [
-      'position:fixed','pointer-events:none','z-index:10000','box-sizing:border-box',
-      'border:2px dashed #F59E0B','background:rgba(245,158,11,0.07)','border-radius:3px',
-      'top:' + e.clientY + 'px','left:' + e.clientX + 'px','width:0','height:0',
+  function getOrCreateNoteHost(chartEl) {
+    var container = chartEl.parentElement;
+    if (!container) return null;
+    var existing = container.querySelector(':scope > .__chart_note');
+    if (existing) return existing;
+    var note = document.createElement('div');
+    note.className = '__chart_note';
+    note.setAttribute('data-no-edit','1');
+    note.style.cssText = [
+      'margin-top:6px','padding:6px 10px','border-left:3px solid #F59E0B',
+      'background:#FFFBEB','color:#92400E','font-size:11px',
+      'border-radius:4px','line-height:1.5','white-space:pre-wrap'
     ].join(';');
-    document.body.appendChild(dragBox);
-  });
-
-  // ── 드래그 중 ─────────────────────────────────────────────
-  document.addEventListener('mousemove', function(e) {
-    if (!selectMode || !dragStart || !dragBox) return;
-    var x = Math.min(e.clientX, dragStart.x);
-    var y = Math.min(e.clientY, dragStart.y);
-    var w = Math.abs(e.clientX - dragStart.x);
-    var h = Math.abs(e.clientY - dragStart.y);
-    dragBox.style.left = x+'px'; dragBox.style.top  = y+'px';
-    dragBox.style.width= w+'px'; dragBox.style.height=h+'px';
-  });
-
-  // ── 드래그 끝 ─────────────────────────────────────────────
-  document.addEventListener('mouseup', function(e) {
-    if (!selectMode || !dragStart) return;
-    var dx = Math.abs(e.clientX - dragStart.x);
-    var dy = Math.abs(e.clientY - dragStart.y);
-
-    // 8px 미만 → 클릭으로 위임, dragStart만 초기화
-    if (dx < 8 && dy < 8) {
-      if (dragBox) { dragBox.remove(); dragBox = null; }
-      dragStart = null;
-      return;
-    }
-
-    if (dragBox) { dragBox.remove(); dragBox = null; }
-
-    var x1 = Math.min(e.clientX, dragStart.x);
-    var y1 = Math.min(e.clientY, dragStart.y);
-    var x2 = x1 + dx, y2 = y1 + dy;
-    dragStart = null;
-
-    // 드래그 범위와 겹치는 data-section 요소 수집
-    var allSections = document.querySelectorAll('[data-section]');
-    var hitEls = [];
-    allSections.forEach(function(el) {
-      var r = el.getBoundingClientRect();
-      if (r.left < x2 && r.right > x1 && r.top < y2 && r.bottom > y1) {
-        // 자식이 이미 포함된 경우 부모 중복 제거
-        var isChild = hitEls.some(function(h) { return h.contains(el); });
-        var hasChild = hitEls.some(function(h) { return el.contains(h); });
-        if (!isChild) {
-          if (hasChild) {
-            hitEls = hitEls.filter(function(h) { return !el.contains(h); });
-          }
-          hitEls.push(el);
-        }
-      }
-    });
-
-    clearAll();
-
-    if (hitEls.length > 0) {
-      // 박스 선택: 각각 하이라이트
-      hitEls.forEach(function(el) { addHighlight(el); });
-      var labels = hitEls.map(function(el) { return getLabel(el); }).join(', ');
-      window.parent.postMessage({
-        type: 'SECTION_SELECTED', label: labels, mode: 'drag', count: hitEls.length
-      }, '*');
-    } else {
-      // 빈 여백 선택
-      var o = document.createElement('div');
-      o.style.cssText = [
-        'position:fixed','pointer-events:none','z-index:9999','box-sizing:border-box',
-        'border:2px dashed #A855F7','background:rgba(168,85,247,0.06)','border-radius:4px',
-        'top:'+y1+'px','left:'+x1+'px','width:'+dx+'px','height:'+dy+'px',
-      ].join(';');
-      document.body.appendChild(o);
-      overlays.push(o);
-      window.parent.postMessage({
-        type: 'SECTION_SELECTED', label: '빈 영역', mode: 'empty'
-      }, '*');
-    }
-  });
-
-  // ── 호버 효과 ─────────────────────────────────────────────
+    container.appendChild(note);
+    return note;
+  }
+  function flashTarget(el, on) {
+    if (!el) return;
+    el.style.outline = on ? '2px dashed #F59E0B' : '';
+    el.style.cursor  = on ? 'pointer' : '';
+  }
+  var lastHover = null;
   document.addEventListener('mouseover', function(e) {
-    if (!selectMode || dragStart) return;
-    if (hoverEl) hoverEl.style.outline = '';
-    hoverEl = findSection(e.target);
-    if (hoverEl) hoverEl.style.outline = '1px dashed #93C5FD';
+    if (!noteMode) return;
+    if (lastHover) flashTarget(lastHover, false);
+    lastHover = findChart(e.target);
+    if (lastHover) flashTarget(lastHover, true);
   });
   document.addEventListener('mouseout', function(e) {
-    if (hoverEl) { hoverEl.style.outline = ''; hoverEl = null; }
+    if (!noteMode) return;
+    if (lastHover) { flashTarget(lastHover, false); lastHover = null; }
+  });
+  document.addEventListener('click', function(e) {
+    if (!noteMode) return;
+    var chartEl = findChart(e.target);
+    if (!chartEl) return;
+    e.preventDefault(); e.stopPropagation();
+    var note = getOrCreateNoteHost(chartEl);
+    if (!note) return;
+    var existing = note.textContent || '';
+    var memo = window.prompt('차트에 추가할 메모를 입력하세요 (취소하면 삭제됩니다):', existing);
+    if (memo === null) {
+      note.remove();
+    } else if (memo.trim() === '') {
+      note.remove();
+    } else {
+      note.textContent = '📝 ' + memo.trim();
+    }
+    window.parent.postMessage({
+      type: 'CHART_NOTE',
+      html: document.documentElement.outerHTML,
+    }, '*');
+  }, true);
+  window.addEventListener('message', function(e) {
+    if (!e.data) return;
+    if (e.data.type === 'SET_NOTE_MODE') {
+      noteMode = !!e.data.value;
+      document.body.style.cursor = noteMode ? 'pointer' : '';
+      if (!noteMode && lastHover) { flashTarget(lastHover, false); lastHover = null; }
+    }
   });
 })();
 </script>
@@ -191,6 +154,8 @@ const INJECT_SCRIPT = `
 
 export default function ReportModal({ markdown: html, reportData, toolCache, onClose, apiUrl }) {
   const [selectMode, setSelectMode]     = useState(false)
+  const [editMode, setEditMode]         = useState(false)
+  const [noteMode, setNoteMode]         = useState(false)
   const [selectedSection, setSelected] = useState(null)
   const [messages, setMessages]         = useState([
     { role: 'bot', text: '보고서에 대해 질문하거나 수정을 요청해 보세요.\n예) "SHAP 상위 피처를 설명해줘", "개선 방안을 X552_range로 바꿔줘"' }
@@ -248,7 +213,13 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
       requestAnimationFrame(() => {
         iframe.contentWindow?.scrollTo(0, scrollY)
         if (selectMode) {
-          iframe.contentWindow?.postMessage({ type: 'SET_SELECT_MODE', value: true }, '*')
+          iframe.contentWindow?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: true }, '*')
+        }
+        if (editMode) {
+          iframe.contentWindow?.postMessage({ type: 'SET_EDIT_MODE', value: true }, '*')
+        }
+        if (noteMode) {
+          iframe.contentWindow?.postMessage({ type: 'SET_NOTE_MODE', value: true }, '*')
         }
       })
     })
@@ -258,28 +229,24 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
     return () => clearTimeout(t)
   }, [currentHtml])
 
-  // iframe → 부모: 영역 선택 이벤트 수신 (기존 SECTION_SELECTED + 신규 ia_event)
+  // iframe → 부모: 통합 차트 편집 모드 이벤트 + 인라인 편집/메모
   useEffect(() => {
     function onMessage(e) {
-      // ── 기존: 선택 모드 드래그/클릭 ──────────────────────
-      if (e.data?.type === 'SECTION_SELECTED') {
-        const { label, mode, count } = e.data
-        setSelected(label)
-        if (mode === 'empty') {
-          setInput(prev => prev || '이 빈 영역에 ')
-        } else {
-          setInput(prev => prev || `[${label}] `)
+      // 인라인 편집 / 차트 메모: iframe DOM이 이미 갱신되었으므로 ref만 갱신
+      if (e.data?.type === 'INLINE_EDIT' || e.data?.type === 'CHART_NOTE') {
+        if (typeof e.data.html === 'string') {
+          currentHtmlRef.current = e.data.html
         }
         return
       }
-
-      // ── 신규: ia_event (드래그·우클릭·hover 버튼) ────────
+      // 통합 차트 편집: 액션 메뉴에서 선택된 액션을 /report/interact 로 전송
       if (e.data?.type === 'ia_event') {
         const payload = e.data.payload
         if (!payload) return
-        setSelected(payload.label || payload.sid || '선택됨')
-
-        // /report/interact 엔드포인트로 SSE 요청 전송
+        const displayLabel = payload.label
+          || (payload.labels && payload.labels.length ? payload.labels.join(', ') : '')
+          || (payload.bbox ? `드래그 영역(${payload.bbox.w}×${payload.bbox.h})` : '선택됨')
+        setSelected(displayLabel)
         sendInteract(payload)
         return
       }
@@ -313,6 +280,12 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
       let botText = ''
       let buffer  = ''
 
+      const finalizeStreaming = () => {
+        setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m))
+        if (botText) historyRef.current.push({ role: 'assistant', content: botText })
+        botText = ''
+      }
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -340,13 +313,28 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
               return next
             })
           }
+          if (event.type === 'tool_start') {
+            // 이전 텍스트 메시지 종료 → 다음 텍스트는 새 버블에서 시작
+            finalizeStreaming()
+            const label = ({
+              scan_data: '🔍 데이터 스캔 중...',
+              get_importance: '📋 Feature importance 조회 중...',
+              analyze_features: '📊 Feature 분포 비교 중...',
+              infer_period: '📅 기간 해석 중...',
+            })[event.tool] || `🔧 ${event.tool} 실행 중...`
+            setMessages(prev => [...prev, { role: 'bot', text: label, tool: true }])
+          }
+          if (event.type === 'tool_result') {
+            // tool_result 이후 곧 새 텍스트가 오므로 누적 끊기
+            finalizeStreaming()
+          }
           if (event.type === 'report_ready' && event.html) {
             setCurrentHtml(event.html)
             if (event.report_data) setCurrentReportData(event.report_data)
           }
           if (event.type === 'confirm' && event.buttons) {
-            setMessages(prev => [...prev, { role: 'bot', text: botText, buttons: event.buttons }])
-            botText = ''
+            finalizeStreaming()
+            setMessages(prev => [...prev, { role: 'bot', text: '', buttons: event.buttons }])
           }
           if (event.type === 'done') setLoading(false)
           if (event.type === 'error') {
@@ -355,29 +343,55 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
           }
         }
       }
-      setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m))
-      if (botText) historyRef.current.push({ role: 'assistant', content: botText })
+      finalizeStreaming()
     } catch {
       addMsg('bot', '⚠️ 서버 연결에 실패했습니다.')
       setLoading(false)
     }
   }
 
-  // 선택 모드 토글 → iframe에 전달
+  // 통합 차트 편집 모드 토글
   function toggleSelectMode() {
     const next = !selectMode
     setSelectMode(next)
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: 'SET_SELECT_MODE', value: next }, '*'
-    )
+    if (next) { setEditMode(false); setNoteMode(false) }
+    const iw = iframeRef.current?.contentWindow
+    iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: next }, '*')
+    iw?.postMessage({ type: 'SET_EDIT_MODE', value: false }, '*')
+    iw?.postMessage({ type: 'SET_NOTE_MODE', value: false }, '*')
     if (!next) setSelected(null)
+  }
+
+  function toggleEditMode() {
+    const next = !editMode
+    setEditMode(next)
+    if (next) { setSelectMode(false); setNoteMode(false); setSelected(null) }
+    const iw = iframeRef.current?.contentWindow
+    iw?.postMessage({ type: 'SET_EDIT_MODE',       value: next  }, '*')
+    iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: false }, '*')
+    iw?.postMessage({ type: 'SET_NOTE_MODE',       value: false }, '*')
+  }
+
+  function toggleNoteMode() {
+    const next = !noteMode
+    setNoteMode(next)
+    if (next) { setSelectMode(false); setEditMode(false); setSelected(null) }
+    const iw = iframeRef.current?.contentWindow
+    iw?.postMessage({ type: 'SET_NOTE_MODE',       value: next  }, '*')
+    iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: false }, '*')
+    iw?.postMessage({ type: 'SET_EDIT_MODE',       value: false }, '*')
   }
 
   function clearSelect() {
     setSelectMode(false)
+    setEditMode(false)
+    setNoteMode(false)
     setSelected(null)
-    iframeRef.current?.contentWindow?.postMessage({ type: 'CLEAR_SELECT' }, '*')
-    iframeRef.current?.contentWindow?.postMessage({ type: 'SET_SELECT_MODE', value: false }, '*')
+    const iw = iframeRef.current?.contentWindow
+    iw?.postMessage({ type: 'CLEAR_CHART_EDIT' }, '*')
+    iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: false }, '*')
+    iw?.postMessage({ type: 'SET_EDIT_MODE',       value: false }, '*')
+    iw?.postMessage({ type: 'SET_NOTE_MODE',       value: false }, '*')
   }
 
   // 스크롤 bottom
@@ -417,6 +431,12 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
       let botText = ''
       let buffer  = ''
 
+      const finalizeStreaming = () => {
+        setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m))
+        if (botText) historyRef.current.push({ role: 'assistant', content: botText })
+        botText = ''
+      }
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -444,13 +464,28 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
               return next
             })
           }
-
+          if (event.type === 'tool_start') {
+            finalizeStreaming()
+            const label = ({
+              scan_data: '🔍 데이터 스캔 중...',
+              get_importance: '📋 Feature importance 조회 중...',
+              analyze_features: '📊 Feature 분포 비교 중...',
+              infer_period: '📅 기간 해석 중...',
+            })[event.tool] || `🔧 ${event.tool} 실행 중...`
+            setMessages(prev => [...prev, { role: 'bot', text: label, tool: true }])
+          }
+          if (event.type === 'tool_result') {
+            finalizeStreaming()
+          }
           // 수정된 HTML이 보고서로 내려오면 미리보기 갱신
           if (event.type === 'report_ready' && event.html) {
             setCurrentHtml(event.html)
             if (event.report_data) setCurrentReportData(event.report_data)
           }
-
+          if (event.type === 'confirm' && event.buttons) {
+            finalizeStreaming()
+            setMessages(prev => [...prev, { role: 'bot', text: '', buttons: event.buttons }])
+          }
           if (event.type === 'done') setLoading(false)
           if (event.type === 'error') {
             addMsg('bot', `⚠️ ${event.message}`)
@@ -459,8 +494,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
         }
       }
 
-      setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m))
-      if (botText) historyRef.current.push({ role: 'assistant', content: botText })
+      finalizeStreaming()
     } catch {
       addMsg('bot', '⚠️ 서버 연결에 실패했습니다.')
       setLoading(false)
@@ -472,7 +506,8 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   }
 
   function downloadHtml() {
-    const blob = new Blob([currentHtml], { type: 'text/html;charset=utf-8' })
+    const htmlToDownload = currentHtmlRef.current || currentHtml
+    const blob = new Blob([htmlToDownload], { type: 'text/html;charset=utf-8' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url; a.download = '품질불량개선조치보고서.html'; a.click()
@@ -504,9 +539,23 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
             <button
               className={`rm-tool-btn ${selectMode ? 'active' : ''}`}
               onClick={toggleSelectMode}
-              title="영역을 클릭해서 선택"
+              title="차트/표를 클릭하거나 드래그로 영역 선택 → 액션 메뉴"
             >
-              ✏️ 영역선택
+              ✏️ 차트 편집
+            </button>
+            <button
+              className={`rm-tool-btn ${editMode ? 'active' : ''}`}
+              onClick={toggleEditMode}
+              title="텍스트를 더블클릭해서 직접 수정"
+            >
+              📝 텍스트 편집
+            </button>
+            <button
+              className={`rm-tool-btn ${noteMode ? 'active' : ''}`}
+              onClick={toggleNoteMode}
+              title="차트를 클릭해서 메모 추가"
+            >
+              💬 차트 메모
             </button>
             <button className="rm-tool-btn" onClick={clearSelect} title="선택 초기화">
               🔄 초기화
@@ -557,7 +606,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
                 <div key={i} className={`rm-msg ${m.role}`}>
                   {m.role === 'bot' && <div className="rm-avatar">AI</div>}
                   <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
-                    <div className={`rm-bubble ${m.streaming ? 'streaming' : ''}`}>
+                    <div className={`rm-bubble ${m.streaming ? 'streaming' : ''} ${m.tool ? 'tool' : ''}`}>
                       {m.text}
                     </div>
                     {m.buttons && m.buttons.length > 0 && (

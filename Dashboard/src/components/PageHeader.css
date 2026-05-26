@@ -10,7 +10,7 @@
 .ph-left { min-width: 0; }
 
 .ph-title {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
@@ -18,7 +18,7 @@
 }
 
 .ph-subtitle {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--text3);
   margin: 4px 0 0;
 }
@@ -39,7 +39,7 @@
 }
 
 .ph-status-btn {
-  font-size: 12px;
+  font-size: 10px;
   padding: 6px 14px;
   font-weight: 500;
   background: none;

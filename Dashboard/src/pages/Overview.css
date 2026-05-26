@@ -11,8 +11,23 @@
 /* KPI */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
+}
+
+.pie-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 14px 4px;
+}
+
+.pie-card-title{
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 2px;
 }
 
 .kpi-card {
@@ -42,7 +57,7 @@
 }
 
 .kpi-label {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   color: var(--text2);
 }
@@ -65,7 +80,7 @@
 
 .chart-card:hover { box-shadow: var(--shadow-md); }
 
-.cc-header {
+.cc-header{
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -73,8 +88,8 @@
   border-bottom: 1px solid var(--border);
 }
 
-.cc-title {
-  font-size: 14px;
+.cc-title{
+  font-size: 15px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -83,7 +98,7 @@
 }
 
 .cc-tag {
-  font-size: 10px;
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   padding: 2px 8px;
   border-radius: 20px;
@@ -141,7 +156,7 @@
 }
 
 .unit-label {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   text-align: center;
@@ -192,7 +207,7 @@
 }
 
 .unit-gauge-label {
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 700;
   writing-mode: vertical-lr;
   text-orientation: mixed;
@@ -214,7 +229,7 @@
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 14px;
+  font-size: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -233,7 +248,7 @@
 }
 
 .pu-page-info {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text2);
 }
 
@@ -260,7 +275,7 @@
 }
 
 .dummy-badge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   padding: 4px 10px;
   border-radius: 20px;
@@ -279,13 +294,13 @@
 }
 
 .dummy-desc {
-  font-size: 11px;
+  font-size: 10px;
   color: #9CA3AF;
   text-align: center;
 }
 
 .dummy-inline {
-  font-size: 11px;
+  font-size: 10px;
   padding: 7px 12px;
   border-radius: 6px;
   margin-bottom: 10px;
@@ -318,13 +333,13 @@
 }
 
 .mtd-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text3);
 }
 
 .mtd-sub {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
   opacity: .6;
 }
@@ -357,13 +372,13 @@
 }
 
 .mwd-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text3);
 }
 
 .mwd-sub {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text3);
   opacity: .6;
 }
@@ -372,13 +387,13 @@
 .ov-lot-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .ov-lot-table th {
   padding: 6px 12px;
   text-align: left;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text3);
   border-bottom: 1.5px solid var(--border);
@@ -403,7 +418,7 @@
 }
 
 .ov-lot-rank {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
@@ -411,7 +426,7 @@
 }
 
 .ov-lot-id {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
@@ -424,7 +439,7 @@
 
 .ov-risk-badge {
   display: inline-block;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   padding: 2px 8px;
@@ -451,7 +466,7 @@
 }
 
 .ov-lot-ppm {
-  font-size: 11px;
+  font-size: 10px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text2);
   white-space: nowrap;
@@ -459,7 +474,7 @@
 }
 
 .ov-lot-count {
-  font-size: 11px;
+  font-size: 10px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text3);
   white-space: nowrap;

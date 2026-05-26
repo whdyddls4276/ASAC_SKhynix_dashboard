@@ -34,7 +34,7 @@
 }
 
 .fa-kpi-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -42,7 +42,7 @@
 }
 
 .fa-kpi-value {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: var(--accent);
@@ -50,13 +50,13 @@
 }
 
 .fa-kpi-hint {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text3);
   margin-top: 2px;
 }
 
 .fa-kpi-rank {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: #8B5CF6;
   text-transform: uppercase;
@@ -72,7 +72,7 @@
 }
 
 .fa-kpi-feat-name {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text);
@@ -83,7 +83,7 @@
 }
 
 .fa-kpi-feat-ratio {
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: #8B5CF6;
@@ -93,7 +93,7 @@
 
 .fa-kpi-tbd {
   color: var(--text3);
-  font-size: 13px;
+  font-size: 10px;
 }
 
 .fa-kpi-loading {
@@ -117,19 +117,19 @@
   min-height: 0;
 }
 
-.cc-header {
+.cc-header{
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2);
 }
-.cc-title { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+.cc-title{ font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
 .cc-sub {
-  font-size: 11px; font-weight: 400; color: var(--text3);
+  font-size: 12px; font-weight: 400; color: var(--text3);
 }
 .cc-body { padding: 10px 14px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
-.feat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.feat-table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .feat-table th {
-  padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 600;
+  padding: 7px 10px; text-align: left; font-size: 11px; font-weight: 600;
   color: var(--text3); border-bottom: 1.5px solid var(--border); background: var(--surface2);
   text-transform: uppercase; letter-spacing: .5px;
 }

@@ -138,7 +138,7 @@ export default function WeeklyProd() {
             위험 비율: ${w.defectRate}%`
         },
       },
-      legend: { data: ['Grade 4', 'Grade 3', 'Grade 2', 'Grade 1'], top: 4, textStyle: { fontSize: 11 } },
+      legend: { data: ['Grade 4', 'Grade 3', 'Grade 2', 'Grade 1'], top: 4, textStyle: { fontSize: 13 } },
       grid: { top: 40, bottom: 70, left: 56, right: 20 },
       xAxis: {
         type: 'category',
@@ -196,7 +196,7 @@ export default function WeeklyProd() {
   }, [weeklyData])
 
   if (loading || !summary) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8', fontSize: 14 }}>데이터 로딩 중…</div>
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8', fontSize: 11 }}>데이터 로딩 중…</div>
   }
 
   return (

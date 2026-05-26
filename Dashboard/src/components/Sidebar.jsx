@@ -2,9 +2,9 @@ import { useState } from 'react'
 import './Sidebar.css'
 
 const MENU = [
-  { id: 'overview',        label: '개요' },
-  { id: 'drilldown',       label: '계층별 정밀 분석' },
-  { id: 'feat-importance', label: '모델 분석' },
+  { id: 'overview',        label: '불량 현황' },
+  { id: 'drilldown',       label: '불량 상세 분석' },
+  { id: 'feat-importance', label: 'ML 모델 분석' },
 ]
 
 export default function Sidebar({ activePage, setActivePage }) {

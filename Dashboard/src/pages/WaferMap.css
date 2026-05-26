@@ -5,16 +5,16 @@
   gap: 20px;
 }
 
-.wm-header { display: flex; flex-direction: column; gap: 4px; }
+.wm-header{ display: flex; flex-direction: column; gap: 4px; }
 
-.wm-title {
-  font-size: 18px;
+.wm-title{
+  font-size: 17px;
   font-weight: 700;
   color: var(--text);
 }
 
 .wm-desc {
-  font-size: 13px;
+  font-size: 10px;
   color: var(--text3);
 }
 
@@ -31,7 +31,7 @@
 }
 
 .wm-filter-item label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text2);
 }
@@ -40,7 +40,7 @@
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 10px;
   color: var(--text);
   background: var(--surface);
   cursor: not-allowed;
@@ -69,13 +69,13 @@
 }
 
 .wm-dummy-label {
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text2);
 }
 
 .wm-dummy-sub {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--text3);
   text-align: center;
   line-height: 1.8;
