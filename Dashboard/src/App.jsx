@@ -9,16 +9,6 @@ import Drilldown from './pages/Drilldown'
 import { useCSV } from './hooks/useCSV'
 import './App.css'
 
-function PlaceholderPage({ title }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, color: '#94A3B8' }}>
-      <div style={{ fontSize: 33 }}>🚧</div>
-      <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
-      <div style={{ fontSize: 11 }}>준비 중입니다</div>
-    </div>
-  )
-}
-
 export default function App() {
   const [activePage, setActivePage] = useState('overview')
   const [notifOpen, setNotifOpen] = useState(false)
@@ -56,19 +46,24 @@ export default function App() {
   }, [units])
   function renderPageWithProps(page) {
     switch (page) {
-      case 'overview':        return <Overview onNavigateDrilldown={navigateToDrilldown} />
-      case 'wafer-map':       return <WaferMap />
-case 'feat-importance': return <ModelPerformance />
-case 'drilldown':
+      case 'overview':
+        return <Overview onNavigateDrilldown={navigateToDrilldown} />
+      case 'wafer-map':
+        return <WaferMap />
+      case 'feat-importance':
+        return <ModelPerformance />
+      case 'drilldown':
       case 'lot-level':
       case 'wafer-level':
       case 'unit-level':
-      case 'die-level':       return <Drilldown initialTab={
-        page === 'wafer-level' ? 'wafer' :
-        page === 'unit-level'  ? 'unit'  :
-        page === 'die-level'   ? 'die'   : 'lot'
-      } initialSelection={pendingSelection} />
-      default:                return <Overview onNavigateDrilldown={navigateToDrilldown} />
+      case 'die-level':
+        return <Drilldown initialTab={
+          page === 'wafer-level' ? 'wafer' :
+          page === 'unit-level'  ? 'unit'  :
+          page === 'die-level'   ? 'die'   : 'lot'
+        } initialSelection={pendingSelection} />
+      default:
+        return <Overview onNavigateDrilldown={navigateToDrilldown} />
     }
   }
 

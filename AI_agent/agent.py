@@ -23,13 +23,24 @@ MODEL = "claude-sonnet-4-6"
 # Claude에게 제공하는 tool 정의
 TOOLS = [
     {
-        "name": "scan_data",
-        "description": "val 데이터를 스캔하여 grade1~4 unit 수, 집중 lot/wafer를 반환. start/end로 날짜 필터 가능.",
+        "name": "infer_period",
+        "description": "사용자의 기간 표현('이번 주', '11월', '최근 3일' 등)을 YYYYMMDD start/end로 변환. 기간 표현이 있을 때만 호출.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "start": {"type": "string", "description": "시작 날짜 YYYYMMDD (예: 20201109). 생략 시 전체."},
-                "end":   {"type": "string", "description": "종료 날짜 YYYYMMDD (예: 20201111). 생략 시 전체."},
+                "user_text": {"type": "string", "description": "사용자가 입력한 기간 표현 원문"},
+            },
+            "required": ["user_text"],
+        },
+    },
+    {
+        "name": "scan_data",
+        "description": "데이터를 스캔하여 grade1~4 unit 수, 집중 lot/wafer를 반환. start/end로 날짜 필터 가능.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start": {"type": "string", "description": "시작 날짜 YYYYMMDD (예: 20251101). 생략 시 전체."},
+                "end":   {"type": "string", "description": "종료 날짜 YYYYMMDD (예: 20251130). 생략 시 전체."},
             },
             "required": [],
         },
@@ -40,8 +51,8 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "start": {"type": "string", "description": "시작 날짜 YYYYMMDD (예: 20201109). 생략 시 전체."},
-                "end":   {"type": "string", "description": "종료 날짜 YYYYMMDD (예: 20201111). 생략 시 전체."},
+                "start": {"type": "string", "description": "시작 날짜 YYYYMMDD (예: 20251101). 생략 시 전체."},
+                "end":   {"type": "string", "description": "종료 날짜 YYYYMMDD (예: 20251130). 생략 시 전체."},
                 "top_n": {"type": "integer", "description": "반환할 feature 수 (기본 10)"},
             },
             "required": [],
@@ -66,62 +77,68 @@ PI(Process Integration 엔지니어)의 요청에 따라 데이터를 분석하�
 
 보고서는 "품질불량예측보고서" 양식으로 생성됩니다. 구조는 아래와 같습니다.
 
-**왼쪽 — 프레싱 현황**
-- 요약 3열: 오전 성능(Val RMSE) / 불량 수량 / 예측 ppm
-- 전주 대비 알림 + 불량 좌표
-- 불량률 트렌드 라인차트 (LOT별 HIGH 건수)
-- SHAP 분석 수평 막대차트
-- SHAP 분석 결과 테이블 (HIGH vs MED 비교)
+**왼쪽 — 모델링 결과**
+- 모델 성능 KPI (Val RMSE / 불량 수량 / 예측 ppm)
+- Feature Importance (실데이터)
+- 불량 트렌드 (실데이터)
 
-**오른쪽 — 불량 유닛 분석 현황**
-- 대표 Unit 정보 테이블 ⚠️ 더미
-- 이력맵 대비 / 좌표별 불량(Position 1~4 ⚠️ 더미) / 피처임포턴스 비율
-- X1056 트렌드 라인차트 ⚠️ 더미
-- 집중 LOT / 웨이퍼 텍스트
+**오른쪽 — 불량 유닛 분석**
+- 대표 Unit 정보 (실데이터)
+- Anomaly Feature / 이상 피처 분포 (실데이터)
+- 위치별 불량률 (실데이터)
 
-⚠️ 더미 표시 섹션은 현재 샘플 데이터로 표시되며, 추후 실데이터로 교체 예정입니다.
-보고서 생성 시 PI에게 이 사실을 한 줄 안내하세요.
+## 흐름 (반드시 순서대로, tool 1개 실행 후 반드시 텍스트 출력, 그 다음 tool 실행)
 
-## 흐름 (반드시 순서대로, 각 단계는 딱 한 번만 실행)
+**tool 실행 전후에 절대 자체 안내 문구("기간 변환 중", "분석 시작", "STEP" 등)를 출력하지 마세요. 아래 지정된 형식만 출력.**
 
-**각 단계는 딱 한 번만, 순서대로 실행합니다.**
+1. 사용자가 기간 표현("이번주", "최근 N일", "N월" 등)을 명시한 경우에만 `infer_period(user_text)` 실행. 완료 즉시 **다른 tool 호출 없이** 아래 형식 **그대로** 출력하세요 (label/start/end만 결과값으로 교체):
+분석 기간: {label} ({start}~{end})
+<<<BUTTONS: 확인, 기간 변경>>>
 
-1. 보고서 요청이 오면 기간을 먼저 확인:
-   "어떤 기간으로 분석할까요?
-   (데이터 범위: 2020.11.07 ~ 2020.11.11)
-   <<<BUTTONS: 전체(5일), 최근 3일, 최근 1일, 직접 입력>>>"
+   사용자가 "확인"을 누르면 step 2로 진행. "기간 변경"을 누르면 step 6으로.
 
-2. 기간 확인 후 scan_data(start, end) 실행 후 아래 형식으로만 출력:
+   **기간 표현이 없으면 infer_period를 호출하지 말고 기간을 묻지도 마세요. 바로 step 2로 진행 (start/end 생략).**
+
+## grade 기준 (반드시 숙지)
+- grade4 = 매우위험 (HIGH, reg_pred 가장 높음, 빨강)
+- grade3 = 위험
+- grade2 = 조심
+- grade1 = 정상 (reg_pred 가장 낮음, 초록)
+
+2. `scan_data(start, end)` 실행. 완료 즉시 **다른 tool 호출 없이** 아래 형식으로 출력:
    📊 스캔 결과 (기간: YYYY.MM.DD ~ YYYY.MM.DD)
    - 총 unit: N개
-   - grade1(위험): M개 (X%) / grade2: M개 / grade3: M개 / grade4(정상): M개
-   - 집중 LOT: LOT_XXX (grade1 N개)
-   - 집중 웨이퍼: LOT_XXX-WF_YY (grade1 N개)
+   - grade4(매우위험): M개 (X%) / grade3: M개 / grade2: M개 / grade1(정상): M개
+   - 집중 LOT: LOT_XXX (grade4 N개)
+   - 집중 웨이퍼: LOT_XXX-WF_YY (grade4 N개)
 
-3. 이어서 get_importance 실행 후 아래 형식으로만 출력:
+3. 스캔 결과 출력 후 `get_importance` 실행. 완료 즉시 **다른 tool 호출 없이** 아래 형식으로 출력:
    📋 주요 Feature TOP5
    - 1위: X234 (gain: 0.XXX)
    - 2위: X891 (gain: 0.XXX)
-   - 3위: X102 (gain: 0.XXX)
-   - 4위: X445 (gain: 0.XXX)
-   - 5위: X778 (gain: 0.XXX)
+   - ...
 
-4. 이어서 analyze_features(start, end) 실행 후 아래 형식으로만 출력:
-   🔬 분포 분석 (grade1 vs grade4)
-   - X234: grade1 평균 0.082 vs grade4 평균 0.035 (2.3배, p=0.001)
-   - X891: grade1 평균 0.071 vs grade4 평균 0.041 (1.7배, p=0.004)
-   ...
-   그 후 확인:
-   <<<BUTTONS: 보고서 작성, 다른 feature 보기>>>
+4. importance 출력 후 `analyze_features(start, end)` 실행. 완료 즉시 아래 형식으로 출력:
+   🔬 분포 분석 (grade4 vs grade1)
+   - X234: grade4 평균 0.082 vs grade1 평균 0.035 (2.3배, p=0.001)
+   - ...
+   **grade4가 0개이거나 분석 불가인 경우에도** 아래 두 줄을 반드시 출력하세요:
 
-5. "보고서 작성" 확인을 받으면 **아래 한 줄만** 출력하세요. 앞뒤 텍스트 절대 금지:
+이 내용대로 보고서를 생성할까요?
+<<<BUTTONS: 보고서 생성, 기간 변경, 다른 feature 보기>>>
+
+5. "보고서 생성" 확인을 받으면 **다른 어떤 텍스트도 출력하지 말고, 어떤 tool도 호출하지 말고**, **아래 한 줄만** 출력하세요:
 <<<HTML_REPORT>>>
 
-## 절대 금지 사항
+6. "기간 변경" 버튼을 받으면 아래 형식으로만 출력하세요:
+   분석할 기간을 입력해주세요. (예: 전체 기간, 6월, 최근 30일)
+   그 후 사용자가 기간을 입력하면 `infer_period(user_text)`로 변환하고, **step 2부터 다시 실행**하세요. (scan_data, get_importance, analyze_features 모두 재실행)
 
-- **이미 실행한 tool은 절대 다시 실행하지 마세요.**
-- **"보고서 작성" 확인 후**: 설명, 안내, ⚠️ 메시지 등 어떤 텍스트도 붙이지 말고 <<<HTML_REPORT>>> 한 줄만 출력하세요.
-- **같은 내용을 두 번 출력하지 마세요.**
+## 절대 금지 사항 (위반 시 사용자가 직접 지적함)
+
+- **system에 "이미 실행 완료" 표시가 된 tool은 어떤 경우에도 다시 호출하지 마세요.**
+- **"보고서 생성"/"보고서 작성"/"보고서 만들어줘"/"확인"/"진행" 등의 짧은 확인 응답에는 tool을 호출하지 않습니다.** 캐시된 결과는 이미 user가 봤으므로 다시 출력하지도 마세요. 오직 `<<<HTML_REPORT>>>` 한 줄만.
+- **같은 분석 내용을 두 번 출력하지 마세요.** scan/importance/analyze 결과는 각각 한 번만 출력.
 
 ## 버튼 태그 규칙 (필수)
 
@@ -132,15 +149,7 @@ PI에게 선택을 요청할 때는 반드시 아래 태그를 텍스트 끝에 
 
 ## 날짜 필터 규칙
 
-데이터 날짜 범위: **20201107 ~ 20201111** (5일치)
-
-버튼 선택 → start/end 변환:
-- "전체(5일)" → start/end 생략
-- "최근 3일"  → start=20201109, end=20201111
-- "최근 1일"  → start=20201111, end=20201111
-- "직접 입력" → "시작일과 종료일을 입력해주세요. (예: 20201109 ~ 20201111)" 라고 물어보기
-
-날짜 필터 적용 시 scan_data와 analyze_features 모두 동일한 start/end 사용.
+데이터 날짜 범위: **20260327 ~ 20260708** (2026년 3월~7월). 사용자가 명시한 표현이 있을 때만 `infer_period` 도구로 변환해 start/end를 도출.
 
 ## 기타 주의사항
 - 수치는 구체적으로 (예: "2.3배 높음", "HIGH 그룹 평균 0.082")
@@ -259,13 +268,13 @@ def _build_report_data(tool_cache: dict) -> dict:
     try:
         _val_rmse = get_val_rmse()
     except Exception:
-        _val_rmse = "0.005736"
+        _val_rmse = "0.005698"
 
     return {
         "meta": {
             "title": "Field Health 불량 원인 분석 보고서",
             "period": tool_cache.get("infer_period", {}).get("label", ""),
-            "model": "Two-Stage Model",
+            "model": "Stacking Ensemble",
             "val_rmse": _val_rmse,
         },
         "scan":             tool_cache.get("scan_data", {}),
@@ -338,11 +347,125 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
             done.append(f"- analyze_features: 완료 → top_features {n}개 반환됨")
         if not done:
             return SYSTEM_PROMPT
-        injected = "\n\n## 이미 실행 완료된 Tool (절대 재실행 금지)\n" + "\n".join(done)
+        injected = (
+            "\n\n## 이미 실행 완료된 Tool (절대 재실행 금지, 결과 재출력 금지)\n"
+            + "\n".join(done)
+            + "\n\n위 tool들의 결과는 이미 PI에게 출력되었습니다. **절대 같은 결과를 다시 출력하지 말고**, "
+              "사용자가 '보고서 생성' 등 확인 의사를 표한 경우 곧바로 `<<<HTML_REPORT>>>` 한 줄만 응답하세요."
+        )
         return SYSTEM_PROMPT + injected
 
-    # "보고서 작성" shortcut — Claude tool 흐름을 타야 하므로 여기서는 처리 안 함
-    # (<<<HTML_REPORT>>> 태그 감지 시 build_html 호출로 처리됨)
+    import time as _time
+    _t0 = _time.time()
+    print(f"[TIMING] run_agent 진입 msg={repr(user_message[:30])} cache_keys={list(tool_cache.keys())}")
+
+    # ── Python-side 기간 감지 ──────────────────────────────────────────────────
+    # 보고서 요청 키워드 감지
+    _report_keywords = {"보고서", "보고서 생성", "보고서생성", "보고서 작성", "보고서작성",
+                        "보고서 만들어줘", "보고서 만들어", "작성", "작성해줘"}
+    _is_report_request = any(kw in user_message for kw in _report_keywords)
+    _needs_scan = "scan_data" not in tool_cache
+
+    # 보고서 요청이고 scan이 아직 없으면 → 기간 확인 먼저
+    if _is_report_request and _needs_scan and "infer_period" not in tool_cache:
+        # 기간 표현이 있으면 추론, 없으면 전체 기간
+        import re as _re
+        _period_pattern = _re.compile(
+            r'이번\s*주|저번\s*주|지난\s*주|다음\s*주|'
+            r'최근\s*\d+\s*[일주]|'
+            r'\d{1,2}월|'
+            r'\d{8}\s*[~\-]\s*\d{8}|'
+            r'전체\s*기간|전체'
+        )
+        if _period_pattern.search(user_message):
+            period = infer_period(user_message)
+        else:
+            period = {"label": "이번 주 WW37 (20260327~20260708)", "start": "", "end": ""}
+        tool_cache["infer_period"] = period
+        print(f"[TIMING] 기간 shortcut 진입 {_time.time()-_t0:.2f}s")
+        yield {"type": "tool_result", "tool": "infer_period", "result": period}
+        label = period.get("label", "전체 기간")
+        start = period.get("start", "")
+        end   = period.get("end", "")
+        date_str = f" ({start}~{end})" if start and end else ""
+        yield {"type": "text", "content": f"분석 기간: {label}{date_str}"}
+        yield {"type": "confirm", "buttons": ["확인", "기간 변경"]}
+        yield {"type": "done"}
+        return
+
+    # "보고서 작성" shortcut — 캐시에 필수 결과가 모두 있으면 Claude 호출 없이 바로 HTML 생성
+    _shortcut_phrases = {"보고서 작성", "보고서작성", "보고서 만들어줘", "보고서 만들어",
+                         "보고서 생성", "보고서생성", "작성", "작성해줘", "진행", "확인"}
+    _has_min_cache = "scan_data" in tool_cache and "get_importance" in tool_cache \
+                     and "analyze_features" in tool_cache
+    if user_message.strip() in _shortcut_phrases and _has_min_cache:
+        report_data = _build_report_data(tool_cache)
+        html = build_html(report_data)
+        yield {"type": "report_ready", "html": html, "report_data": report_data}
+        yield {"type": "done"}
+        return
+
+    # "기간 확인" shortcut — "확인" 메시지이고 분석이 안 됐으면 바로 실행
+    _analysis_done = "scan_data" in tool_cache and "analyze_features" in tool_cache
+    if user_message.strip() == "확인" and not _analysis_done:
+        period = tool_cache.get("infer_period", {"label": "이번 주 WW37", "start": "", "end": ""})
+        start = period.get("start", "")
+        end = period.get("end", "")
+
+        yield {"type": "tool_start", "tool": "scan_data"}
+        scan_result = await asyncio.to_thread(scan_data, start=start, end=end)
+        tool_cache["scan_data"] = scan_result
+        yield {"type": "tool_result", "tool": "scan_data", "result": scan_result}
+
+        s = scan_result
+        date_label = f"{start[:4]}.{start[4:6]}.{start[6:]} ~ {end[:4]}.{end[4:6]}.{end[6:]}" if start and end else "전체"
+        top_wafer = s.get('top_wafer', {})
+        if isinstance(top_wafer, dict):
+            top_wafer_str = f"LOT{top_wafer.get('lot','?')}-WF{top_wafer.get('wafer','?')}"
+            top_wafer_g4  = top_wafer.get('grade4_count', 0)
+        else:
+            top_wafer_str = str(top_wafer)
+            top_wafer_g4  = s.get('top_wafer_grade4_count', 0)
+        scan_text = (
+            f"📊 스캔 결과 (기간: {date_label})\n"
+            f"- 총 unit: {s.get('total_units', s.get('total', 0))}개\n"
+            f"- grade4(매우위험): {s.get('grade4_count',0)}개 ({s.get('grade4_ratio',0):.1f}%) / "
+            f"grade3: {s.get('grade3_count',0)}개 / grade2: {s.get('grade2_count',0)}개 / "
+            f"grade1(정상): {s.get('grade1_count',0)}개\n"
+            f"- 집중 LOT: {s.get('top_lot','N/A')} (grade4 {s.get('top_lot_grade4_count',0)}개)\n"
+            f"- 집중 웨이퍼: {top_wafer_str} (grade4 {top_wafer_g4}개)"
+        )
+        yield {"type": "text", "content": scan_text}
+
+        yield {"type": "tool_start", "tool": "get_importance"}
+        imp_result = await asyncio.to_thread(get_importance, top_n=10)
+        tool_cache["get_importance"] = imp_result
+        yield {"type": "tool_result", "tool": "get_importance", "result": imp_result}
+
+        features = imp_result.get("features", [])
+        imp_lines = ["📋 주요 Feature TOP5"]
+        for i, f in enumerate(features[:5], 1):
+            gain = f.get('lgbm_gain', f.get('importance', 0))
+            imp_lines.append(f"- {i}위: {f.get('feature','?')} (gain: {gain:.1f})")
+        yield {"type": "text", "content": "\n".join(imp_lines)}
+
+        yield {"type": "tool_start", "tool": "analyze_features"}
+        ana_result = await asyncio.to_thread(analyze_features, start=start, end=end, top_n=10)
+        tool_cache["analyze_features"] = ana_result
+        yield {"type": "tool_result", "tool": "analyze_features", "result": ana_result}
+
+        top_feats = ana_result.get("top_features", [])
+        ana_lines = [f"🔬 분포 분석 (grade4 vs grade1) — grade4: {ana_result.get('high_n',0)}개, grade1: {ana_result.get('low_n',0)}개"]
+        for f in top_feats[:5]:
+            ana_lines.append(
+                f"- {f.get('feature','?')}: grade4 평균 {f.get('high_mean',0):.3f} vs "
+                f"grade1 평균 {f.get('low_mean',0):.3f} ({f.get('ratio',0):.1f}배, p={f.get('p_value',0):.3f})"
+            )
+        ana_lines.append("\n이 내용대로 보고서를 생성할까요?")
+        yield {"type": "text", "content": "\n".join(ana_lines)}
+        yield {"type": "confirm", "buttons": ["보고서 생성", "기간 변경", "다른 feature 보기"]}
+        yield {"type": "done"}
+        return
 
     while True:
         # asyncio.Queue를 통해 스트리밍 청크를 실시간 yield
@@ -384,6 +507,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         stream_error = None
         # 태그 포함 여부 감지용: <<<가 나타난 순간부터 청크 버퍼링
         tag_started = False
+        sent_text = ""  # 이미 yield한 텍스트 길이 추적
 
         while True:
             kind, payload = await queue.get()
@@ -395,14 +519,16 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
                 if not tag_started:
                     if "<<<" in full_text:
                         tag_started = True
-                        # <<<HTML_REPORT>>> 태그면 앞 텍스트 버림 (중복 방지)
-                        # <<<BUTTONS 등 다른 태그면 앞 텍스트 전송
+                        # <<<이전 텍스트 중 아직 안 보낸 부분만 전송
                         before_tag = full_text.split("<<<", 1)[0]
                         tag_body = full_text.split("<<<", 1)[1]
-                        if before_tag and not tag_body.startswith("HTML_REPORT"):
-                            yield {"type": "text", "content": before_tag}
+                        unsent = before_tag[len(sent_text):]
+                        if unsent and not tag_body.startswith("HTML_REPORT"):
+                            yield {"type": "text", "content": unsent}
+                            sent_text = before_tag
                     else:
                         yield {"type": "text", "content": payload}
+                        sent_text += payload
             elif kind == "final":
                 final_msg = payload
             elif kind == "error":
@@ -441,6 +567,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         for block in final_msg.content:
             if block.type == "text":
                 text = block.text
+                print(f"[DEBUG final block] len={len(text)} has_tag={'<<<' in text} preview={repr(text[-200:])}")
 
                 # 태그 없는 순수 텍스트 → 청크로 이미 전송됨, 중복 방지
                 if "<<<" not in text:
@@ -469,7 +596,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
                         import copy
                         patched = copy.deepcopy({
                             "meta":       {"title": "Field Health 불량 원인 분석 보고서",
-                                           "model": "Two-Stage Model"},
+                                           "model": "Stacking Ensemble"},
                             "scan":       tool_cache.get("scan_data", {}),
                             "importance": tool_cache.get("get_importance", {}),
                             "analysis":   tool_cache.get("analyze_features", {}),
@@ -557,18 +684,24 @@ REPORT_EDITOR_SYSTEM = """당신은 SK Hynix 반도체 보고서 수정 전문 A
 각 컬럼의 남은 공간은 약 100~150px입니다.
 새 섹션 높이가 150px를 초과하면 바로 추가하지 말고 먼저 물어보세요.
 
-## 인터랙션 이벤트 처리 (드래그·우클릭·hover)
-사용자가 보고서에서 드래그하거나 우클릭하면 아래 형식의 컨텍스트가 앞에 붙습니다:
+## 인터랙션 이벤트 처리 (통합 차트 편집 모드)
+사용자가 보고서에서 영역을 선택하면 아래 형식의 컨텍스트가 앞에 붙습니다:
 ```
 ## 현재 보고서 레이아웃 (섹션 좌표)
 - [L2_trend] 주차별 수율 트렌드 : x=0, y=148, w=580, h=120
 - [L3_scatter] 피처 scatter : x=0, y=276, w=580, h=240
 ...
-드래그 선택 영역: x=20, y=160, w=300, h=80
+
+## 선택 영역 (반드시 이 크기 안에 맞춰 생성)
+- 위치: x=20, y=160
+- 크기: 300px × 80px
+- 포함 섹션: L2_trend
 ```
-이 좌표를 보고 드래그가 어느 섹션과 겹치는지 파악하세요.
-- 기존 섹션과 겹치면 → 수정 요청으로 처리
-- 빈 영역이면 → 어느 컬럼(x<600=왼쪽, x≥600=오른쪽)인지 파악 후 추가 요청으로 처리
+요청 유형(action)별 처리:
+- **modify**: 위 선택 영역에 들어있는 기존 섹션을 수정. 새 콘텐츠 크기는 선택 영역 안에 맞춰야 함.
+- **add**: 빈 영역에 새 섹션을 추가. 너비·높이는 선택 영역과 동일하게.
+- **remove**: 해당 섹션을 보고서에서 제거 (`d["custom_sections"]`에서 삭제 또는 `d["hidden_sections"]`에 sid 추가).
+- **explain**: HTML 변경 없이 해당 영역의 데이터를 자연어로 설명만.
 
 ## 응답 말투 규칙 (절대 원칙)
 - 첫 인사말, "안녕하세요", "물론입니다", "두 가지 요청을 확인했습니다" 같은 서두 절대 금지
@@ -586,11 +719,16 @@ REPORT_EDITOR_SYSTEM = """당신은 SK Hynix 반도체 보고서 수정 전문 A
 기존 섹션 수정은 내용이 명확하면 바로 실행하세요.
 기간 변경 시 주수/일수 미지정이면 반드시 물어보세요.
 
+## 모델 정책 (고정)
+- 예측에 사용되는 확정 모델: **Stacking Ensemble** (이 이름을 유지, 임의로 다른 모델명으로 바꾸지 말 것)
+- SHAP / Feature Importance / Anomaly Feature 출처: **ZIT_only** (zit 단일 모델 기반)
+- 사용자가 모델명을 묻거나 출처를 묻는 경우 위 사실을 답변
+
 ## 보고서 데이터 구조 (d)
 d["scan"]            - total_units, high_count, high_ratio, top_lot, top_wafer, morning_rmse 등
-d["importance"]      - features: [{feature, lgbm_rank, lgbm_gain}, ...]
+d["importance"]      - features: [{feature, lgbm_rank, lgbm_gain}, ...]  *컬럼명은 legacy; 출처는 ZIT_only*
 d["analysis"]        - top_features: [{feature, high_mean, low_mean, ratio, pval}, ...]
-d["meta"]            - title, model, val_rmse, test_rmse, report_title, summary_title, summary_sub, alert_features, section_labels
+d["meta"]            - title, model("Stacking Ensemble" 고정), val_rmse, test_rmse, report_title, summary_title, summary_sub, alert_features, section_labels
 d["custom_sections"] - 커스텀 섹션 목록
 d["chart_params"]    - 차트 파라미터 (chart, top_n)
 d["table_params"]    - 테이블 파라미터 (shap_hide_cols 등)
@@ -684,11 +822,24 @@ def _execute_editor_code(code: str, d: dict):
     if not code.strip():
         return True, ""
 
-    forbidden = ["import ", "__import__", "exec(", "eval(", "open(",
-                 "compile(", "globals(", "getattr(", "subprocess"]
-    for f in forbidden:
-        if f in code:
-            return False, f"금지된 표현: {f}"
+    import ast as _ast
+    try:
+        tree = _ast.parse(code)
+    except SyntaxError as e:
+        return False, f"문법 오류: {e}"
+    forbidden_names = {"__import__", "exec", "eval", "compile", "globals", "getattr", "open"}
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Import):
+            return False, "금지된 표현: import"
+        if isinstance(node, _ast.ImportFrom):
+            return False, "금지된 표현: import"
+        if isinstance(node, (_ast.Name, _ast.Attribute)):
+            name = node.id if isinstance(node, _ast.Name) else node.attr
+            if name in forbidden_names:
+                return False, f"금지된 표현: {name}"
+        if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+            if "subprocess" in node.value:
+                return False, "금지된 표현: subprocess"
 
     safe_builtins = {
         "sorted": sorted, "len": len, "max": max, "min": min, "sum": sum,
@@ -718,7 +869,7 @@ async def run_report_editor(user_message: str, history: list,
     # current_report_data가 있으면 그걸 기반으로, 없으면 tool_cache로 초기화
     if current_report_data and isinstance(current_report_data, dict) and current_report_data:
         d = copy.deepcopy(current_report_data)
-        d.setdefault("meta", {"title": "Field Health 불량 원인 분석 보고서", "model": "Two-Stage Model"})
+        d.setdefault("meta", {"title": "Field Health 불량 원인 분석 보고서", "model": "Stacking Ensemble"})
         if not d.get("scan"):
             d["scan"] = cache.get("scan_data", {})
         if not d.get("importance"):
@@ -820,10 +971,15 @@ async def run_report_editor(user_message: str, history: list,
     try:
         clean = raw_text.strip()
         if "```" in clean:
-            parts = clean.split("```")
-            clean = parts[1]
-            if clean.startswith("json"):
-                clean = clean[4:]
+            import re as _re2
+            m = _re2.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, _re2.DOTALL)
+            if m:
+                clean = m.group(1)
+            else:
+                parts = clean.split("```")
+                clean = parts[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
         cmd = json.loads(clean.strip())
     except Exception:
         # JSON 파싱 실패 → response 키 추출 시도, 없으면 "처리 중 오류" 안내

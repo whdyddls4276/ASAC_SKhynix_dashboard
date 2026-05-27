@@ -31,14 +31,16 @@ async def _prebuild_preview():
         from tools import scan_data, get_importance, analyze_features, _load
 
         def _warmup():
-            # xs 파일(27초) 포함 전체 캐시 워밍업
-            _load("compet_xs_data.csv")
             _load("dashboard_units.csv")
             _load("feature_importance.csv")
+            try:
+                _load("compet_xs_data.csv")   # 백그라운드 프리로드 (캐시용)
+                print("[preview] compet_xs_data.csv 캐시 완료")
+            except Exception as e:
+                print(f"[preview] xs 파일 로드 실패 (analyze_features 느려질 수 있음): {e}")
             return {
-                "scan_data":        scan_data(),
-                "get_importance":   get_importance(top_n=10),
-                "analyze_features": analyze_features(top_n=10),
+                "scan_data":      scan_data(),
+                "get_importance": get_importance(top_n=10),
             }
 
         cache = await asyncio.to_thread(_warmup)
@@ -72,16 +74,20 @@ class ChatRequest(BaseModel):
 
 
 class InteractRequest(BaseModel):
-    """보고서 인터랙션 이벤트 (드래그/우클릭/hover 버튼)."""
-    action: str            # "add" | "modify" | "period" | "explain"
-    sid: str = ""          # 대상 섹션 ID
+    """보고서 인터랙션 이벤트 (통합 차트 편집 모드)."""
+    action: str            # "add" | "modify" | "remove" | "explain"
+    sid: str = ""          # 단일 섹션 ID (section 모드)
     label: str = ""        # 섹션 표시명
-    position: str = ""     # "left_col" | "right_col" (add 시)
-    drag: dict = {}        # 드래그 좌표 {x,y,w,h}
+    sids: list = []        # 박스 선택 시 포함된 섹션 ID 목록
+    labels: list = []      # 박스 선택 시 포함된 섹션 라벨 목록
+    position: str = ""     # "left_col" | "right_col" (빈 공간 add 시)
+    bbox: dict = {}        # 선택 영역 좌표·크기 {x,y,w,h}  ※ 슬라이드 기준
+    drag: dict = {}        # (legacy) 드래그 좌표
     layout: list = []      # 전체 섹션 좌표 스냅샷
     prompt: str = ""       # JS가 생성한 자연어 요청
     history: list = []
     tool_cache: dict = {}
+    current_report_data: dict = {}
     current_report_data: dict = {}
 
 
@@ -184,15 +190,28 @@ async def report_interact(req: InteractRequest):
             lines.append(f"- [{s['sid']}] {s.get('label','')} : x={r.get('x')}, y={r.get('y')}, w={r.get('w')}, h={r.get('h')}")
         layout_ctx = "\n".join(lines)
 
-    if req.drag:
-        layout_ctx += f"\n\n드래그 선택 영역: x={req.drag.get('x')}, y={req.drag.get('y')}, w={req.drag.get('w')}, h={req.drag.get('h')}"
+    # bbox(선택 영역 크기) 처리 — drag는 legacy 호환용
+    box = req.bbox or req.drag or {}
+    if box:
+        bw, bh = box.get('w'), box.get('h')
+        layout_ctx += (
+            f"\n\n## 선택 영역 (반드시 이 크기 안에 맞춰 생성)"
+            f"\n- 위치: x={box.get('x')}, y={box.get('y')}"
+            f"\n- 크기: {bw}px × {bh}px"
+        )
+        if req.sids:
+            layout_ctx += f"\n- 포함 섹션: {', '.join(req.sids)}"
 
     # action에 따라 프롬프트 보강
+    size_hint = (
+        f" 생성하는 콘텐츠는 정확히 너비 {box.get('w')}px × 높이 {box.get('h')}px 박스 안에 맞춰야 합니다."
+        if box else ""
+    )
     action_hint = {
-        "add":     "\n\n[요청 유형: 새 섹션 추가] 위치, 차트 형태, 데이터 중 불명확한 것이 있으면 먼저 질문하세요.",
-        "modify":  "\n\n[요청 유형: 기존 섹션 수정] 구체적인 수정 내용을 먼저 물어보세요.",
-        "period":  "\n\n[요청 유형: 기간 변경] 몇 주/일치로 변경할지 먼저 확인하세요.",
-        "explain": "\n\n[요청 유형: 데이터 설명] 해당 섹션의 데이터를 친절히 설명해주세요.",
+        "add":     "\n\n[요청 유형: 빈 영역에 새 섹션 추가]" + size_hint,
+        "modify":  "\n\n[요청 유형: 기존 섹션 수정]" + size_hint + " 구체적인 수정 내용이 불명확하면 먼저 물어보세요.",
+        "remove":  "\n\n[요청 유형: 섹션 삭제] 대상 섹션을 보고서에서 제거하세요.",
+        "explain": "\n\n[요청 유형: 데이터 설명] 해당 영역의 데이터를 친절히 설명해주세요. (HTML 변경은 하지 마세요)",
     }.get(req.action, "")
 
     message = req.prompt + action_hint

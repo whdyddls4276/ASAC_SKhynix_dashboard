@@ -17,7 +17,7 @@ export function useCSV(path) {
         const result = Papa.parse(text, { header: true, dynamicTyping: true, skipEmptyLines: true })
         setData(result.data)
       })
-      .catch(err => console.error(`[useCSV] ${path}:`, err))
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [path])
 

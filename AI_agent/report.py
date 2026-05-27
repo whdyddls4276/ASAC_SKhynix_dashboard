@@ -489,8 +489,8 @@ def build_pptx(report_data: dict) -> bytes:
     features     = importance.get("features", [])
     top_features = analysis.get("top_features", [])
 
-    val_rmse  = meta.get("val_rmse",  "0.005736")
-    model_nm  = meta.get("model",     "Two-Stage Model")
+    val_rmse  = meta.get("val_rmse",  "0.005698")
+    model_nm  = meta.get("model",     "Stacking Ensemble")
     today     = datetime.now()
     today_str = today.strftime("%Y. %m. %d")
     scan_total = scan.get("total_units", "-")
@@ -510,11 +510,11 @@ def build_pptx(report_data: dict) -> bytes:
     _sl     = meta.get("section_labels", {})
     slabel  = lambda key, default: _sl.get(key, default)
 
-    # PPM 계산
+    # PPM 계산 — 전체 평균 reg_pred를 ppm으로 환산
     try:
-        _n_total = int(scan_total) if str(scan_total).isdigit() else 0
-        _n_high  = int(scan_high)  if str(scan_high).isdigit()  else 0
-        _ppm_str = f"{int(_n_high/_n_total*1e6):,}" if _n_total > 0 else "-"
+        from tools import get_mean_pred_ppm
+        _ppm_val = get_mean_pred_ppm()
+        _ppm_str = f"{_ppm_val:,}" if _ppm_val > 0 else "-"
     except Exception:
         _ppm_str = "-"
 
@@ -531,8 +531,10 @@ def build_pptx(report_data: dict) -> bytes:
         _lbals = pred_ppm_trend.get("labels", [f"Lot {40+i}" for i in range(14)])
         _lhigh = pred_ppm_trend.get("defect_count", pred_ppm_trend.get("high_ppm", []))
         _lrate = pred_ppm_trend.get("defect_rate", [])
+        _lhigh_safe = (_lhigh or []) + [0] * max(0, len(_lbals) - len(_lhigh or []))
+        _lrate_safe = (_lrate or []) + [0] * max(0, len(_lbals) - len(_lrate or []))
         lot_defect = [{"lot": l, "count": c, "rate": r}
-                      for l, c, r in zip(_lbals, _lhigh, _lrate or [0]*len(_lbals))]
+                      for l, c, r in zip(_lbals, _lhigh_safe, _lrate_safe)]
 
     feat_scatter = report_data.get("feat_scatter", {})
     fs1 = feat_scatter.get("feat1", {}); fs2 = feat_scatter.get("feat2", {})
@@ -638,8 +640,8 @@ def build_pptx(report_data: dict) -> bytes:
     KPI_W = (LW - 24 - KPI_GAP*2) // 3
     kpi_data = [
         ("RMSE",       val_rmse,          model_nm,     (30,58,138), (30,58,138)),
-        ("분석 유닛",  f"{scan_total}개",  "val 기준",   (55,65,81),  (55,65,81)),
-        ("불량률 PPM", _ppm_str,           "grade1 기준",(180,83,9),  (180,83,9)),
+        ("분석 유닛",  f"{scan_total}개",  "전체",       (55,65,81),  (55,65,81)),
+        ("평균 예측 health", _ppm_str + " ppm", "전체 평균",(180,83,9),  (180,83,9)),
     ]
     for i, (lbl, val, sub, lclr, vclr) in enumerate(kpi_data):
         kx = LX + 12 + i*(KPI_W+KPI_GAP)
@@ -929,9 +931,9 @@ def build_html(report_data: dict) -> str:
     custom_sections = report_data.get("custom_sections", [])
     commentary_list = report_data.get("commentary", [])
 
-    val_rmse   = meta.get("val_rmse",  "0.005736")
+    val_rmse   = meta.get("val_rmse",  "0.005698")
     test_rmse  = meta.get("test_rmse", "0.008427")
-    model_nm   = meta.get("model",     "Two-Stage Model")
+    model_nm   = meta.get("model",     "Stacking Ensemble")
     title      = meta.get("title",     "품질불량예측보고서")
     today      = datetime.now()
     today_str  = today.strftime("%Y. %m. %d")
@@ -1128,10 +1130,6 @@ def build_html(report_data: dict) -> str:
             f'</tr>'
         )
 
-    def _dummy_badge(label):
-        if label not in DUMMY_SECTIONS: return ""
-        return '<span style="font-size:9px;background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:3px;padding:1px 5px;margin-left:6px">더미</span>'
-
     # ── 대표 Unit (reg_pred 최고 unit 실데이터)
     _tu = report_data.get("top_unit", {})
     _run_id   = _tu.get("run_id", "-")
@@ -1201,8 +1199,10 @@ def build_html(report_data: dict) -> str:
         _lbals = pred_ppm_trend.get("labels", [f"Lot {40+i}" for i in range(14)])
         _lhigh = pred_ppm_trend.get("defect_count", pred_ppm_trend.get("high_ppm", []))
         _lrate = pred_ppm_trend.get("defect_rate", [])
+        _lhigh_safe = (_lhigh or []) + [0] * max(0, len(_lbals) - len(_lhigh or []))
+        _lrate_safe = (_lrate or []) + [0] * max(0, len(_lbals) - len(_lrate or []))
         lot_defect = [{"lot": l, "count": c, "rate": r}
-                      for l, c, r in zip(_lbals, _lhigh, _lrate or [0]*len(_lbals))]
+                      for l, c, r in zip(_lbals, _lhigh_safe, _lrate_safe)]
 
     j_lot_defect_labels = _json.dumps([d["lot"] for d in lot_defect], ensure_ascii=False)
     j_lot_defect_counts = _json.dumps([d.get("count", 0) for d in lot_defect])
@@ -1354,7 +1354,7 @@ def build_html(report_data: dict) -> str:
     j_r3_high        = _json.dumps(r3_high)
     j_r3_med         = _json.dumps(r3_med)
     # Feature Importance Top4 용
-    _fi_top4 = features[:4]
+    _fi_top4 = features[:5]
     j_fi_top4_labels = _json.dumps([f.get("feature","") for f in _fi_top4], ensure_ascii=False)
     _fi_total = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
     j_fi_top4_values = _json.dumps([round((f.get("lgbm_gain", 0) or 0) / _fi_total * 100, 2) for f in _fi_top4])
@@ -1362,12 +1362,11 @@ def build_html(report_data: dict) -> str:
     _j_feat_scatter_high = _json.dumps(fs1_high)
     _j_feat_scatter_med  = _json.dumps(fs1_med)
 
-    # PPM 계산 (KPI용)
+    # PPM 계산 (KPI용) — 전체 unit 평균 reg_pred를 ppm으로 환산 (grade1 비율 아님)
     try:
-        _n_total = int(scan_total) if str(scan_total).isdigit() else 0
-        _n_high  = int(scan_high)  if str(scan_high).isdigit()  else 0
-        _ppm_val = int(_n_high / _n_total * 1_000_000) if _n_total > 0 else 0
-        _ppm_str = f"{_ppm_val:,}"
+        from tools import get_mean_pred_ppm
+        _ppm_val = get_mean_pred_ppm()
+        _ppm_str = f"{_ppm_val:,}" if _ppm_val > 0 else "-"
     except Exception:
         _ppm_str = "-"
 
@@ -1380,7 +1379,7 @@ def build_html(report_data: dict) -> str:
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{width:1280px;height:720px;overflow:hidden;background:#e7e7e7}}
-body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;color:#20242a;font-size:10px}}
+body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;color:#20242a;font-size:11px}}
 .slide{{width:1280px;height:720px;background:#fff;border:1px solid #6b7280;box-shadow:0 10px 24px rgba(31,41,55,.12);display:flex;flex-direction:column;overflow:hidden}}
 .s-topbar{{display:grid;grid-template-columns:200px 1fr 200px;align-items:center;height:36px;padding:0 20px;border-bottom:2px solid #1e3a8a;flex-shrink:0}}
 .s-issue{{font-size:11px;font-weight:700;color:#334e76}}
@@ -1402,61 +1401,59 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 .kpi-card{{background:#fff;border:1px solid #9ca3af;padding:5px 8px 4px 12px;position:relative;overflow:hidden}}
 .kpi-card::before{{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}}
 .kpi-card.navy::before{{background:#1e3a8a}}.kpi-card.dark::before{{background:#374151}}.kpi-card.amber::before{{background:#b45309}}
-.kpi-lbl{{font-size:9px;color:#4b5563;font-weight:800;margin-bottom:1px}}
+.kpi-lbl{{font-size:10px;color:#4b5563;font-weight:800;margin-bottom:1px}}
 .kpi-val{{font-size:18px;font-weight:900;line-height:1.1}}
 .kpi-val.navy{{color:#1e3a8a}}.kpi-val.dark{{color:#374151}}.kpi-val.amber{{color:#b45309}}
-.kpi-sub{{font-size:9px;color:#4b5563;font-weight:700;margin-top:1px}}
-.inum{{font-size:10px;font-weight:900;color:#111827;margin:4px 0 2px;height:18px;box-sizing:border-box;flex-shrink:0}}
+.kpi-sub{{font-size:10px;color:#4b5563;font-weight:700;margin-top:1px}}
+.inum{{font-size:11px;font-weight:900;color:#111827;margin:4px 0 2px;height:18px;box-sizing:border-box;flex-shrink:0}}
 .cbox{{border:1px solid #9ca3af;background:#fff;margin-bottom:5px;flex-shrink:0}}
 .cbox-body{{padding:3px 5px;position:relative}}
 .unit-main{{display:grid;grid-template-columns:220px 1fr;gap:6px;margin-bottom:5px;flex-shrink:0;align-items:stretch}}
 .wafer-box{{border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column;align-items:center;padding:5px;gap:2px;height:100%}}
-.wafer-box-title{{font-size:9px;font-weight:900;color:#111827;align-self:stretch;border-bottom:1px solid #d1d5db;padding-bottom:3px;margin-bottom:1px}}
+.wafer-box-title{{font-size:10px;font-weight:900;color:#111827;align-self:stretch;border-bottom:1px solid #d1d5db;padding-bottom:3px;margin-bottom:1px}}
 .unit-tbl{{border:1px solid #9ca3af;overflow:hidden;background:#fff}}
 .unit-row{{display:grid;grid-template-columns:72px 1fr;border-bottom:1px solid #d1d5db}}
 .unit-row:last-child{{border-bottom:none}}
 .unit-row:nth-child(even){{background:#f8fafc}}
-.unit-lbl{{padding:3px 6px;font-size:9px;font-weight:900;color:#111827}}
-.unit-val{{padding:3px 6px;font-size:10px;font-weight:900;font-family:Consolas,monospace;color:#111827}}
-.unit-val.hot{{color:#8a1f1f;font-size:11px}}
+.unit-lbl{{padding:4px 6px;font-size:11px;font-weight:900;color:#111827}}
+.unit-val{{padding:4px 6px;font-size:12px;font-weight:900;font-family:Consolas,monospace;color:#111827}}
+.unit-val.hot{{color:#8a1f1f;font-size:13px}}
 .anom-panel{{border:1px solid #9ca3af;background:#fffef8;display:flex;flex-direction:column;overflow:hidden}}
-.anom-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:10px;font-weight:900;flex-shrink:0}}
+.anom-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:11px;font-weight:900;flex-shrink:0}}
 .anom-list{{padding:3px;display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden}}
 .anom-card{{border:1px solid #d1d5db;background:#fff;padding:3px 6px}}
 .anom-card:nth-child(even){{background:#f8fafc}}
 .anom-top{{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px}}
-.anom-name{{color:#111827;font:900 11px/1.2 Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.anom-name{{color:#111827;font:900 12px/1.2 Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .anom-row{{display:flex;align-items:center;gap:3px;margin-top:2px}}
-.anom-lbl{{width:26px;flex-shrink:0;font-size:9px;font-weight:900;color:#60676f}}
+.anom-lbl{{width:28px;flex-shrink:0;font-size:10px;font-weight:900;color:#60676f}}
 .anom-lbl.unit{{color:#111827}}
 .anom-track{{position:relative;flex:1;height:10px;background:#e8ecef;border-radius:1px}}
 .anom-fill{{position:absolute;left:0;top:0;bottom:0;border-radius:1px}}
 .anom-fill.normal{{background:#16803c}}.anom-fill.danger{{background:#b91c1c}}
-.anom-val{{width:44px;flex-shrink:0;font:9px/1.1 Consolas,monospace;text-align:right;font-weight:900}}
+.anom-val{{width:48px;flex-shrink:0;font:10px/1.1 Consolas,monospace;text-align:right;font-weight:900}}
 .fi-panel{{border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column;height:100%}}
-.fi-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:10px;font-weight:900;flex-shrink:0}}
+.fi-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:11px;font-weight:900;flex-shrink:0}}
 .fi-list{{padding:2px 4px;flex:1;display:flex;flex-direction:column}}
 .fi-row{{display:flex;align-items:center;gap:6px;padding:0 3px;border-bottom:1px solid #e5e7eb;flex:1;min-height:0}}
 .fi-row:last-child{{border-bottom:none}}
 .fi-row:nth-child(even){{background:#f8fafc}}
-.pos-panel{{border:1px solid #9ca3af;background:#fff;margin-bottom:4px}}
-.pos-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:3px 6px;font-size:9px;font-weight:900}}
-.s-footer{{border-top:2px solid #4b5563;padding:3px 14px;display:flex;justify-content:space-between;font-size:9px;color:#4b5563;flex-shrink:0}}
+.pos-panel{{border:1px solid #9ca3af;background:#fff;flex:1;display:flex;flex-direction:column}}
+.pos-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 6px;font-size:11px;font-weight:900;flex-shrink:0}}
+.s-footer{{border-top:2px solid #4b5563;padding:3px 14px;display:flex;justify-content:space-between;font-size:10px;color:#4b5563;flex-shrink:0}}
 .footer-brand{{font-weight:900;color:#111827}}
 [data-dummy="1"]{{outline:2px solid #f59e0b!important;outline-offset:1px}}
 [data-dummy="1"]::after{{content:'DUMMY';position:absolute;top:2px;left:4px;font-size:8px;font-weight:900;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:1px 4px;z-index:100;pointer-events:none;letter-spacing:0.05em}}
-.ia-target{{cursor:pointer;transition:outline .12s}}
-.ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outline-offset:1px}}
+/* 차트 편집 모드: 모드 ON일 때만 적용 */
+body.ia-edit-mode .ia-target{{cursor:pointer;transition:outline .12s}}
+body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outline-offset:1px}}
 .ia-target.ia-selected{{outline:2px solid #3b82f6!important}}
-.ia-hover-btn{{display:none;position:absolute;top:3px;right:3px;z-index:9999;background:#3b82f6;color:#fff;border:none;padding:2px 7px;font-size:9px;cursor:pointer;font-weight:700}}
-.ia-target:hover .ia-hover-btn{{display:block}}
-.ia-empty-slot{{border:2px dashed #9ca3af;min-height:32px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px;cursor:pointer;margin-top:6px}}
-.ia-empty-slot:hover{{border-color:#3b82f6;background:#eff6ff;color:#3b82f6}}
 #ia-drag-overlay{{display:none;position:fixed;border:1.5px dashed #3b82f6;background:rgba(59,130,246,.07);pointer-events:none;z-index:99999}}
-#ia-ctx-menu{{display:none;position:fixed;z-index:999999;background:#fff;border:1px solid #9ca3af;box-shadow:0 4px 16px rgba(0,0,0,.15);min-width:150px;overflow:hidden}}
-#ia-ctx-menu .ctx-item{{padding:7px 14px;font-size:11px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:6px;font-weight:700}}
-#ia-ctx-menu .ctx-item:hover{{background:#eff6ff;color:#3b82f6}}
-#ia-ctx-menu .ctx-sep{{height:1px;background:#e2e8f0;margin:2px 0}}
+#ia-selection-box{{display:none;position:fixed;border:2px solid #3b82f6;background:rgba(59,130,246,.06);pointer-events:none;z-index:99998;border-radius:4px}}
+#ia-action-menu{{display:none;position:fixed;z-index:999999;background:#fff;border:1px solid #9ca3af;box-shadow:0 4px 16px rgba(0,0,0,.15);min-width:140px;overflow:hidden;border-radius:6px}}
+#ia-action-menu .ctx-item{{padding:7px 14px;font-size:11px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:6px;font-weight:700}}
+#ia-action-menu .ctx-item:hover{{background:#eff6ff;color:#3b82f6}}
+#ia-action-menu .ctx-sep{{height:1px;background:#e2e8f0;margin:2px 0}}
 </style>
 </head>
 <body>
@@ -1482,7 +1479,6 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 
       <div class="inum">1. {slabel("L1","모델 성능")}</div>
       <div class="ia-target" data-sid="L1_kpi" data-section="모델 성능" style="position:relative;margin-bottom:5px;flex-shrink:0">
-        <button class="ia-hover-btn" onclick="iaAskSection('L1_kpi','모델 성능')">✏️</button>
         <div style="display:grid;grid-template-columns:1fr 1px 1fr;border:1px solid #9ca3af;background:#fff;height:28px;align-items:center;margin-bottom:4px">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:10px;font-weight:700;color:#374151">
             <span>생산 일자</span><span style="font-family:Consolas,monospace;font-weight:900;color:#111827">{_prod_date}</span>
@@ -1501,25 +1497,23 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
           <div class="kpi-card dark">
             <div class="kpi-lbl">분석 유닛</div>
             <div class="kpi-val dark">{scan_total}개</div>
-            <div class="kpi-sub">val 기준</div>
+            <div class="kpi-sub">전체</div>
           </div>
           <div class="kpi-card amber">
             <div class="kpi-lbl">평균 예측 health</div>
             <div class="kpi-val amber">{_ppm_str} ppm</div>
-            <div class="kpi-sub">grade1 기준</div>
+            <div class="kpi-sub">전체 평균</div>
           </div>
         </div>
       </div>
 
-      <div class="inum">2. {slabel("L2","Feature Importance Top 4")}</div>
+      <div class="inum">2. {slabel("L2","Feature Importance Top 5")} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px;letter-spacing:.02em">출처: ZIT_only</span></div>
       <div class="cbox ia-target" data-sid="L2_fi" data-section="Feature Importance" style="position:relative;flex-shrink:0">
-        <button class="ia-hover-btn" onclick="iaAskSection('L2_fi','Feature Importance')">✏️</button>
         <div class="cbox-body" style="height:110px"><canvas id="c-fi-top"></canvas></div>
       </div>
 
       <div class="inum">3. {slabel("L3","불량 트렌드")}</div>
       <div class="cbox ia-target" data-sid="L3_trend" data-section="불량 트렌드" style="position:relative;flex:1;display:flex;flex-direction:column"{_dummy_attr(_is_dummy_l2)}>
-        <button class="ia-hover-btn" onclick="iaAskSection('L3_trend','불량 트렌드')">✏️</button>
         <div class="cbox-body" style="flex:1;position:relative"><canvas id="c-trend" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas></div>
       </div>
 
@@ -1536,7 +1530,6 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 
       <div class="inum">1. {slabel("R1","불량 예측 현황 · 대표 불량 unit 기준")}</div>
       <div class="unit-main ia-target" data-sid="R1_unit" data-section="대표 Unit 정보" style="position:relative"{_dummy_attr(_is_dummy_r1)}>
-        <button class="ia-hover-btn" onclick="iaAskSection('R1_unit','대표 Unit')">✏️</button>
         <div class="wafer-box">
           <div class="wafer-box-title">불량 위치 웨이퍼맵</div>
           <div style="display:flex;align-items:center;justify-content:center;flex:1">{wafer_svg}</div>
@@ -1547,7 +1540,7 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
             <span style="font-family:Consolas,monospace;font-weight:900;margin-left:4px">{dummy_unit["serial"]}</span>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
           <div class="unit-tbl">
             <div class="unit-row" style="grid-template-columns:80px 1fr"><div class="unit-lbl">ufs_serial</div><div class="unit-val">{dummy_unit["serial"]}</div></div>
             <div class="unit-row" style="grid-template-columns:80px 1fr"><div class="unit-lbl">LOT_ID</div><div class="unit-val">{dummy_unit["lot"]}</div></div>
@@ -1556,20 +1549,18 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
           </div>
           <div class="pos-panel" style="position:relative"{_dummy_attr(_is_dummy_r1b)}>
             <div class="pos-hdr">포지션별 예측 health값</div>
-            <div class="unit-tbl">{pos_health_rows}</div>
+            <div class="unit-tbl" style="flex:1">{pos_health_rows}</div>
           </div>
         </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:stretch;flex:1;overflow:hidden">
         <div class="anom-panel ia-target" data-sid="R2_anomaly" data-section="Anomaly Feature" style="position:relative">
-          <button class="ia-hover-btn" onclick="iaAskSection('R2_anomaly','Anomaly Feature')">✏️</button>
-          <div class="anom-hdr">Anomaly Feature Top {len(anomaly_stats) if anomaly_stats else 5}</div>
+          <div class="anom-hdr">Anomaly Feature Top {len(anomaly_stats) if anomaly_stats else 5} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px">출처: ZIT_only</span></div>
           <div class="anom-list">{anomaly_rows}</div>
         </div>
         <div class="fi-panel ia-target" data-sid="R3_scatter" data-section="이상 피처 분포" style="position:relative;display:flex;flex-direction:column">
-          <button class="ia-hover-btn" onclick="iaAskSection('R3_scatter','이상 피처 분포')">✏️</button>
-          <div class="fi-hdr">이상 피처 분포 · {fs1_name if fs1_name != "Feat1" else (features[0].get("feature","") if features else "")}</div>
+          <div class="fi-hdr">이상 피처 분포 · {fs1_name if fs1_name != "Feat1" else (features[0].get("feature","") if features else "")} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px">출처: ZIT_only</span></div>
           <div style="flex:1;position:relative;padding:4px">
             <canvas id="c-feat-scatter" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas>
           </div>
@@ -1590,11 +1581,10 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 </div>
 
 <div id="ia-drag-overlay"></div>
-<div id="ia-ctx-menu">
-  <div class="ctx-item" id="ctx-edit">✏️ 수정 요청</div>
-  <div class="ctx-item" id="ctx-period">📅 기간 변경</div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-item" id="ctx-explain">💬 이 데이터 설명해줘</div>
+<div id="ia-action-menu">
+  <div class="ctx-item" id="act-edit">✏️ 수정</div>
+  <div class="ctx-item" id="act-explain">💬 설명</div>
+  <div class="ctx-item" id="act-delete">🗑️ 삭제</div>
 </div>
 
 <div class="s-footer">
@@ -1610,7 +1600,7 @@ Chart.defaults.font.weight = '700';
 Chart.defaults.font.size   = 9;
 Chart.defaults.color       = '#202832';
 
-// L2: 불량 트렌드 (꺾은선 + 생산량 막대, 대시보드 Overview 동일 스타일)
+// L3: 주차별 불량 ppm 트렌드 — 대시보드 Overview와 동일한 3구간(실측/예측/최신) 스타일
 (function(){{
   var rawLabels   = {j_lot_labels};
   var prodData    = {j_lot_production};
@@ -1626,25 +1616,35 @@ Chart.defaults.color       = '#202832';
   var predPpm = (defectPpm && defectPpm.length === rawLabels.length)
     ? defectPpm.map(function(v){{ return v!=null ? Math.round(v) : null; }})
     : predYieldPct.map(function(v){{ return v!=null ? Math.round((1-v/100)*1000000) : null; }});
-  // 마지막 주(WW37) 직전 값 × 1.6으로 강조 (Overview와 동일)
   var n = predPpm.length;
+  // 마지막 주차 강조: 직전 값 × 1.6 (Overview와 동일)
   var prevVal = 0;
   for(var pi=n-2;pi>=0;pi--){{ if(predPpm[pi]!=null){{ prevVal=predPpm[pi]; break; }} }}
   predPpm[n-1] = Math.round(prevVal * 1.6);
-  // X축: WW 번호 (마지막=WW37, 역산) + tooltip용 날짜 범위
+  // 2구간 분할: 예측(WW32~WW36) / 최신(WW36~WW37)
+  // 보고서에는 실측 라인이 없음 → 전부 '예측 구간', 마지막만 '최신 주차'
+  var futureData = predPpm.map(function(v,i){{ return i<=n-2 ? v : null; }});
+  var lastData   = predPpm.map(function(v,i){{ return i>=n-2 ? v : null; }});
+  // X축: WW 번호 (마지막=WW37, 역산)
   var LAST_WW = 37;
   var wwLabels = rawLabels.map(function(_,i){{ return 'WW'+(LAST_WW-(n-1-i)); }});
   var dateLabels = rawLabels;
-  // 마지막 점 강조: pointRadius/Color를 배열로 지정 (Chart.js 방식)
-  var ptRadius = predPpm.map(function(_,i){{ return i===n-1 ? 10 : 3; }});
-  var ptBgColor = predPpm.map(function(_,i){{ return i===n-1 ? '#DC2626' : '#3b82f6'; }});
-  var ptBorderColor = predPpm.map(function(_,i){{ return i===n-1 ? '#fff' : '#3b82f6'; }});
-  var ptBorderWidth = predPpm.map(function(_,i){{ return i===n-1 ? 2 : 1; }});
+  // 생산량 막대를 위쪽으로 작게 보이게 — y1 max를 6.5배로 (Overview와 동일)
+  var prodMax = Math.max.apply(null, prodData.filter(function(v){{return v!=null;}})) || 1;
+  var y1Max   = Math.round(prodMax * 6.5);
+
   new Chart(ctx,{{type:'bar',data:{{labels:wwLabels,datasets:[
-    {{label:'생산량',data:prodData,type:'bar',backgroundColor:'rgba(99,102,241,0.4)',borderWidth:0,yAxisID:'y1',order:2,barPercentage:0.6}},
-    {{label:'예측 불량 ppm',data:predPpm,type:'line',borderColor:'#3b82f6',borderWidth:2,
-      pointRadius:ptRadius,pointBackgroundColor:ptBgColor,pointBorderColor:ptBorderColor,pointBorderWidth:ptBorderWidth,
-      fill:false,tension:0.35,yAxisID:'y2',order:1}},
+    {{label:'생산량',data:prodData,type:'bar',
+      backgroundColor:'rgba(99,102,241,0.35)',borderWidth:0,yAxisID:'y1',order:3,barPercentage:0.55}},
+    {{label:'예측 구간',data:futureData,type:'line',
+      borderColor:'#3B82F6',backgroundColor:'#3B82F6',borderWidth:2,borderDash:[4,3],
+      pointRadius:3,pointBackgroundColor:'#3B82F6',fill:false,tension:0.35,
+      yAxisID:'y2',order:1,spanGaps:true}},
+    {{label:'최신 주차',data:lastData,type:'line',
+      borderColor:'#DC2626',backgroundColor:'#DC2626',borderWidth:2,
+      pointRadius:function(c){{return c.dataIndex===n-1?7:3;}},
+      pointBackgroundColor:'#DC2626',pointBorderColor:'#fff',pointBorderWidth:2,
+      fill:false,tension:0.35,yAxisID:'y2',order:0,spanGaps:true}},
   ]}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
     interaction:{{mode:'index',intersect:false}},
     plugins:{{
@@ -1653,13 +1653,26 @@ Chart.defaults.color       = '#202832';
         var i=items[0].dataIndex;
         return wwLabels[i]+' ('+dateLabels[i]+')';
       }},label:function(item){{
+        if(item.raw==null) return null;
         if(item.dataset.label==='생산량') return '생산량: '+item.raw.toLocaleString()+'개';
-        return '예측 불량 ppm: '+(item.raw!=null?Math.round(item.raw).toLocaleString():'-')+' ppm';
+        return item.dataset.label+': '+Math.round(item.raw).toLocaleString()+' ppm';
+      }},afterBody:function(items){{
+        var i=items[0].dataIndex;
+        return i===n-1 ? '⚠️ 최신 주차' : '예측 구간';
       }}}}}}
     }},
     scales:{{
-      y1:{{type:'linear',position:'left',title:{{display:true,text:'생산량(개)',font:{{size:7,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:7,weight:'700'}},color:'#94a3b8'}}}},
-      y2:{{type:'linear',position:'right',grid:{{display:false}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563',callback:function(v){{return (v/1000).toFixed(0)+'k';}}}},min:0}},
+      y1:{{type:'linear',position:'left',
+        title:{{display:true,text:'생산량(개)',font:{{size:7,weight:'700'}}}},
+        grid:{{color:'#eef0f2'}},
+        ticks:{{font:{{size:7,weight:'700'}},color:'#94a3b8',
+          callback:function(v){{return v>=1000?(v/1000).toFixed(0)+'k':v;}}}},
+        max:y1Max}},
+      y2:{{type:'linear',position:'right',
+        title:{{display:true,text:'불량 ppm',font:{{size:7,weight:'700'}}}},
+        grid:{{display:false}},
+        ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563',
+          callback:function(v){{return (v/1000).toFixed(0)+'k';}}}},min:0}},
       x:{{grid:{{display:false}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563',maxRotation:0}}}}
     }}
   }}}});
@@ -1746,7 +1759,7 @@ Chart.defaults.color       = '#202832';
   drawFeatScatter('c-fs2', {j_fs2_high}, {j_fs2_med}, {j_fs2_threshold});
 }})();
 
-// L2: Feature Importance Top 4 (수평 바 차트)
+// L2: Feature Importance Top 5 (수평 바 차트)
 (function(){{
   var ctx = document.getElementById('c-fi-top'); if(!ctx) return;
   var labels = {j_fi_top4_labels};
@@ -1857,7 +1870,25 @@ Chart.defaults.color       = '#202832';
 
 {custom_chart_js}
 
+/* === 통합 차트 편집 모드 ===
+   외부(부모)에서 'SET_CHART_EDIT_MODE' 메시지로 모드를 ON/OFF.
+   ON일 때만:
+     - 단일 클릭        → 해당 섹션(자체 박스 크기)을 선택 + 액션 메뉴
+     - 드래그           → 박스(드래그 영역)를 선택 + 액션 메뉴
+   액션 메뉴: 수정 / 설명 / 삭제
+   메뉴를 닫지 않고 자유 프롬프트를 쓰려면 부모 채팅창에 직접 입력. */
 (function(){{
+  var editMode=false;
+  var menu=document.getElementById('ia-action-menu');
+  var overlay=document.getElementById('ia-drag-overlay');
+  var selBox=document.getElementById('ia-selection-box');
+  if(!selBox){{
+    selBox=document.createElement('div');selBox.id='ia-selection-box';
+    document.body.appendChild(selBox);
+  }}
+  var selected=null;       /* {{kind:'section'|'box', sid?, label?, rect:{{x,y,w,h}}, hits?:[sid]}} */
+  var highlighted=[];      /* 선택된 섹션 DOM */
+
   function getSnap(){{
     var snap=[],pr=document.querySelector('.slide').getBoundingClientRect();
     document.querySelectorAll('[data-sid]').forEach(function(el){{
@@ -1867,63 +1898,186 @@ Chart.defaults.color       = '#202832';
     }});return snap;
   }}
   function send(p){{window.parent.postMessage({{type:'ia_event',payload:p}},'*');}}
-  window.iaAskSection=function(sid,label){{send({{action:'modify',sid:sid,label:label,layout:getSnap(),prompt:label+' 섹션을 수정하고 싶습니다.'}});}};
-  window.iaClickEmptySlot=function(pos){{send({{action:'add',position:pos,layout:getSnap(),prompt:pos==='left_col'?'왼쪽 빈 공간에 섹션 추가':'오른쪽 빈 공간에 섹션 추가'}});}};
-  var ctxMenu=document.getElementById('ia-ctx-menu'),_tgt=null;
-  document.addEventListener('contextmenu',function(e){{
-    var el=e.target.closest('[data-sid]');if(!el)return;
-    e.preventDefault();_tgt=el;el.classList.add('ia-selected');
-    ctxMenu.style.display='block';ctxMenu.style.left=e.clientX+'px';ctxMenu.style.top=e.clientY+'px';
+
+  function clearSelection(){{
+    highlighted.forEach(function(el){{el.classList.remove('ia-selected');}});
+    highlighted=[];
+    selBox.style.display='none';
+    selected=null;
+  }}
+  function hideMenu(){{menu.style.display='none';}}
+  function showMenuAt(x,y){{
+    menu.style.display='block';menu.style.left=x+'px';menu.style.top=y+'px';
+  }}
+
+  function selectSection(el,clientX,clientY){{
+    clearSelection();
+    el.classList.add('ia-selected');
+    highlighted=[el];
+    var pr=document.querySelector('.slide').getBoundingClientRect();
+    var r=el.getBoundingClientRect();
+    selected={{
+      kind:'section',
+      sid:el.getAttribute('data-sid'),
+      label:el.getAttribute('data-section')||el.getAttribute('data-sid'),
+      rect:{{x:Math.round(r.left-pr.left),y:Math.round(r.top-pr.top),w:Math.round(r.width),h:Math.round(r.height)}}
+    }};
+    showMenuAt(clientX,clientY);
+  }}
+  function selectBox(rectClient){{
+    clearSelection();
+    var pr=document.querySelector('.slide').getBoundingClientRect();
+    var dr={{
+      x:Math.round(rectClient.x-pr.left),
+      y:Math.round(rectClient.y-pr.top),
+      w:Math.round(rectClient.w),
+      h:Math.round(rectClient.h)
+    }};
+    /* 박스 안에 들어온 섹션들 수집 (40% 이상 겹친 것만) */
+    var snap=getSnap();
+    var hits=[];
+    snap.forEach(function(s){{
+      var ix=Math.max(0,Math.min(dr.x+dr.w,s.rect.x+s.rect.w)-Math.max(dr.x,s.rect.x));
+      var iy=Math.max(0,Math.min(dr.y+dr.h,s.rect.y+s.rect.h)-Math.max(dr.y,s.rect.y));
+      var sa=s.rect.w*s.rect.h;
+      if(sa>0 && (ix*iy)/sa>0.4) hits.push(s);
+    }});
+    hits.forEach(function(s){{
+      var el=document.querySelector('[data-sid="'+s.sid+'"]');
+      if(el){{el.classList.add('ia-selected');highlighted.push(el);}}
+    }});
+    /* 시각적 선택 박스 (드래그한 영역) */
+    selBox.style.display='block';
+    selBox.style.left=rectClient.x+'px';
+    selBox.style.top=rectClient.y+'px';
+    selBox.style.width=rectClient.w+'px';
+    selBox.style.height=rectClient.h+'px';
+    selected={{
+      kind:'box',
+      rect:dr,
+      hits:hits.map(function(s){{return s.sid;}}),
+      labels:hits.map(function(s){{return s.label;}})
+    }};
+    /* 액션 메뉴 위치: 박스 우하단 */
+    showMenuAt(rectClient.x+rectClient.w+6, rectClient.y+rectClient.h+6);
+  }}
+
+  function dispatchAction(actionKind){{
+    if(!selected){{hideMenu();return;}}
+    var layout=getSnap();
+    if(selected.kind==='section'){{
+      var label=selected.label||selected.sid;
+      var prompt=({{
+        modify: label+' 섹션을 수정하고 싶습니다.',
+        explain:label+' 섹션의 데이터를 설명해주세요.',
+        remove: label+' 섹션을 삭제해 주세요.'
+      }})[actionKind]||label;
+      send({{
+        action:actionKind==='remove'?'remove':(actionKind==='explain'?'explain':'modify'),
+        sid:selected.sid, label:label,
+        bbox:selected.rect, layout:layout, prompt:prompt
+      }});
+    }} else {{
+      /* 박스 선택 */
+      var hits=selected.hits||[];
+      var labels=(selected.labels||[]).join(', ');
+      var pos=selected.rect.x<640?'left_col':'right_col';
+      var hasHits=hits.length>0;
+      var actMap={{
+        modify: hasHits ? ('드래그한 영역('+labels+')을 합쳐서 수정해 주세요.')
+                        : ('드래그한 빈 영역에 새 차트/표를 추가해 주세요.'),
+        explain:hasHits ? ('드래그한 영역('+labels+')에 대해 설명해 주세요.')
+                        : '드래그한 빈 영역에 대한 데이터 설명이 필요합니다.',
+        remove: hasHits ? ('드래그한 영역('+labels+')을 삭제해 주세요.')
+                        : '드래그한 빈 영역을 정리해 주세요.'
+      }};
+      send({{
+        action: actionKind==='remove'?'remove'
+               :(actionKind==='explain'?'explain'
+               :(hasHits?'modify':'add')),
+        position: pos,
+        sids: hits, labels: selected.labels||[],
+        bbox: selected.rect, layout: layout,
+        prompt: actMap[actionKind]||actMap.modify
+      }});
+    }}
+    hideMenu();
+    clearSelection();
+  }}
+
+  document.getElementById('act-edit').addEventListener('click',function(e){{
+    e.stopPropagation();dispatchAction('modify');
   }});
-  function hideCtx(){{ctxMenu.style.display='none';if(_tgt){{_tgt.classList.remove('ia-selected');_tgt=null;}}}}
-  document.addEventListener('click',hideCtx);
-  document.addEventListener('keydown',function(e){{if(e.key==='Escape')hideCtx();}});
-  document.getElementById('ctx-edit').addEventListener('click',function(){{
-    if(!_tgt)return;hideCtx();
-    send({{action:'modify',sid:_tgt.getAttribute('data-sid'),label:_tgt.getAttribute('data-section')||_tgt.getAttribute('data-sid'),layout:getSnap(),prompt:(_tgt.getAttribute('data-section')||'')+' 섹션을 수정하고 싶습니다.'}});
+  document.getElementById('act-explain').addEventListener('click',function(e){{
+    e.stopPropagation();dispatchAction('explain');
   }});
-  document.getElementById('ctx-period').addEventListener('click',function(){{
-    if(!_tgt)return;hideCtx();
-    send({{action:'period',sid:_tgt.getAttribute('data-sid'),label:_tgt.getAttribute('data-section')||_tgt.getAttribute('data-sid'),layout:getSnap(),prompt:(_tgt.getAttribute('data-section')||'')+' 기간을 변경하고 싶습니다.'}});
+  document.getElementById('act-delete').addEventListener('click',function(e){{
+    e.stopPropagation();dispatchAction('remove');
   }});
-  document.getElementById('ctx-explain').addEventListener('click',function(){{
-    if(!_tgt)return;hideCtx();
-    send({{action:'explain',sid:_tgt.getAttribute('data-sid'),label:_tgt.getAttribute('data-section')||_tgt.getAttribute('data-sid'),layout:getSnap(),prompt:(_tgt.getAttribute('data-section')||'')+' 섹션의 데이터를 설명해주세요.'}});
+
+  /* 빈 곳 클릭/ESC → 선택 해제 */
+  document.addEventListener('keydown',function(e){{
+    if(e.key==='Escape'){{hideMenu();clearSelection();}}
   }});
-  var overlay=document.getElementById('ia-drag-overlay');
-  var drag={{active:false,startX:0,startY:0}};
+
+  /* 드래그 진행 상태 */
+  var drag={{active:false,startX:0,startY:0,moved:false}};
+
   document.addEventListener('mousedown',function(e){{
-    if(e.target.closest('#ia-ctx-menu')||e.target.closest('.ia-hover-btn')||e.target.closest('.ia-empty-slot')||e.button!==0)return;
-    var onSec=e.target.closest('[data-sid]');
-    if(!onSec&&!e.target.closest('.slide'))return;
-    drag.active=true;drag.startX=e.clientX;drag.startY=e.clientY;
+    if(!editMode) return;
+    if(e.button!==0) return;
+    if(e.target.closest('#ia-action-menu')) return;
+    /* 액션 메뉴 떠있을 때 다른 곳 누르면 닫고 시작 */
+    hideMenu();
+    drag.active=true;drag.moved=false;
+    drag.startX=e.clientX;drag.startY=e.clientY;
   }});
   document.addEventListener('mousemove',function(e){{
-    if(!drag.active)return;
+    if(!editMode||!drag.active) return;
     var dx=e.clientX-drag.startX,dy=e.clientY-drag.startY;
-    if(Math.abs(dx)<5&&Math.abs(dy)<5)return;
+    if(Math.abs(dx)<5&&Math.abs(dy)<5) return;
+    drag.moved=true;
     overlay.style.display='block';
     overlay.style.left=Math.min(e.clientX,drag.startX)+'px';
     overlay.style.top=Math.min(e.clientY,drag.startY)+'px';
     overlay.style.width=Math.abs(dx)+'px';overlay.style.height=Math.abs(dy)+'px';
   }});
   document.addEventListener('mouseup',function(e){{
-    if(!drag.active)return;
-    overlay.style.display='none';
+    if(!editMode||!drag.active) return;
+    drag.active=false;overlay.style.display='none';
     var dx=e.clientX-drag.startX,dy=e.clientY-drag.startY;
-    drag.active=false;
-    if(Math.abs(dx)<10&&Math.abs(dy)<10)return;
-    var pr=document.querySelector('.slide').getBoundingClientRect();
-    var dr={{x:Math.round(Math.min(e.clientX,drag.startX)-pr.left),y:Math.round(Math.min(e.clientY,drag.startY)-pr.top),w:Math.round(Math.abs(dx)),h:Math.round(Math.abs(dy))}};
-    var snap=getSnap(),hit=null;
-    snap.forEach(function(s){{
-      if(s.sid.includes('EMPTY'))return;
-      var ix=Math.max(0,Math.min(dr.x+dr.w,s.rect.x+s.rect.w)-Math.max(dr.x,s.rect.x));
-      var iy=Math.max(0,Math.min(dr.y+dr.h,s.rect.y+s.rect.h)-Math.max(dr.y,s.rect.y));
-      if(dr.w*dr.h>0&&ix*iy/(dr.w*dr.h)>0.4)hit=s;
-    }});
-    if(hit){{send({{action:'modify',sid:hit.sid,label:hit.label,drag:dr,layout:snap,prompt:hit.label+' 섹션을 드래그 선택했습니다.'}});}}
-    else{{var pos=dr.x<640?'left_col':'right_col';send({{action:'add',position:pos,drag:dr,layout:snap,prompt:(pos==='left_col'?'왼쪽':'오른쪽')+' 영역에 섹션을 추가하고 싶습니다.'}});}}
+    if(!drag.moved||Math.abs(dx)<10&&Math.abs(dy)<10){{
+      /* 클릭으로 간주 → 섹션 선택 */
+      var sec=e.target.closest('[data-sid]');
+      if(sec){{
+        e.preventDefault();
+        selectSection(sec,e.clientX,e.clientY);
+      }} else {{
+        clearSelection();
+      }}
+      return;
+    }}
+    /* 드래그 박스 선택 */
+    var rc={{
+      x:Math.min(e.clientX,drag.startX),
+      y:Math.min(e.clientY,drag.startY),
+      w:Math.abs(dx),h:Math.abs(dy)
+    }};
+    selectBox(rc);
+  }});
+
+  /* 부모 메시지: 모드 ON/OFF + 강제 초기화 */
+  window.addEventListener('message',function(e){{
+    if(!e.data) return;
+    if(e.data.type==='SET_CHART_EDIT_MODE'){{
+      editMode=!!e.data.value;
+      document.body.classList.toggle('ia-edit-mode',editMode);
+      document.body.style.cursor=editMode?'crosshair':'';
+      if(!editMode){{hideMenu();clearSelection();}}
+    }}
+    if(e.data.type==='CLEAR_CHART_EDIT'){{
+      hideMenu();clearSelection();
+    }}
   }});
 }})();
 </script>

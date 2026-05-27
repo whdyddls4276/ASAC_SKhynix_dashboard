@@ -342,7 +342,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
               </div>
             </div>
             <div style={{ marginTop: 6, fontSize: 11, color: '#94a3b8' }}>
-              정상 범위 대비 고립도 · 높을수록 이상
+              정상 유닛들의 공정 피처 분포를 학습해서, 해당 유닛이 그 분포에서 얼마나 벗어났는지를 0~100으로 나타낸 값.
             </div>
           </div>
         )

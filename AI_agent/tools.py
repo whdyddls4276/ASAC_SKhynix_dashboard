@@ -8,17 +8,30 @@ import numpy as np
 from scipy import stats
 from datetime import datetime, timedelta
 
-DATA_DIR       = os.path.join(os.path.dirname(__file__), "data")
-DASHBOARD_DIR  = os.path.join(os.path.dirname(__file__), "..", "Dashboard", "public")
+DASHBOARD_DIR  = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "Dashboard", "public"))
+DATA_DIR       = DASHBOARD_DIR
+# 대용량 원본 데이터 fallback 경로 (sk_하이닉스/0_data/)
+_FALLBACK_DIRS = [
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "0_data")),
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data")),
+]
 
 _cache: dict = {}
 
 def _load(filename: str) -> pd.DataFrame:
     if filename in _cache:
         return _cache[filename]
+    # 1차: Dashboard/public/
     path = os.path.join(DATA_DIR, filename)
     if not os.path.exists(path):
-        raise FileNotFoundError(f"{filename} 파일을 data/ 폴더에 넣어주세요.")
+        # fallback 경로들 순서대로 탐색
+        for fb in _FALLBACK_DIRS:
+            candidate = os.path.join(fb, filename)
+            if os.path.exists(candidate):
+                path = candidate
+                break
+        else:
+            raise FileNotFoundError(f"{filename} 파일을 찾을 수 없습니다.")
     df = pd.read_csv(path)
     _cache[filename] = df
     return df
@@ -33,14 +46,24 @@ def _load_dashboard(filename: str) -> pd.DataFrame:
 def _filter_units(units: pd.DataFrame, start: str = "", end: str = "") -> pd.DataFrame:
     """
     start/end(YYYYMMDD 문자열)로 date 컬럼 필터링.
-    없으면 전체 반환.
+    date 컬럼이 없거나 start/end가 없으면 전체 반환.
+    date 컬럼 형식: YYYY-MM-DD 또는 YYYYMMDD 모두 처리.
     """
-    if "date" not in units.columns:
+    if "date" not in units.columns or (not start and not end):
         return units
+
+    # date 컬럼을 YYYYMMDD 정수로 정규화
+    date_col = units["date"].astype(str).str.replace("-", "")
+    try:
+        date_int = date_col.astype(int)
+    except ValueError:
+        return units  # 파싱 불가능한 형식이면 필터 없이 전체 반환
+
     if start:
-        units = units[units["date"] >= int(start)]
+        units = units[date_int >= int(start)]
+        date_int = date_int[date_int >= int(start)]
     if end:
-        units = units[units["date"] <= int(end)]
+        units = units[date_int <= int(end)]
     return units
 
 
@@ -56,34 +79,85 @@ def _date_range_label(start: str, end: str) -> str:
 
 
 # ── ① 기간 추론 ──────────────────────────────────────────────
+# 데이터 날짜 범위: 20260327 ~ 20260708
+_DATA_START = "20260327"
+_DATA_END   = "20260708"
+
 def infer_period(user_text: str) -> dict:
     """
-    사용자 입력에서 기간 레이블만 추론 (날짜 데이터 없으므로 레이블만 반환).
-    반환: { label: "이번 주" }
+    사용자 입력에서 기간을 추론하고 start/end(YYYYMMDD)를 반환.
+    데이터 범위: 20251001 ~ 20251214.
+    반환: {label, start, end}
     """
-    text = user_text.lower()
-    if "이번 주" in text or "이번주" in text:
-        label = "이번 주"
-    elif "지난 주" in text or "지난주" in text:
-        label = "지난 주"
-    elif "이번 달" in text or "이번달" in text:
-        label = "이번 달"
-    else:
-        label = "전체 기간"
+    import re as _re
+    text = user_text
 
-    return {"label": label}
+    # 직접 날짜 패턴: "11월 9일~11일", "10/1~10/7" 등
+    m = _re.search(r'(\d{1,2})월\s*(\d{1,2})일?\s*[~\-]\s*(\d{1,2})일', text)
+    if m:
+        mo, d1, d2 = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        start = f"2026{mo:02d}{d1:02d}"
+        end   = f"2026{mo:02d}{d2:02d}"
+        return {"label": f"{mo}월 {d1}일~{d2}일", "start": start, "end": end}
+
+    # "N월" 단독
+    m = _re.search(r'(\d{1,2})월', text)
+    if m:
+        mo = int(m.group(1))
+        start = f"2026{mo:02d}01"
+        end   = f"2026{mo:02d}31"
+        return {"label": f"{mo}월", "start": start, "end": end}
+
+    # "최근 N일"
+    m = _re.search(r'최근\s*(\d+)\s*일', text)
+    if m:
+        n = int(m.group(1))
+        from datetime import datetime, timedelta
+        end_dt   = datetime(2026, 7, 8)
+        start_dt = end_dt - timedelta(days=n - 1)
+        start = start_dt.strftime("%Y%m%d")
+        end   = end_dt.strftime("%Y%m%d")
+        return {"label": f"최근 {n}일", "start": start, "end": end}
+
+    # "최근 N주"
+    m = _re.search(r'최근\s*(\d+)\s*주', text)
+    if m:
+        n = int(m.group(1))
+        from datetime import datetime, timedelta
+        end_dt   = datetime(2026, 7, 8)
+        start_dt = end_dt - timedelta(weeks=n)
+        start = start_dt.strftime("%Y%m%d")
+        end   = end_dt.strftime("%Y%m%d")
+        return {"label": f"최근 {n}주", "start": start, "end": end}
+
+    # "이번 주" → 데이터 마지막 주 (07/07~07/08)
+    if "이번 주" in text or "이번주" in text:
+        return {"label": "이번 주 (07/07~07/08)", "start": "20260707", "end": "20260708"}
+
+    # "지난 주" → 06/30~07/06
+    if "지난 주" in text or "지난주" in text:
+        return {"label": "지난 주 (06/30~07/06)", "start": "20260630", "end": "20260706"}
+
+    # "이번 달" → 7월
+    if "이번 달" in text or "이번달" in text:
+        return {"label": "7월", "start": "20260701", "end": "20260708"}
+
+    # "지난 달" → 6월
+    if "지난 달" in text or "지난달" in text:
+        return {"label": "6월", "start": "20260601", "end": "20260630"}
+
+    # 기본: 전체 기간
+    return {"label": "전체 기간", "start": "", "end": ""}
 
 
 # ── ② 데이터 스캔 ─────────────────────────────────────────────
 def scan_data(start: str = "", end: str = "") -> dict:
     """
-    val 데이터 스캔. grade1~4 기준으로 집계.
-    grade1=위험(HIGH), grade2/3/4=MED 3분할(reg_pred 크기순)
-    start/end: YYYYMMDD 형식 날짜 필터 (X1086 기반)
+    데이터 스캔. grade4=매우위험(HIGH), grade1=정상
+    start/end: YYYYMMDD 형식 날짜 필터
     """
     units = _load("dashboard_units.csv")
-    period = units  # train/val/test 전체 사용
-    period = _filter_units(period, start, end)
+    period = _filter_units(units, start, end)
 
     if period.empty:
         return {"error": "해당 기간 데이터가 없습니다."}
@@ -94,9 +168,10 @@ def scan_data(start: str = "", end: str = "") -> dict:
     g3 = (period["grade"] == "grade3").sum()
     g4 = (period["grade"] == "grade4").sum()
 
+    # grade4(매우위험) 기준으로 집중 LOT/웨이퍼 집계
     lot_risk = (
         period.groupby("run_id")["grade"]
-        .apply(lambda x: (x == "grade1").sum())
+        .apply(lambda x: (x == "grade4").sum())
         .sort_values(ascending=False)
     )
     top_lot = int(lot_risk.index[0]) if not lot_risk.empty else None
@@ -104,7 +179,7 @@ def scan_data(start: str = "", end: str = "") -> dict:
 
     wafer_risk = (
         period.groupby(["run_id", "wafer_no"])["grade"]
-        .apply(lambda x: (x == "grade1").sum())
+        .apply(lambda x: (x == "grade4").sum())
         .sort_values(ascending=False)
     )
     top_wafer_lot = int(wafer_risk.index[0][0]) if not wafer_risk.empty else None
@@ -117,61 +192,58 @@ def scan_data(start: str = "", end: str = "") -> dict:
         "period": _date_range_label(start, end),
         "total_units": total,
         "unique_lots": unique_lots,
-        "grade1_count": int(g1),
-        "grade1_ratio": round(g1 / total * 100, 1),
-        "grade2_count": int(g2),
-        "grade3_count": int(g3),
         "grade4_count": int(g4),
+        "grade4_ratio": round(g4 / total * 100, 1),
+        "grade3_count": int(g3),
+        "grade2_count": int(g2),
+        "grade1_count": int(g1),
         "top_lot": top_lot,
-        "top_lot_grade1_count": top_lot_count,
-        "top_wafer": {"lot": top_wafer_lot, "wafer": top_wafer_no, "grade1_count": top_wafer_count},
+        "top_lot_grade4_count": top_lot_count,
+        "top_wafer": {"lot": top_wafer_lot, "wafer": top_wafer_no, "grade4_count": top_wafer_count},
     }
 
 
 # ── ③ 원인 분석 ───────────────────────────────────────────────
 def analyze_features(start: str = "", end: str = "", top_n: int = 10) -> dict:
     """
-    grade1 vs grade4 feature 분포 비교 (가장 극단적인 두 그룹).
+    grade4(매우위험) vs grade1(정상) feature 분포 비교.
     원본 xs 데이터와 dashboard_units를 조인하여 실시간 분석.
-    start/end: YYYYMMDD 형식 날짜 필터 (X1086 기반)
+    start/end: YYYYMMDD 형식 날짜 필터
     """
     units = _load("dashboard_units.csv")
-    val_units = units  # train/val/test 전체 사용
-    val_units = _filter_units(val_units, start, end)
+    val_units = _filter_units(units, start, end)
     period_units = val_units[["ufs_serial", "grade"]]
 
-    # importance 상위 50개만 분석 (전체 1087개 t-test는 30초 소요)
+    # importance 상위 20개만 분석 (속도 최적화)
     try:
         fi = _load("feature_importance.csv")
-        top50 = fi.sort_values("lgbm_rank").head(50)["feature"].tolist()
+        top50 = fi.sort_values("lgbm_rank").head(20)["feature"].tolist()
         fi_rank = dict(zip(fi["feature"], fi["lgbm_rank"]))
     except FileNotFoundError:
         top50 = None
         fi_rank = {}
 
     xs = _load("compet_xs_data.csv")
-    # 필요한 컬럼만 로드해서 merge (174,980행 전체 컬럼 처리 방지)
     keep_cols = ["ufs_serial"] + ([c for c in top50 if c in xs.columns] if top50 else [c for c in xs.columns if c.startswith("X")])
     merged = xs[keep_cols].merge(period_units, on="ufs_serial", how="inner")
 
     if merged.empty:
-        return {"error": "해당 기간 feature 데이터가 없습니다."}
+        return {"error": "해당 기간 feature 데이터가 없습니다.", "top_features": []}
 
     feat_cols = [c for c in keep_cols if c != "ufs_serial"]
 
-    # unit level 집계 (die 174,980행 → unit 8,727행) 후 t-test → 훨씬 빠름
     merged_unit = merged.groupby(["ufs_serial", "grade"])[feat_cols].mean().reset_index()
 
-    g1_df = merged_unit[merged_unit["grade"] == "grade1"][feat_cols]  # 위험
-    g4_df = merged_unit[merged_unit["grade"] == "grade4"][feat_cols]  # 정상
+    g4_df = merged_unit[merged_unit["grade"] == "grade4"][feat_cols]  # 매우위험
+    g1_df = merged_unit[merged_unit["grade"] == "grade1"][feat_cols]  # 정상
 
-    if g1_df.empty or g4_df.empty:
-        return {"error": "grade1 또는 grade4 데이터가 부족합니다."}
+    if g4_df.empty or g1_df.empty:
+        return {"error": f"grade4({len(g4_df)}개) 또는 grade1({len(g1_df)}개) 데이터 부족.", "top_features": []}
 
     results = []
     for col in feat_cols:
-        h_vals = g1_df[col].dropna()
-        l_vals = g4_df[col].dropna()
+        h_vals = g4_df[col].dropna()
+        l_vals = g1_df[col].dropna()
         if len(h_vals) < 5 or len(l_vals) < 5:
             continue
 
@@ -182,8 +254,8 @@ def analyze_features(start: str = "", end: str = "", top_n: int = 10) -> dict:
 
         results.append({
             "feature": col,
-            "high_mean": round(h_mean, 4),   # grade1 평균
-            "low_mean":  round(l_mean, 4),   # grade4 평균
+            "high_mean": round(h_mean, 4),   # grade4(위험) 평균
+            "low_mean":  round(l_mean, 4),   # grade1(정상) 평균
             "ratio": ratio,
             "pval": float(pval),
             "importance_rank": fi_rank.get(col, 9999),
@@ -195,9 +267,9 @@ def analyze_features(start: str = "", end: str = "", top_n: int = 10) -> dict:
 
     return {
         "period": _date_range_label(start, end),
-        "compare_group": "grade4",   # 비교 기준
-        "high_n": len(g1_df),        # grade1 수
-        "low_n":  len(g4_df),        # grade4 수
+        "compare_group": "grade1",   # 비교 기준(정상)
+        "high_n": len(g4_df),        # grade4(위험) 수
+        "low_n":  len(g1_df),        # grade1(정상) 수
         "top_features": top,
     }
 
@@ -307,7 +379,7 @@ def get_position_defect_rate() -> dict:
 
     for p in [1, 2, 3, 4]:
         c1, c2 = f"pos{p}_{f1}", f"pos{p}_{f2}"
-        if c1 not in val.columns:
+        if c1 not in val.columns or c2 not in val.columns:
             result["labels"].append(f"P{p}")
             result["high_ratio"].append(0.0)
             result["med_ratio"].append(0.0)
@@ -367,19 +439,16 @@ def get_top_unit_data() -> dict:
     die_x = int(row["die_x"]) if "die_x" in row.index and pd.notna(row["die_x"]) else None
     die_y = int(row["die_y"]) if "die_y" in row.index and pd.notna(row["die_y"]) else None
 
-    # 포지션별 pred_health 추정: 각 포지션의 feature 합산 비율로 base_pred 분배
+    # 포지션별 pred: wafer_map.csv에서 해당 unit의 ZIT die-level pred 직접 조회
     base_pred = float(row["reg_pred"])
     pos_health = {}
-    if pos_feat_vals:
-        feat_sums = {}
+    try:
+        wmap_path = os.path.normpath(os.path.join(DASHBOARD_DIR, "wafer_map.csv"))
+        wmap_all = pd.read_csv(wmap_path, usecols=["ufs_serial", "position", "pred"])
+        die_rows = wmap_all[wmap_all["ufs_serial"] == serial].set_index("position")["pred"]
         for p in [1, 2, 3, 4]:
-            pdata = pos_feat_vals.get(f"P{p}", {})
-            feat_sums[f"P{p}"] = sum(abs(float(v)) for v in pdata.values() if v is not None)
-        total_sum = sum(feat_sums.values()) or 1
-        for p in [1, 2, 3, 4]:
-            ratio = feat_sums[f"P{p}"] / total_sum
-            pos_health[f"P{p}"] = round(base_pred * ratio * 4, 6)
-    else:
+            pos_health[f"P{p}"] = round(float(die_rows.get(p, base_pred)), 6)
+    except Exception:
         for p in [1, 2, 3, 4]:
             pos_health[f"P{p}"] = round(base_pred, 6)
 
@@ -389,7 +458,7 @@ def get_top_unit_data() -> dict:
         "wafer_no":      int(row["wafer_no"]),
         "pred_ppm":      round(float(row["reg_pred"]) * 1_000_000, 1),
         "pred_health":   round(base_pred, 6),
-        "actual_ppm":    round(float(row["health"]) * 1_000_000, 1),
+        "actual_ppm":    round(float(row["health"]) * 1_000_000, 1) if pd.notna(row.get("health")) else 0.0,
         "risk":          str(row["risk"]),
         "die_x":         die_x,
         "die_y":         die_y,
@@ -405,6 +474,7 @@ def rebuild_dashboard_units() -> str:
 
     추가 컬럼:
       - die_x, die_y          : run_wf_xy 파싱 (position=1 기준 대표 좌표)
+      - pos{p}_pred           : position 1~4 별 ZIT die-level pred (wafer_map.csv 기반)
       - pos{p}_{feat}         : position 1~4 × top5 feature 실측값 (20컬럼)
       - lot_total             : 해당 lot의 전체 unit 수
       - lot_defect_count      : 해당 lot의 grade1(HIGH) unit 수
@@ -447,7 +517,21 @@ def rebuild_dashboard_units() -> str:
         columns={"pos1_x": "die_x", "pos1_y": "die_y"}
     )
 
-    # ── 2. position별 top feature 값 pivot (pos1_X1064, pos2_X592, ...)
+    # ── 2. position별 ZIT die-level pred pivot (wafer_map.csv 기반)
+    wmap_path = os.path.normpath(os.path.join(DASHBOARD_DIR, "wafer_map.csv"))
+    pred_df = None
+    if os.path.exists(wmap_path):
+        wmap = pd.read_csv(wmap_path, usecols=["ufs_serial", "position", "pred"])
+        pred_pivot_dfs = []
+        for p in [1, 2, 3, 4]:
+            wp = wmap[wmap["position"] == p][["ufs_serial", "pred"]].copy()
+            wp = wp.rename(columns={"pred": f"pos{p}_pred"})
+            pred_pivot_dfs.append(wp)
+        pred_df = pred_pivot_dfs[0]
+        for ppdf in pred_pivot_dfs[1:]:
+            pred_df = pred_df.merge(ppdf, on="ufs_serial", how="left")
+
+    # ── 3. position별 top feature 값 pivot (pos1_X1064, pos2_X592, ...)
     pivot_dfs = []
     for p in [1, 2, 3, 4]:
         xsp = xs[xs["position"] == p][["ufs_serial"] + top_feats].copy()
@@ -458,7 +542,7 @@ def rebuild_dashboard_units() -> str:
     for pdf in pivot_dfs[1:]:
         pos_df = pos_df.merge(pdf, on="ufs_serial", how="left")
 
-    # ── 3. lot별 불량 집계
+    # ── 4. lot별 불량 집계
     lot_stats = units.groupby("run_id").agg(
         lot_total        = ("ufs_serial", "count"),
         lot_defect_count = ("grade", lambda x: (x == "grade1").sum()),
@@ -467,7 +551,7 @@ def rebuild_dashboard_units() -> str:
         lot_stats["lot_defect_count"] / lot_stats["lot_total"] * 100
     ).round(1)
 
-    # ── 4. 기존 추가 컬럼 제거 후 새로 merge (중복 방지)
+    # ── 5. 기존 추가 컬럼 제거 후 새로 merge (중복 방지)
     _drop_prefixes = ("die_x", "die_y", "pos1_", "pos2_", "pos3_", "pos4_",
                       "lot_total", "lot_defect_count", "lot_defect_rate")
     base_cols = [c for c in units.columns
@@ -476,24 +560,29 @@ def rebuild_dashboard_units() -> str:
     out = units[base_cols].copy()
     out = out.merge(coord_df,     on="ufs_serial", how="left")
     out = out.merge(coord_pos_df, on="ufs_serial", how="left")
+    if pred_df is not None:
+        out = out.merge(pred_df, on="ufs_serial", how="left")
     out = out.merge(pos_df,       on="ufs_serial", how="left")
     out = out.merge(lot_stats[["run_id", "lot_total", "lot_defect_count", "lot_defect_rate"]],
                     on="run_id", how="left")
 
     # float 컬럼 소수점 정리
     feat_cols = [c for c in out.columns if any(c.startswith(f"pos{p}_") for p in range(1,5))]
-    out[feat_cols] = out[feat_cols].round(4)
+    out[feat_cols] = out[feat_cols].round(6)
 
     out.to_csv(units_path, index=False)
 
     # 캐시 무효화 (다음 _load에서 새 파일 읽음)
     _cache.pop("dashboard_units.csv", None)
 
+    has_pred = pred_df is not None
     added = len(out.columns) - base_col_count
     return (
         f"dashboard_units.csv 재생성 완료\n"
         f"  행: {len(out):,}  기본 {base_col_count}열 → {len(out.columns)}열 (+{added}개)\n"
-        f"  추가 컬럼: die_x, die_y, pos1~4_x/y, pos1~4×{len(top_feats)}개 feature, "
+        f"  추가 컬럼: die_x, die_y, pos1~4_x/y, "
+        f"{'pos1~4_pred(ZIT), ' if has_pred else ''}"
+        f"pos1~4×{len(top_feats)}개 feature, "
         f"lot_total, lot_defect_count, lot_defect_rate\n"
         f"  top feats: {top_feats}"
     )
@@ -921,11 +1010,29 @@ def get_wafer_die_data() -> dict:
 
 
 def get_val_rmse() -> str:
-    """dashboard_units.csv의 val split에서 RMSE 계산."""
+    """metrics.csv에서 확정 모델(stacking) val RMSE 조회. 대시보드와 동일 값 보장."""
+    try:
+        m = _load("metrics.csv")
+        row = m[(m["stage"] == "reg") & (m["model"] == "stacking")
+                & (m["split"] == "val") & (m["metric"] == "rmse")]
+        if not row.empty:
+            return f"{float(row['value'].iloc[0]):.6f}"
+    except Exception:
+        pass
+    # fallback: dashboard_units.csv에서 직접 계산
     import numpy as np
     units = _load("dashboard_units.csv")
     val = units[units["split"] == "val"]
     if val.empty or "reg_pred" not in val.columns or "health" not in val.columns:
-        return "0.005736"
+        return "0.005698"
     rmse = float(np.sqrt(((val["reg_pred"] - val["health"]) ** 2).mean()))
     return f"{rmse:.6f}"
+
+
+def get_mean_pred_ppm() -> int:
+    """dashboard_units.csv 전체에서 reg_pred 평균을 ppm으로 환산. grade 필터 없이 전체."""
+    units = _load("dashboard_units.csv")
+    if units.empty or "reg_pred" not in units.columns:
+        return 0
+    mean_pred = float(units["reg_pred"].mean())
+    return int(round(mean_pred * 1_000_000))

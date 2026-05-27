@@ -153,15 +153,8 @@ export default function Overview({ onNavigateDrilldown }) {
     // 1) 이번주 검사 유닛: 전체
     const thisWeekCount = units.length
 
-    // 2) 이번달 품질 실적: 최근 4주 trend y_pred 평균
-    const trendVals = trendRaw
-      .filter(r => r.y_pred !== '' && r.y_pred != null)
-      .map(r => parseFloat(r.y_pred))
-      .filter(v => isFinite(v))
-    const last4w = trendVals.slice(-28)
-    const avg4wPpm = last4w.length
-      ? last4w.reduce((s, v) => s + v, 0) / last4w.length
-      : 0
+    // 2) 이번달 품질 실적: trendOption에서 계산된 최근 4주 보정 평균 사용 (placeholder, trendOption에서 덮어씀)
+    const avg4wPpm = 0
 
     // 3) 두달 뒤 예측 (WW37): 전체 유닛 reg_pred 평균 ppm (실제 데이터 기준)
     const futurePpm = units.reduce((s, u) => s + parseFloat(u.reg_pred), 0) / units.length * 1e6
@@ -200,7 +193,7 @@ export default function Overview({ onNavigateDrilldown }) {
   }, [units, trendRaw])
 
   // 트렌드: 주차별 집계 — 막대=생산량(아래), 꺾은선=불량ppm(위, 3구간 색상)
-  const trendOption = useMemo(() => {
+  const trendResult = useMemo(() => {
     if (!trendRaw.length) return null
 
     const weekMap = {}
@@ -294,7 +287,12 @@ export default function Overview({ onNavigateDrilldown }) {
     })
     const lastData   = predAvg.map((v, i) => i >= n - 2 ? v : null)
 
-    return {
+    const last4wAvg = Math.round(
+      predAvg.slice(-4).filter(v => v != null).reduce((s, v) => s + v, 0) /
+      (predAvg.slice(-4).filter(v => v != null).length || 1)
+    )
+
+    return { last4wAvg, option: {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
@@ -409,7 +407,7 @@ export default function Overview({ onNavigateDrilldown }) {
           },
         },
       ],
-    }
+    } }
   }, [trendRaw, units])
 
   // 포지션별 위험 unit 비율
@@ -637,7 +635,7 @@ export default function Overview({ onNavigateDrilldown }) {
         />
         <KpiCard
           label="이번달 품질 실적"
-          value={kpi.fmtPpm(kpi.avg4wPpm)}
+          value={trendResult ? kpi.fmtPpm(trendResult.last4wAvg) : '-'}
           sub="최근 4주 평균 ppm"
           color="#3B82F6"
         />
@@ -668,8 +666,8 @@ export default function Overview({ onNavigateDrilldown }) {
       <ChartCard title="주차별 불량 ppm 트렌드">
         {loadingTrend
           ? <div className="dummy-desc">트렌드 데이터 로딩 중…</div>
-          : trendOption
-            ? <ReactECharts option={trendOption} style={{ height: 380 }} />
+          : trendResult
+            ? <ReactECharts option={trendResult.option} style={{ height: 380 }} />
             : <div className="dummy-desc">trend_data.csv 데이터 없음</div>
         }
       </ChartCard>

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import ReportModal from './ReportModal'
 import './ChatBot.css'
 
-const API_URL = 'http://localhost:8000'
+const API_URL = ''  // Vite 프록시 경유 (/chat, /report → localhost:8000)
 
 export default function ChatBot({ open, onClose }) {
   const [messages, setMessages] = useState([
@@ -49,6 +49,11 @@ export default function ChatBot({ open, onClose }) {
     if (!msg || loading) return
     setInput('')
     setButtons([])
+
+    // "기간 변경" 버튼: tool_cache 초기화 → 재분석 가능하게
+    if (msg === '기간 변경') {
+      toolCacheRef.current = {}
+    }
 
     setMessages(prev => [...prev, { role: 'user', text: msg }])
     historyRef.current.push({ role: 'user', content: msg })
