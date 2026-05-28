@@ -14,6 +14,7 @@ DATA_DIR       = DASHBOARD_DIR
 _FALLBACK_DIRS = [
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "0_data")),
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data")),
+    r"C:\Users\Dell3571\Desktop\기업\0_data",
 ]
 
 _cache: dict = {}
@@ -403,14 +404,19 @@ def get_position_defect_rate() -> dict:
 
 
 # ── 대표 Unit (불량 위험 최고 unit) ─────────────────────────
-def get_top_unit_data() -> dict:
+def get_top_unit_data(serial: str = None) -> dict:
     """
-    val split에서 reg_pred 가장 높은 unit 반환.
+    serial 지정 시 해당 unit, 미지정 시 reg_pred 최고 unit 반환.
     반환: {serial, run_id, wafer_no, pred_ppm, actual_ppm, risk, pos_feat_vals}
     pos_feat_vals: {"P1": {"X1064": 11.84, ...}, ...} — 포지션별 top4 feature 값
     """
     units = _load("dashboard_units.csv")
-    val = units.sort_values("reg_pred", ascending=False)  # train/val/test 전체 사용
+
+    if serial:
+        filtered = units[units["ufs_serial"] == serial]
+        val = filtered if not filtered.empty else units.sort_values("reg_pred", ascending=False)
+    else:
+        val = units.sort_values("reg_pred", ascending=False)
 
     if val.empty:
         return {}
@@ -686,14 +692,18 @@ def get_ppm_delta() -> dict:
 
 
 # ── 상위 2개 피처 scatter 데이터 ──────────────────────────────
-def get_feature_scatter_data(max_pts: int = 200, recent_n_lots: int = 5) -> dict:
+def get_feature_scatter_data(feat1: str = None, feat2: str = None,
+                             max_pts: int = 200, recent_n_lots: int = 5) -> dict:
     """
-    lgbm_rank 1, 2위 피처의 scatter 데이터 — 최신 N개 LOT만 사용.
+    scatter 데이터 반환. feat1/feat2 미지정 시 lgbm_rank 1,2위 사용.
     dashboard_units.csv의 pos1_{feat} 컬럼 사용 (xs 원본 불필요).
     x=피처값, y=reg_pred, risk별. 임계값 = HIGH 그룹 하위 5%.
     """
-    fi = _load("feature_importance.csv")
-    top2_feats = fi.sort_values("lgbm_rank").head(2)["feature"].tolist()
+    if feat1 and feat2:
+        top2_feats = [feat1, feat2]
+    else:
+        fi = _load("feature_importance.csv")
+        top2_feats = fi.sort_values("lgbm_rank").head(2)["feature"].tolist()
 
     units   = _load("dashboard_units.csv")
     # train/val/test 전체에서 최신 N개 LOT 사용
@@ -951,19 +961,31 @@ def get_feat_vs_health_scatter(top_n: int = 1, max_pts: int = 300) -> dict:
 
 
 # ── 대표 Unit 웨이퍼맵 die 좌표 + ppm ────────────────────────
-def get_wafer_die_data() -> dict:
+def get_wafer_die_data(serial: str = None) -> dict:
     """
-    대표 unit(reg_pred 최고)이 속한 wafer의 모든 unit을 die level로 반환.
+    serial 지정 시 해당 unit의 wafer, 미지정 시 reg_pred 최고 unit의 wafer를 반환.
     unit당 pos1~pos4 각각 die 1개씩 → 총 unit수×4개 점.
     dies: [{x,y,serial,grade,pred_ppm,risk,is_target},...]
     """
     units = _load("dashboard_units.csv")
 
-    val = units.sort_values("reg_pred", ascending=False)  # train/val/test 전체 사용
-    top_row = val.iloc[0]
-    top_serial = str(top_row["ufs_serial"])
-    top_run    = top_row["run_id"]
-    top_wafer  = top_row["wafer_no"]
+    val = units.sort_values("reg_pred", ascending=False)
+    if serial:
+        target = units[units["ufs_serial"] == serial]
+        if not target.empty:
+            top_serial = serial
+            top_run    = target.iloc[0]["run_id"]
+            top_wafer  = target.iloc[0]["wafer_no"]
+        else:
+            top_row = val.iloc[0]
+            top_serial = str(top_row["ufs_serial"])
+            top_run    = top_row["run_id"]
+            top_wafer  = top_row["wafer_no"]
+    else:
+        top_row = val.iloc[0]
+        top_serial = str(top_row["ufs_serial"])
+        top_run    = top_row["run_id"]
+        top_wafer  = top_row["wafer_no"]
 
     # 같은 wafer의 전체 unit
     same_wafer = val[(val["run_id"] == top_run) & (val["wafer_no"] == top_wafer)]

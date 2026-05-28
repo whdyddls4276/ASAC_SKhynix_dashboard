@@ -1,4 +1,4 @@
-﻿"""
+"""
 FastAPI 앱 진입점.
 - POST /chat       : Agent 루프 실행 (SSE 스트리밍)
 - POST /report/pptx: 마크다운 → PPTX 변환 후 다운로드
@@ -87,6 +87,7 @@ class InteractRequest(BaseModel):
     prompt: str = ""       # JS가 생성한 자연어 요청
     history: list = []
     tool_cache: dict = {}
+    current_report_data: dict = {}
     current_report_data: dict = {}
 
 

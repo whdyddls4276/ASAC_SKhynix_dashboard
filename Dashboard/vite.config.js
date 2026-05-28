@@ -12,9 +12,10 @@ export default defineConfig({
       port: 5173,
     },
     proxy: {
-      '/chat':    { target: 'http://localhost:8000', changeOrigin: true },
-      '/report':  { target: 'http://localhost:8000', changeOrigin: true },
-      '/health':  { target: 'http://localhost:8000', changeOrigin: true },
+      '/chat/assistant': { target: 'http://localhost:8002', changeOrigin: true },
+      '/chat':           { target: 'http://localhost:8000', changeOrigin: true },
+      '/report':         { target: 'http://localhost:8000', changeOrigin: true },
+      '/health':         { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 })

@@ -155,7 +155,6 @@ const INJECT_SCRIPT = `
 export default function ReportModal({ markdown: html, reportData, toolCache, onClose, apiUrl }) {
   const [selectMode, setSelectMode]     = useState(false)
   const [editMode, setEditMode]         = useState(false)
-  const [noteMode, setNoteMode]         = useState(false)
   const [selectedSection, setSelected] = useState(null)
   const [messages, setMessages]         = useState([
     { role: 'bot', text: '보고서에 대해 질문하거나 수정을 요청해 보세요.\n예) "SHAP 상위 피처를 설명해줘", "개선 방안을 X552_range로 바꿔줘"' }
@@ -217,9 +216,6 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
         }
         if (editMode) {
           iframe.contentWindow?.postMessage({ type: 'SET_EDIT_MODE', value: true }, '*')
-        }
-        if (noteMode) {
-          iframe.contentWindow?.postMessage({ type: 'SET_NOTE_MODE', value: true }, '*')
         }
       })
     })
@@ -302,13 +298,14 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
 
           if (event.type === 'text') {
             botText += event.content
+            const snap = botText
             setMessages(prev => {
               const next = [...prev]
               const last = next[next.length - 1]
               if (last?.role === 'bot' && last?.streaming) {
-                next[next.length - 1] = { ...last, text: botText }
+                next[next.length - 1] = { ...last, text: snap }
               } else {
-                next.push({ role: 'bot', text: botText, streaming: true })
+                next.push({ role: 'bot', text: snap, streaming: true })
               }
               return next
             })
@@ -354,44 +351,30 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   function toggleSelectMode() {
     const next = !selectMode
     setSelectMode(next)
-    if (next) { setEditMode(false); setNoteMode(false) }
+    if (next) { setEditMode(false) }
     const iw = iframeRef.current?.contentWindow
     iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: next }, '*')
     iw?.postMessage({ type: 'SET_EDIT_MODE', value: false }, '*')
-    iw?.postMessage({ type: 'SET_NOTE_MODE', value: false }, '*')
     if (!next) setSelected(null)
   }
 
   function toggleEditMode() {
     const next = !editMode
     setEditMode(next)
-    if (next) { setSelectMode(false); setNoteMode(false); setSelected(null) }
+    if (next) { setSelectMode(false); setSelected(null) }
     const iw = iframeRef.current?.contentWindow
     iw?.postMessage({ type: 'SET_EDIT_MODE',       value: next  }, '*')
     iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: false }, '*')
-    iw?.postMessage({ type: 'SET_NOTE_MODE',       value: false }, '*')
-  }
-
-  function toggleNoteMode() {
-    const next = !noteMode
-    setNoteMode(next)
-    if (next) { setSelectMode(false); setEditMode(false); setSelected(null) }
-    const iw = iframeRef.current?.contentWindow
-    iw?.postMessage({ type: 'SET_NOTE_MODE',       value: next  }, '*')
-    iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: false }, '*')
-    iw?.postMessage({ type: 'SET_EDIT_MODE',       value: false }, '*')
   }
 
   function clearSelect() {
     setSelectMode(false)
     setEditMode(false)
-    setNoteMode(false)
     setSelected(null)
     const iw = iframeRef.current?.contentWindow
     iw?.postMessage({ type: 'CLEAR_CHART_EDIT' }, '*')
     iw?.postMessage({ type: 'SET_CHART_EDIT_MODE', value: false }, '*')
     iw?.postMessage({ type: 'SET_EDIT_MODE',       value: false }, '*')
-    iw?.postMessage({ type: 'SET_NOTE_MODE',       value: false }, '*')
   }
 
   // 스크롤 bottom
@@ -453,13 +436,14 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
 
           if (event.type === 'text') {
             botText += event.content
+            const snap = botText
             setMessages(prev => {
               const next = [...prev]
               const last = next[next.length - 1]
               if (last?.role === 'bot' && last?.streaming) {
-                next[next.length - 1] = { ...last, text: botText }
+                next[next.length - 1] = { ...last, text: snap }
               } else {
-                next.push({ role: 'bot', text: botText, streaming: true })
+                next.push({ role: 'bot', text: snap, streaming: true })
               }
               return next
             })
@@ -505,15 +489,6 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  function downloadHtml() {
-    const htmlToDownload = currentHtmlRef.current || currentHtml
-    const blob = new Blob([htmlToDownload], { type: 'text/html;charset=utf-8' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = '품질불량개선조치보고서.html'; a.click()
-    URL.revokeObjectURL(url)
-  }
-
   async function downloadPptx() {
     const res = await fetch(`${apiUrl || API_URL}/report/pptx`, {
       method: 'POST',
@@ -550,21 +525,11 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
             >
               📝 텍스트 편집
             </button>
-            <button
-              className={`rm-tool-btn ${noteMode ? 'active' : ''}`}
-              onClick={toggleNoteMode}
-              title="차트를 클릭해서 메모 추가"
-            >
-              💬 차트 메모
-            </button>
             <button className="rm-tool-btn" onClick={clearSelect} title="선택 초기화">
               🔄 초기화
             </button>
             <button className="rm-tool-btn ppt" onClick={downloadPptx}>
               📊 PPT
-            </button>
-            <button className="rm-tool-btn html" onClick={downloadHtml}>
-              ⬇️ HTML
             </button>
             <button className="rm-tool-btn close" onClick={onClose}>
               ✕ 닫기

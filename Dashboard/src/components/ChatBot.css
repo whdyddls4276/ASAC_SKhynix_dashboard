@@ -181,8 +181,12 @@
   cursor: not-allowed;
 }
 
-/* 탭 제거 — 기존 .cb-tabs/.cb-tab은 숨김 처리 */
-.cb-tabs { display: none; }
+/* 에러 말풍선 */
+.cb-bubble.error {
+  background: #FEF2F2;
+  border-color: #FECACA;
+  color: #B91C1C;
+}
 
 /* 상태 메시지 (tool 실행 중) */
 .cb-bubble.status {

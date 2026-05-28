@@ -1,4 +1,4 @@
-﻿"""
+"""
 Agent 루프 핵심 로직.
 Claude API tool_use를 사용하여 ①~⑦ 단계를 처리하고
 SSE(Server-Sent Events)로 프론트에 스트리밍.
@@ -251,10 +251,10 @@ def _build_report_data(tool_cache: dict) -> dict:
     except Exception:
         pass
 
-    # 어노멀리 피처 실데이터 (grade1 vs grade4, importance 상위 3개)
+    # 어노멀리 피처 실데이터 (grade1 vs grade4, importance 상위 N개 — 전체 보존용)
     anomaly_stats = []
     try:
-        anomaly_stats = get_anomaly_feature_stats(top_n=5)
+        anomaly_stats = get_anomaly_feature_stats(top_n=10)
     except Exception:
         pass
 
@@ -289,8 +289,9 @@ def _build_report_data(tool_cache: dict) -> dict:
         "recent_lot_trend":   recent_lot_trend,
         "pred_ppm_trend":     pred_ppm_trend,
         "wafer_die":        wafer_die,
-        "anomaly_stats":    anomaly_stats,
-        "feat_vs_health":   feat_vs_health,
+        "anomaly_stats":     anomaly_stats[:5],       # 표시용: top5만
+        "anomaly_stats_all": list(anomaly_stats),  # 원본 전체 보존 (늘리기 복원용)
+        "feat_vs_health":    feat_vs_health,
         "actions":          [],
     }
 
@@ -459,7 +460,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         for f in top_feats[:5]:
             ana_lines.append(
                 f"- {f.get('feature','?')}: grade4 평균 {f.get('high_mean',0):.3f} vs "
-                f"grade1 평균 {f.get('low_mean',0):.3f} ({f.get('ratio',0):.1f}배, p={f.get('pval',0):.3f})"
+                f"grade1 평균 {f.get('low_mean',0):.3f} ({f.get('ratio',0):.1f}배, p={f.get('p_value',0):.3f})"
             )
         ana_lines.append("\n이 내용대로 보고서를 생성할까요?")
         yield {"type": "text", "content": "\n".join(ana_lines)}
@@ -724,14 +725,43 @@ REPORT_EDITOR_SYSTEM = """당신은 SK Hynix 반도체 보고서 수정 전문 A
 - SHAP / Feature Importance / Anomaly Feature 출처: **ZIT_only** (zit 단일 모델 기반)
 - 사용자가 모델명을 묻거나 출처를 묻는 경우 위 사실을 답변
 
-## 보고서 데이터 구조 (d)
-d["scan"]            - total_units, high_count, high_ratio, top_lot, top_wafer, morning_rmse 등
-d["importance"]      - features: [{feature, lgbm_rank, lgbm_gain}, ...]  *컬럼명은 legacy; 출처는 ZIT_only*
-d["analysis"]        - top_features: [{feature, high_mean, low_mean, ratio, pval}, ...]
-d["meta"]            - title, model("Stacking Ensemble" 고정), val_rmse, test_rmse, report_title, summary_title, summary_sub, alert_features, section_labels
-d["custom_sections"] - 커스텀 섹션 목록
-d["chart_params"]    - 차트 파라미터 (chart, top_n)
-d["table_params"]    - 테이블 파라미터 (shap_hide_cols 등)
+## 보고서 데이터 구조 (d) — 완전 명세 (키 이름 오타 절대 금지)
+
+### 전체 키 목록
+d["meta"]               - 보고서 텍스트 커스터마이징
+d["scan"]               - grade별 unit 수, 집중 LOT/웨이퍼
+d["importance"]         - Feature Importance  ← d["importances"] 아님
+d["analysis"]           - grade4 vs grade1 분포 비교
+d["top_unit"]           - 대표 Unit 정보 (R1)
+d["anomaly_stats"]      - Anomaly Feature 리스트 (R2, 리스트 직접 접근)  ← d["anomaly"] 아님
+d["weekly_yield_trend"] - 주차별 불량 트렌드 (L2)
+d["pred_ppm_trend"]     - LOT별 예측 ppm 트렌드 (L3)
+d["feat_scatter"]       - 이상 피처 분포 scatter (R3)
+d["wafer_die"]          - 웨이퍼맵 die 좌표
+d["ppm_delta"]          - 전주 대비 ppm 변화 (배너용)
+d["pos_defect"]         - 포지션별 불량률
+d["chart_params"]       - 차트 파라미터 오버라이드 {"chart": str, "top_n": str}
+d["table_params"]       - 테이블 컬럼 숨기기 {"shap_hide_cols": [str,...]}
+d["custom_sections"]    - 커스텀 섹션 목록
+d["hidden_sections"]    - 숨길 섹션 sid 목록
+
+### 정확한 필드명 (잘못된 이름으로 접근 시 KeyError 또는 무반응)
+d["scan"]         → grade4_count (not high_count), grade4_ratio (not high_ratio),
+                    grade3_count, grade2_count, grade1_count,
+                    top_lot, top_lot_grade4_count,
+                    top_wafer: {lot, wafer, grade4_count}, unique_lots, period
+d["importance"]   → features: [{feature, lgbm_rank, lgbm_gain}, ...]
+d["analysis"]     → top_features: [{feature, high_mean, low_mean, ratio, pval, importance_rank}]
+d["top_unit"]     → serial, run_id, wafer_no, pred_ppm, pred_health, actual_ppm, risk,
+                    pos_health: {P1, P2, P3, P4},
+                    pos_feat_vals: {P1: {피처명: float}, P2: {...}, ...}
+d["anomaly_stats"] → [{feature, grade1_mean, grade4_mean, ratio, z_score, danger, normal}]
+                     (리스트 직접 슬라이싱: d["anomaly_stats"][:N])
+d["weekly_yield_trend"] → {labels:[str], production:[int], pred_yield:[float], defect_ppm:[float]}
+d["pred_ppm_trend"]     → {labels:[str], high_ppm:[float], med_ppm:[float], defect_count:[int], defect_rate:[float]}
+d["feat_scatter"]  → {feat1: {name:str, pts_high:[{x,y}], pts_med:[{x,y}], threshold:float}, feat2:{...}}
+d["meta"]          → {report_title:str, model:str, val_rmse:str, summary_title:str, summary_sub:str,
+                       alert_features:str, section_labels:{left_header,right_header,L1,L2,L3,R1}}
 
 ## 코드 작성 규칙
 ✅ 사용 가능: sorted, len, max, min, sum, int, float, str, list, dict, filter, map, any, all
@@ -813,8 +843,137 @@ d.setdefault("custom_sections", []).append({
   "height": 120,
 })
 
-## 응답 형식 (JSON, 코드블록 없이)
-{"response": "사용자에게 전달할 답변", "code": "Python 코드 (없으면 빈 문자열)"}"""
+## 커맨드 방식 처리 (최우선 — 아래 작업은 반드시 action JSON 사용)
+
+알려진 작업은 `code` 대신 `action` 필드를 사용한다. action 방식은 사전 검증된 핸들러가 실행하므로 100% 안정적이다.
+
+| 요청 유형 | action JSON 형식 |
+|----------|----------------|
+| importance/anomaly top-N 변경 | `{"action":"set_top_n","section":"importance","n":5,"response":"..."}` |
+| 트렌드 주수 변경 (L2) | `{"action":"set_top_n","section":"trend_weeks","n":4,"response":"..."}` |
+| 트렌드 LOT 수 변경 (L3) | `{"action":"set_top_n","section":"trend_lots","n":10,"response":"..."}` |
+| anomaly 특정 피처만 표시 | `{"action":"filter_anomaly","features":["X1064","X592"],"response":"..."}` |
+| scatter 피처 변경 (R3) | `{"action":"change_scatter","feat1":"X1064","feat2":"X592","response":"..."}` |
+| 보고서 제목 변경 | `{"action":"set_text","key":"report_title","value":"새 제목","response":"..."}` |
+| 배너 피처명 변경 | `{"action":"set_text","key":"alert_features","value":"X1064, X592","response":"..."}` |
+| 섹션 소제목 변경 | `{"action":"set_text","key":"section_label_L3","value":"새 소제목","response":"..."}` |
+| 배너 첫째 줄 직접 수정 | `{"action":"set_text","key":"summary_title","value":"내용","response":"..."}` |
+| 배너 둘째 줄 직접 수정 | `{"action":"set_text","key":"summary_sub","value":"내용","response":"..."}` |
+| 섹션 숨기기 | `{"action":"toggle_section","sid":"R2_anomaly","hide":true,"response":"..."}` |
+| 섹션 복원 | `{"action":"toggle_section","sid":"R2_anomaly","hide":false,"response":"..."}` |
+| 대표 유닛 변경 | `{"action":"change_unit","serial":"S38369","response":"..."}` |
+
+section 값: `"importance"` | `"anomaly"` | `"trend_weeks"` | `"trend_lots"`
+sid 값: `"L1_kpi"` | `"L2_fi"` | `"L3_trend"` | `"R1_unit"` | `"R2_anomaly"` | `"R3_scatter"`
+section_label key 예시: `"section_label_L1"` | `"section_label_L2"` | `"section_label_L3"` | `"section_label_R1"`
+
+위 목록에 없는 창의적인 요청(커스텀 섹션 추가, 테이블 컬럼 숨기기 등)은 기존 `code` 방식 사용.
+
+## 응답 형식
+
+**중요**: 응답은 반드시 JSON 객체 하나만 출력한다. 코드블록(```) 없이, JSON 앞뒤로 설명 텍스트를 쓰지 않는다.
+
+커맨드 방식: `{"action": "...", ...필드들..., "response": "사용자에게 전달할 한국어 답변"}`
+코드 방식:   `{"response": "사용자에게 전달할 한국어 답변", "code": "Python 코드 (없으면 빈 문자열)"}`
+
+잘못된 예시 (절대 금지):
+- "네, 처리하겠습니다. {\"action\": ...}" ← JSON 앞에 텍스트 금지
+- ```json\n{...}\n``` ← 코드블록 금지
+- 응답 없이 JSON만: {"action": "...", "response": ""} ← response는 항상 한국어로 작성"""
+
+
+def _handle_command(cmd: dict, d: dict):
+    """
+    Claude가 action JSON을 반환했을 때 처리. (success: bool, err_msg: str | None) 반환.
+    성공 시 err_msg=None, 실패 시 err_msg=오류 설명.
+    """
+    action = cmd.get("action", "")
+
+    if action == "set_top_n":
+        section = cmd.get("section", "")
+        try:
+            n = max(1, int(cmd.get("n", 5)))
+        except (TypeError, ValueError):
+            return False, "n 값이 올바르지 않습니다"
+        if section == "importance":
+            d.setdefault("importance", {})["features"] = d.get("importance", {}).get("features", [])[:n]
+        elif section == "anomaly":
+            # anomaly_stats_all(원본 전체)에서 잘라야 늘리기도 가능
+            source = d.get("anomaly_stats_all") or d.get("anomaly_stats", [])
+            d["anomaly_stats"] = source[:n]
+        elif section == "trend_weeks":
+            wyt = d.get("weekly_yield_trend", {})
+            d["weekly_yield_trend"] = {k: v[-n:] for k, v in wyt.items() if isinstance(v, list)}
+        elif section == "trend_lots":
+            ppt = d.get("pred_ppm_trend", {})
+            d["pred_ppm_trend"] = {k: v[-n:] for k, v in ppt.items() if isinstance(v, list)}
+        else:
+            return False, f"알 수 없는 section: {section}"
+        return True, None
+
+    elif action == "filter_anomaly":
+        features = cmd.get("features", [])
+        if not features:
+            return False, "features 목록이 비어있습니다"
+        source = d.get("anomaly_stats_all") or d.get("anomaly_stats", [])
+        d["anomaly_stats"] = [s for s in source if s.get("feature") in features]
+        return True, None
+
+    elif action == "change_scatter":
+        feat1 = cmd.get("feat1", "")
+        feat2 = cmd.get("feat2", "")
+        if not feat1 or not feat2:
+            return False, "feat1, feat2 모두 지정해야 합니다"
+        try:
+            d["feat_scatter"] = get_feature_scatter_data(feat1=feat1, feat2=feat2)
+        except Exception as e:
+            return False, str(e)
+        return True, None
+
+    elif action == "set_text":
+        key = cmd.get("key", "")
+        value = str(cmd.get("value", ""))
+        if key == "report_title":
+            d.setdefault("meta", {})["report_title"] = value
+        elif key == "alert_features":
+            d.setdefault("meta", {})["alert_features"] = value
+        elif key == "summary_title":
+            d.setdefault("meta", {})["summary_title"] = value
+        elif key == "summary_sub":
+            d.setdefault("meta", {})["summary_sub"] = value
+        elif key.startswith("section_label_"):
+            label_key = key[len("section_label_"):]
+            d.setdefault("meta", {}).setdefault("section_labels", {})[label_key] = value
+        else:
+            return False, f"알 수 없는 key: {key}"
+        return True, None
+
+    elif action == "toggle_section":
+        sid = cmd.get("sid", "")
+        if not sid:
+            return False, "sid 미지정"
+        hide = cmd.get("hide", True)
+        hidden = d.setdefault("hidden_sections", [])
+        if hide:
+            if sid not in hidden:
+                hidden.append(sid)
+        else:
+            d["hidden_sections"] = [s for s in hidden if s != sid]
+        return True, None
+
+    elif action == "change_unit":
+        serial = cmd.get("serial", "")
+        if not serial:
+            return False, "serial 미지정"
+        try:
+            d["top_unit"] = get_top_unit_data(serial=serial)
+            d["wafer_die"] = get_wafer_die_data(serial=serial)
+        except Exception as e:
+            return False, str(e)
+        return True, None
+
+    else:
+        return False, f"알 수 없는 action: {action}"
 
 
 def _execute_editor_code(code: str, d: dict):
@@ -854,6 +1013,78 @@ def _execute_editor_code(code: str, d: dict):
         return True, ""
     except Exception as e:
         return False, str(e)
+
+
+def _try_direct_action(message: str, d: dict):
+    """
+    사용자 메시지에서 known action을 직접 추출 시도. Claude 호출 없이 처리.
+    반환: (cmd: dict | None, question: str | None)
+      - (cmd, None)      : 액션이 명확히 결정됨 → 바로 실행
+      - (None, question) : 파라미터가 불명확 → 질문 반환
+      - (None, None)     : 패턴 불일치 → Claude에게 위임
+    """
+    import re as _re
+
+    msg = message.strip()
+
+    # ── 숫자 추출
+    nums = [int(x) for x in _re.findall(r'\b(\d+)\b', msg)]
+    n = nums[0] if nums else None
+
+    # ── 섹션 판별 키워드
+    is_anomaly    = bool(_re.search(r'anomaly|이상\s*(피처|feature|탐지|감지)|Anomaly', msg, _re.IGNORECASE))
+    is_importance = bool(_re.search(r'importance|중요도|feature\s*importance|shap|SHAP', msg, _re.IGNORECASE))
+    is_trend_lot  = bool(_re.search(r'lot\s*수|로트\s*수|L3|trend_lot', msg, _re.IGNORECASE))
+    is_trend_week = bool(_re.search(r'주\s*수|주차\s*수|L2|trend_week|주간', msg, _re.IGNORECASE))
+
+    # ── 액션 판별 키워드
+    is_topn   = bool(_re.search(r'개로|개\s*(로|만|변경|바꿔|줄여|늘려)|줄여|늘려|줄이|늘리|top[\s-]?n|상위\s*\d+', msg, _re.IGNORECASE))
+    is_hide   = bool(_re.search(r'숨겨|숨기|제거|빼줘|빼\s*줘|없애|안\s*보이', msg, _re.IGNORECASE))
+    is_show   = bool(_re.search(r'보여|복원|다시\s*보|표시\s*해|보이게', msg, _re.IGNORECASE))
+    is_serial = bool(_re.search(r'S\d{4,}', msg))
+
+    # ── 피처명 추출 (X숫자 형식)
+    feats = _re.findall(r'\bX\d+\b', msg)
+
+    # ── set_top_n 감지
+    if is_topn and n is not None:
+        section_count = sum([is_anomaly, is_importance, is_trend_lot, is_trend_week])
+        if section_count == 1:
+            if is_anomaly:
+                return {"action": "set_top_n", "section": "anomaly",      "n": n, "response": f"Anomaly Feature를 {n}개로 변경했습니다."}, None
+            if is_importance:
+                return {"action": "set_top_n", "section": "importance",   "n": n, "response": f"Feature Importance를 {n}개로 변경했습니다."}, None
+            if is_trend_lot:
+                return {"action": "set_top_n", "section": "trend_lots",   "n": n, "response": f"트렌드 LOT 수를 {n}개로 변경했습니다."}, None
+            if is_trend_week:
+                return {"action": "set_top_n", "section": "trend_weeks",  "n": n, "response": f"트렌드를 최근 {n}주로 변경했습니다."}, None
+        elif section_count == 0:
+            return None, f"{n}개로 변경할 섹션을 알려주세요. Feature Importance, Anomaly Feature, 트렌드 LOT 수, 트렌드 주수 중 어느 쪽인가요?"
+        else:
+            return None, f"Feature Importance와 Anomaly Feature 중 {n}개로 변경할 섹션을 선택해 주세요."
+
+    # ── filter_anomaly 감지 (특정 피처명 언급)
+    if feats and is_anomaly:
+        return {"action": "filter_anomaly", "features": feats, "response": f"Anomaly Feature를 {', '.join(feats)}만 표시합니다."}, None
+
+    # ── change_unit 감지 (serial 번호 명시)
+    if is_serial:
+        serial = _re.search(r'S\d{4,}', msg).group()
+        return {"action": "change_unit", "serial": serial, "response": f"{serial} 유닛으로 변경했습니다."}, None
+
+    # ── toggle_section 감지
+    sid_map = {
+        'L1': 'L1_kpi', 'L2': 'L2_fi', 'L3': 'L3_trend',
+        'R1': 'R1_unit', 'R2': 'R2_anomaly', 'R3': 'R3_scatter',
+    }
+    for label, sid in sid_map.items():
+        if label in msg:
+            if is_hide:
+                return {"action": "toggle_section", "sid": sid, "hide": True,  "response": f"{label} 섹션을 숨겼습니다."}, None
+            if is_show:
+                return {"action": "toggle_section", "sid": sid, "hide": False, "response": f"{label} 섹션을 복원했습니다."}, None
+
+    return None, None
 
 
 async def run_report_editor(user_message: str, history: list,
@@ -909,10 +1140,41 @@ async def run_report_editor(user_message: str, history: list,
             try: d["pred_ppm_trend"] = get_pred_ppm_trend(recent_n=20)
             except Exception: d["pred_ppm_trend"] = {}
         if not d.get("anomaly_stats"):
-            try: d["anomaly_stats"] = get_anomaly_feature_stats(top_n=3)
+            try: d["anomaly_stats"] = get_anomaly_feature_stats(top_n=10)[:5]
             except Exception: d["anomaly_stats"] = []
+        # anomaly_stats_all: 원본 전체 리스트 보존 (늘리기 복원용)
+        if not d.get("anomaly_stats_all"):
+            try: d["anomaly_stats_all"] = get_anomaly_feature_stats(top_n=10)
+            except Exception: d["anomaly_stats_all"] = list(d.get("anomaly_stats", []))
     else:
         d = _build_report_data(cache)
+
+    # ── Pre-router: known action 직접 처리 (Claude 호출 없이) ───────
+    direct_cmd, clarify_q = _try_direct_action(user_message, d)
+
+    if clarify_q:
+        # 파라미터 불명확 → 질문만 반환 (보고서 수정 없음)
+        yield {"type": "text", "content": clarify_q}
+        yield {"type": "done"}
+        return
+
+    if direct_cmd:
+        # 액션 확정 → 바로 실행
+        success, err_msg = _handle_command(direct_cmd, d)
+        if not success:
+            yield {"type": "text", "content": f"⚠️ 처리 실패: {err_msg}"}
+        else:
+            try:
+                html = build_html(d)
+            except Exception as _e:
+                yield {"type": "text", "content": f"⚠️ HTML 생성 오류: {_e}"}
+                yield {"type": "done"}
+                return
+            yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
+            yield {"type": "text", "content": direct_cmd.get("response", "보고서를 수정했습니다.")}
+        yield {"type": "done"}
+        return
+    # ─────────────────────────────────────────────────────────────────
 
     clean_history = []
     for msg in history:
@@ -928,26 +1190,30 @@ async def run_report_editor(user_message: str, history: list,
 
     messages = clean_history + [{"role": "user", "content": user_message}]
 
-    # 현재 보고서 상태를 system에 주입 → 이미 적용된 수정을 Claude가 인지
+    # 현재 d 상태를 system prompt에 주입 → Claude가 정확한 키/값으로 코드 생성
     def _build_editor_system(d: dict) -> str:
-        lines = []
-        cp = d.get("chart_params", {})
-        if cp.get("chart") and cp.get("top_n"):
-            chart_name = {"shap": "SHAP Value Trend Graph", "lot": "LOT 불량 트렌드", "dist": "피처 분포"}.get(cp["chart"], cp["chart"])
-            lines.append(f"- {chart_name} 상위 {cp['top_n']}개로 변경됨")
-        tp = d.get("table_params", {})
-        hidden = tp.get("shap_hide_cols", [])
-        if hidden:
-            col_names = {"pval": "p-value", "ratio": "배율", "high_mean": "HIGH 평균", "low_mean": "MED/LOW 평균", "feature": "Feature"}
-            labels = [col_names.get(c, c) for c in hidden]
-            lines.append(f"- SHAP 분석 테이블에서 [{', '.join(labels)}] 컬럼 숨김 처리됨")
-        cs = d.get("custom_sections", [])
-        for sec in cs:
-            lines.append(f"- 커스텀 섹션 추가됨: \"{sec.get('title','')}\" ({sec.get('position','')})")
-        if not lines:
-            return REPORT_EDITOR_SYSTEM
-        state_note = "\n\n## 현재 보고서에 이미 적용된 수정 (중복 언급 금지)\n" + "\n".join(lines)
-        return REPORT_EDITOR_SYSTEM + state_note
+        anomaly_feats = [s.get("feature", "") for s in d.get("anomaly_stats", [])]
+        import_feats = [s.get("feature", "") for s in d.get("importance", {}).get("features", [])]
+        wyt_weeks = len(d.get("weekly_yield_trend", {}).get("labels", []))
+        ppt_lots = len(d.get("pred_ppm_trend", {}).get("labels", []))
+        cs_titles = [s.get("title", "") for s in d.get("custom_sections", [])]
+        state = (
+            "\n\n## 현재 d 상태 (수정 전 반드시 확인, 이미 반영된 내용 포함)\n\n"
+            "| 항목 | 현재값 |\n"
+            "|------|--------|\n"
+            f"| importance.features | {len(import_feats)}개 → {import_feats[:5]} |\n"
+            f"| anomaly_stats | {len(anomaly_feats)}개 → {anomaly_feats} |\n"
+            f"| weekly_yield_trend (L2) | {wyt_weeks}주 데이터 |\n"
+            f"| pred_ppm_trend (L3) | {ppt_lots}개 LOT 데이터 |\n"
+            f"| 대표 unit (R1) | {d.get('top_unit', {}).get('serial', '없음')} |\n"
+            f"| chart_params | {d.get('chart_params', {})} |\n"
+            f"| table_params.shap_hide_cols | {d.get('table_params', {}).get('shap_hide_cols', [])} |\n"
+            f"| custom_sections | {cs_titles} |\n"
+            f"| hidden_sections | {d.get('hidden_sections', [])} |\n"
+            f"| report_title | {d.get('meta', {}).get('report_title', '기본값 사용중')} |\n"
+            f"| alert_features | {d.get('meta', {}).get('alert_features', '기본값 사용중')} |\n"
+        )
+        return REPORT_EDITOR_SYSTEM + state
 
     try:
         response = await asyncio.to_thread(
@@ -967,45 +1233,88 @@ async def run_report_editor(user_message: str, history: list,
         if block.type == "text":
             raw_text += block.text
 
-    # JSON 파싱
-    try:
-        clean = raw_text.strip()
-        if "```" in clean:
-            import re as _re2
-            m = _re2.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, _re2.DOTALL)
-            if m:
-                clean = m.group(1)
-            else:
-                parts = clean.split("```")
-                clean = parts[1]
-                if clean.startswith("json"):
-                    clean = clean[4:]
-        cmd = json.loads(clean.strip())
-    except Exception:
-        # JSON 파싱 실패 → response 키 추출 시도, 없으면 "처리 중 오류" 안내
-        import re as _re
-        m = _re.search(r'"response"\s*:\s*"(.*?)"(?:,|\})', raw_text, _re.DOTALL)
+    print(f"[editor] raw_text: {raw_text[:500]!r}")
+
+    # JSON 파싱 (Claude가 prose + JSON 혼재 반환하는 경우도 처리)
+    import re as _re_json
+    cmd = None
+
+    def _try_parse_json(s: str):
+        try:
+            return json.loads(s.strip())
+        except Exception:
+            return None
+
+    clean = raw_text.strip()
+
+    # 1) 코드블록 안에 JSON
+    if "```" in clean:
+        m = _re_json.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, _re_json.DOTALL)
         if m:
-            yield {"type": "text", "content": m.group(1).replace("\\n", "\n")}
-        else:
-            yield {"type": "text", "content": "요청을 처리하지 못했습니다. 다시 시도해 주세요."}
+            cmd = _try_parse_json(m.group(1))
+        if cmd is None:
+            # 코드블록 분리 fallback
+            parts = clean.split("```")
+            snippet = parts[1] if len(parts) > 1 else ""
+            if snippet.startswith("json"):
+                snippet = snippet[4:]
+            cmd = _try_parse_json(snippet)
+
+    # 2) 텍스트가 { 로 시작하는 경우
+    if cmd is None and clean.startswith("{"):
+        cmd = _try_parse_json(clean)
+
+    # 3) 텍스트 + JSON 혼재 — { ... } 블록을 찾아 파싱
+    if cmd is None:
+        first = clean.find("{")
+        last  = clean.rfind("}")
+        if first != -1 and last > first:
+            cmd = _try_parse_json(clean[first:last + 1])
+
+    # 모든 시도 실패
+    if cmd is None:
+        print(f"[editor] JSON 파싱 실패 — raw_text: {raw_text[:300]!r}")
+        m = _re_json.search(r'"response"\s*:\s*"(.*?)"(?:,|\})', raw_text, _re_json.DOTALL)
+        fallback_text = m.group(1).replace("\\n", "\n") if m else ""
+        if not fallback_text:
+            fallback_text = "요청을 처리하지 못했습니다. 다시 시도해 주세요."
+        yield {"type": "text", "content": fallback_text}
         yield {"type": "done"}
         return
 
+    print(f"[editor] cmd: {cmd}")
     response_text = cmd.get("response", "").strip()
-    code = cmd.get("code", "").strip()
 
-    # 코드 실행
+    # action 커맨드 처리 (command-based 방식 — exec 없이 핸들러 직접 실행)
+    if "action" in cmd:
+        success, err_msg = _handle_command(cmd, d)
+        if not success:
+            yield {"type": "text", "content": f"⚠️ 처리 실패: {err_msg}"}
+        else:
+            try:
+                html = build_html(d)
+            except Exception as _e:
+                yield {"type": "text", "content": f"⚠️ HTML 생성 오류: {_e}"}
+                yield {"type": "done"}
+                return
+            yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
+            yield {"type": "text", "content": response_text or "보고서를 수정했습니다."}
+        yield {"type": "done"}
+        return
+
+    # 기존 exec() 방식 (action 없는 커스텀 요청 fallback)
+    code = cmd.get("code", "").strip()
     if code:
         success, err = _execute_editor_code(code, d)
         if not success:
-            response_text += f"\n\n⚠️ 코드 실행 오류: {err}"
+            response_text = (response_text + f"\n\n⚠️ 코드 실행 오류: {err}").strip()
         else:
-            # d가 수정됐으면 HTML 재생성
-            html = build_html(d)
-            yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
+            try:
+                html = build_html(d)
+            except Exception as _e:
+                response_text = (response_text + f"\n\n⚠️ HTML 생성 오류: {_e}").strip()
+            else:
+                yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
 
-    if response_text:
-        yield {"type": "text", "content": response_text}
-
+    yield {"type": "text", "content": response_text or "처리를 완료했습니다."}
     yield {"type": "done"}

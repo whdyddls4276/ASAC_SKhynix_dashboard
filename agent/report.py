@@ -1185,7 +1185,7 @@ def build_html(report_data: dict) -> str:
             else:
                 val_display = '<span style="color:#9ca3af">-</span>'
         pos_health_rows += (
-            f'<div class="unit-row">'
+            f'<div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center">'
             f'<div class="unit-lbl">{p}</div>'
             f'<div class="unit-val">{val_display}</div>'
             f'</div>'
@@ -1420,15 +1420,15 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 .unit-val.hot{{color:#8a1f1f;font-size:13px}}
 .anom-panel{{border:1px solid #9ca3af;background:#fffef8;display:flex;flex-direction:column;overflow:hidden}}
 .anom-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:11px;font-weight:900;flex-shrink:0}}
-.anom-list{{padding:3px;display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden}}
-.anom-card{{border:1px solid #d1d5db;background:#fff;padding:3px 6px}}
+.anom-list{{padding:2px;display:flex;flex-direction:column;gap:1px;flex:1;overflow:hidden}}
+.anom-card{{border:1px solid #d1d5db;background:#fff;padding:2px 6px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}}
 .anom-card:nth-child(even){{background:#f8fafc}}
-.anom-top{{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px}}
-.anom-name{{color:#111827;font:900 12px/1.2 Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-.anom-row{{display:flex;align-items:center;gap:3px;margin-top:2px}}
-.anom-lbl{{width:28px;flex-shrink:0;font-size:10px;font-weight:900;color:#60676f}}
+.anom-top{{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:1px;flex-shrink:0}}
+.anom-name{{color:#111827;font:900 11px/1.2 Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.anom-row{{display:flex;align-items:center;gap:3px;flex:1;min-height:0}}
+.anom-lbl{{width:28px;flex-shrink:0;font-size:9px;font-weight:900;color:#60676f}}
 .anom-lbl.unit{{color:#111827}}
-.anom-track{{position:relative;flex:1;height:10px;background:#e8ecef;border-radius:1px}}
+.anom-track{{position:relative;flex:1;height:7px;background:#e8ecef;border-radius:1px}}
 .anom-fill{{position:absolute;left:0;top:0;bottom:0;border-radius:1px}}
 .anom-fill.normal{{background:#16803c}}.anom-fill.danger{{background:#b91c1c}}
 .anom-val{{width:48px;flex-shrink:0;font:10px/1.1 Consolas,monospace;text-align:right;font-weight:900}}
@@ -1542,14 +1542,14 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
           <div class="unit-tbl">
-            <div class="unit-row" style="grid-template-columns:80px 1fr"><div class="unit-lbl">ufs_serial</div><div class="unit-val">{dummy_unit["serial"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr"><div class="unit-lbl">LOT_ID</div><div class="unit-val">{dummy_unit["lot"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr"><div class="unit-lbl">WAFER_ID</div><div class="unit-val">{dummy_unit["wafer"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr"><div class="unit-lbl">예측 health</div><div class="unit-val hot">{dummy_unit["pred_health"]} <span style="font-size:9px;color:#6b7280">(평균대비 +51% 열화)</span></div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">ufs_serial</div><div class="unit-val">{dummy_unit["serial"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">LOT_ID</div><div class="unit-val">{dummy_unit["lot"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">WAFER_ID</div><div class="unit-val">{dummy_unit["wafer"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">예측 health</div><div class="unit-val hot">{dummy_unit["pred_health"]} <span style="font-size:9px;color:#6b7280">(평균대비 +51% 열화)</span></div></div>
           </div>
           <div class="pos-panel" style="position:relative"{_dummy_attr(_is_dummy_r1b)}>
             <div class="pos-hdr">포지션별 예측 health값</div>
-            <div class="unit-tbl" style="flex:1">{pos_health_rows}</div>
+            <div class="unit-tbl">{pos_health_rows}</div>
           </div>
         </div>
       </div>
@@ -2084,5 +2084,22 @@ Chart.defaults.color       = '#202832';
 </body>
 </html>"""
 
+
+    # hidden_sections: 숨길 섹션 sid 목록 → JS로 display:none 처리
+    hidden_sids = report_data.get("hidden_sections", [])
+    if hidden_sids:
+        import json as _json
+        sids_js = _json.dumps(hidden_sids)
+        hide_script = (
+            f'<script>(function(){{var h={sids_js};'
+            'h.forEach(function(s){'
+            'var e=document.querySelector(\'[data-sid="\'+s+\'"]\');'
+            'if(!e)return;'
+            'e.style.display="none";'
+            'var p=e.previousElementSibling;'
+            'if(p&&p.classList&&p.classList.contains("inum"))p.style.display="none";'
+            '});}})()</script>'
+        )
+        html = html.replace("</body>", hide_script + "\n</body>", 1)
 
     return html
