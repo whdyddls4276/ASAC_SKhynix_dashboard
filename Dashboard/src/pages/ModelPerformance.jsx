@@ -6,12 +6,13 @@ import './ModelPerformance.css'
 const BASELINE_RMSE = 0.005845
 const FIXED_DATE    = '2026-06-11'
 
-function ChartCard({ title, tag, children, scrollable }) {
+function ChartCard({ title, tag, controls, children, scrollable }) {
   return (
     <div className="mp-chart-card">
       <div className="mp-cc-header">
         <span className="mp-cc-title">{title}</span>
         {tag && <span className="mp-cc-tag">{tag}</span>}
+        {controls && <div className="mp-cc-controls">{controls}</div>}
       </div>
       <div className={scrollable ? 'mp-cc-scroll' : 'mp-cc-body'}>
         {children}
@@ -20,7 +21,6 @@ function ChartCard({ title, tag, children, scrollable }) {
   )
 }
 
-// 항목 수에 따라 ECharts 높이 동적 계산 (항목 1개 = 28px, 최소 100px)
 const chartH = (count) => Math.max(100, count * 28)
 
 function KpiBox({ label, value, sub }) {
@@ -33,21 +33,46 @@ function KpiBox({ label, value, sub }) {
   )
 }
 
+function SortBtn({ options, value, onChange }) {
+  return (
+    <div className="mp-sort-btngroup">
+      {options.map(opt => (
+        <button
+          key={opt.value}
+          className={`mp-sort-btn${value === opt.value ? ' active' : ''}`}
+          onClick={() => onChange(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function ModelPerformance() {
-  const { data: metricsRaw }   = useCSV('/metrics.csv')
-  const { data: fiRaw }        = useCSV('/feature_importance.csv')
-  const { data: shapBarRaw }   = useCSV('/shap_bar.csv')
-  const { data: unitsRaw }     = useCSV('/dashboard_units.csv')
-  const { data: featDistRaw }  = useCSV('/feature_dist.csv')
-  // 클릭으로 선택된 피처 → 우하단 바이올린 연동
+  const { data: metricsRaw }     = useCSV('/metrics.csv')
+  const { data: fiRaw }          = useCSV('/feature_importance.csv')
+  const { data: shapBarRaw }     = useCSV('/shap_bar.csv')
+  const { data: shapBeeswarmRaw }= useCSV('/shap_beeswarm.csv')
+  const { data: unitsRaw }       = useCSV('/dashboard_units.csv')
+  const { data: featDistRaw }    = useCSV('/feature_dist.csv')
+
+  // ── 선택 피처 ──
   const [selFeat, setSelFeat] = useState(null)
+
+  // ── FI 차트 정렬: 기준(fi | shap) + 방향(desc | asc) ──
+  const [fiSortBy,  setFiSortBy]  = useState('fi')    // 'fi' | 'shap'
+  const [fiSortDir, setFiSortDir] = useState('desc')  // 'desc' | 'asc'
+
+  // ── SHAP 차트 정렬: 기준(shap | fi) + 방향(desc | asc) ──
+  const [shapSortBy,  setShapSortBy]  = useState('shap') // 'shap' | 'fi'
+  const [shapSortDir, setShapSortDir] = useState('desc') // 'desc' | 'asc'
+
   const [violinRaw, setViolinRaw] = useState([])
   useEffect(() => {
     fetch('/feature_violin.json').then(r => r.json()).then(setViolinRaw).catch(() => {})
   }, [])
 
-
-  // 바이올린용 드롭다운 피처 선택 (selFeat 없으면 첫 번째 피처)
   const violinFeats = useMemo(() => [...new Set(violinRaw.map(r => r.feature))], [violinRaw])
   const violinFeat  = useMemo(() => {
     if (!selFeat) return null
@@ -70,22 +95,63 @@ export default function ModelPerformance() {
     }
   }, [metricsRaw])
 
-  // ── 피처 임포턴스 Top-20 (퍼센트 변환: 전체 합 대비 비율) ──
-  const top20Fi = useMemo(() => {
+  // ── FI 전체 정렬된 배열 (gain_pct 포함) ──
+  const allFiSorted = useMemo(() => {
     if (!fiRaw.length) return []
     const totalGain = fiRaw.reduce((s, r) => s + parseFloat(r.lgbm_gain || 0), 0) || 1
     return [...fiRaw]
       .sort((a, b) => parseFloat(b.lgbm_gain) - parseFloat(a.lgbm_gain))
-      .slice(0, 20)
       .map(r => ({
         ...r,
         gain_pct: parseFloat(r.lgbm_gain || 0) / totalGain * 100,
       }))
   }, [fiRaw])
 
+  // ── SHAP bar 전체 정렬된 배열 ──
+  const allShapSorted = useMemo(() => {
+    if (!shapBarRaw.length) return []
+    return [...shapBarRaw].sort((a, b) => parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap))
+  }, [shapBarRaw])
+
+  // ── FI 차트에 표시할 피처 목록 ──
+  // desc=상위20, asc=하위20 (항상 20개만)
+  const fiDisplayItems = useMemo(() => {
+    if (!allFiSorted.length) return []
+    if (fiSortBy === 'fi') {
+      const items = fiSortDir === 'desc' ? allFiSorted.slice(0, 20) : allFiSorted.slice(-20)
+      return fiSortDir === 'asc' ? [...items].reverse() : items
+    } else {
+      const shapSlice = fiSortDir === 'desc' ? allShapSorted.slice(0, 20) : allShapSorted.slice(-20)
+      return shapSlice
+        .map(d => allFiSorted.find(f => f.feature === d.feature))
+        .filter(Boolean)
+        .sort((a, b) => fiSortDir === 'desc'
+          ? parseFloat(b.lgbm_gain) - parseFloat(a.lgbm_gain)
+          : parseFloat(a.lgbm_gain) - parseFloat(b.lgbm_gain))
+    }
+  }, [allFiSorted, allShapSorted, fiSortBy, fiSortDir])
+
+  const shapDisplayItems = useMemo(() => {
+    if (!allShapSorted.length) return []
+    if (shapSortBy === 'shap') {
+      const items = shapSortDir === 'desc' ? allShapSorted.slice(0, 20) : allShapSorted.slice(-20)
+      return shapSortDir === 'asc' ? [...items].reverse() : items
+    } else {
+      const fiSlice = shapSortDir === 'desc' ? allFiSorted.slice(0, 20) : allFiSorted.slice(-20)
+      return fiSlice
+        .map(d => allShapSorted.find(s => s.feature === d.feature))
+        .filter(Boolean)
+        .sort((a, b) => shapSortDir === 'desc'
+          ? parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap)
+          : parseFloat(a.mean_abs_shap) - parseFloat(b.mean_abs_shap))
+    }
+  }, [allShapSorted, allFiSorted, shapSortBy, shapSortDir])
+
+  // ── FI 차트 옵션 ──
   const fiOption = useMemo(() => {
-    if (!top20Fi.length) return null
-    const reversed = [...top20Fi].reverse() // 아래에서 위로 = 1위가 맨 위
+    if (!fiDisplayItems.length) return null
+    // 차트는 아래→위가 1위이므로 reverse
+    const items = [...fiDisplayItems].reverse()
     return {
       tooltip: {
         trigger: 'axis', axisPointer: { type: 'shadow' },
@@ -99,18 +165,16 @@ export default function ModelPerformance() {
       },
       yAxis: {
         type: 'category',
-        data: reversed.map(d => d.feature),
+        data: items.map(d => d.feature),
         axisLabel: { fontSize: 10, color: '#374151', fontFamily: 'monospace' },
         axisTick: { show: false },
       },
       series: [{
         type: 'bar',
-        data: reversed.map((d, i) => ({
+        data: items.map(d => ({
           value: +d.gain_pct.toFixed(2),
           itemStyle: {
-            color: d.feature === selFeat
-              ? '#7C3AED'
-              : i >= 15 ? '#EF4444' : i >= 10 ? '#F97316' : '#3B82F6',
+            color: d.feature === selFeat ? '#7C3AED' : '#3B82F6',
             borderRadius: [0, 4, 4, 0],
           },
         })),
@@ -121,73 +185,118 @@ export default function ModelPerformance() {
         },
       }],
     }
-  }, [top20Fi, selFeat])
+  }, [fiDisplayItems, selFeat])
 
-  // ── SHAP (shap_bar.csv 기준: zit_only 3개 모델의 Ridge 가중합) ──
-  const top20Shap = useMemo(() => {
-    if (!shapBarRaw.length) return []
-    return [...shapBarRaw]
-      .sort((a, b) => parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap))
-      .slice(0, 20)
-  }, [shapBarRaw])
+  // ── 클릭 핸들러 (피처 선택 전용) ──
+  const onFiClick = (p) => { if (p.name && p.name !== '─────────') setSelFeat(f => f === p.name ? null : p.name) }
 
-  const shapOption = useMemo(() => {
-    if (!top20Shap.length) return null
-    const reversed = [...top20Shap].reverse()
-    const xMax = Math.max(...reversed.map(d => Math.abs(parseFloat(d.mean_shap))))
-    const xBound = Math.ceil(xMax * 1.2 * 10000) / 10000 || 0.001
+  // ── FI 차트 높이 계산 ──
+  const fiChartHeight = useMemo(() => chartH(fiDisplayItems.length), [fiDisplayItems])
+
+  // ── SHAP Beeswarm: shapDisplayItems 피처 기준 ──
+  const beeswarmFeats = useMemo(() => shapDisplayItems.map(d => d.feature), [shapDisplayItems])
+
+  const shapBeeswarmOption = useMemo(() => {
+    if (!shapBeeswarmRaw.length || !beeswarmFeats.length) return null
+
+    const featOrder = [...beeswarmFeats].reverse()
+    const featIdx   = Object.fromEntries(featOrder.map((f, i) => [f, i]))
+
+    const SAMPLE  = 8000
+    const rows    = shapBeeswarmRaw.filter(r => beeswarmFeats.includes(r.feature))
+    const step    = rows.length > SAMPLE ? Math.ceil(rows.length / SAMPLE) : 1
+    const sampled = rows.filter((_, i) => i % step === 0)
+
+    const normToColor = norm => {
+      const t = Math.max(0, Math.min(1, norm))
+      const r = Math.round(59  + (239 - 59)  * t)
+      const g = Math.round(130 + (68  - 130) * t)
+      const b = Math.round(246 + (68  - 246) * t)
+      return `rgb(${r},${g},${b})`
+    }
+
+    const scatterData = sampled.map(r => {
+      const yi    = featIdx[r.feature]
+      const sv    = parseFloat(r.shap_value)
+      const norm  = parseFloat(r.feat_norm)
+      const jitter = (Math.random() - 0.5) * 0.7
+      return {
+        value: [sv, yi + jitter],
+        itemStyle: { color: normToColor(isFinite(norm) ? norm : 0.5), opacity: 0.7 },
+      }
+    })
+
+    const xVals  = scatterData.map(d => d.value[0])
+    const xBound = Math.max(Math.abs(Math.min(...xVals)), Math.abs(Math.max(...xVals))) * 1.1 || 0.001
+
     return {
       tooltip: {
-        trigger: 'axis', axisPointer: { type: 'shadow' },
+        trigger: 'item',
         formatter: p => {
-          const v = parseFloat(p[0].value)
-          return `<b>${p[0].name}</b><br/>SHAP 기여도: ${v.toFixed(5)}<br/>${v >= 0 ? '▲ 불량 증가 방향' : '▼ 불량 감소 방향'}`
+          const sv   = p.data.value[0]
+          const feat = featOrder[Math.round(p.data.value[1])] ?? ''
+          return `<b>${feat}</b><br/>SHAP: ${sv >= 0 ? '+' : ''}${sv.toFixed(6)}<br/>${sv >= 0 ? '▲ 불량 증가 방향' : '▼ 불량 감소 방향'}`
         },
       },
-      grid: { top: 8, bottom: 20, left: 8, right: 16, containLabel: true },
+      grid: { top: 8, bottom: 28, left: 8, right: 80, containLabel: true },
       xAxis: {
         type: 'value', min: -xBound, max: xBound,
-        axisLabel: { show: false },
+        axisLabel: { fontSize: 10, color: '#94A3B8', formatter: v => v.toFixed(4) },
         splitLine: { lineStyle: { color: '#F1F5F9' } },
-        axisLine: { show: false },
+        axisLine: { lineStyle: { color: '#E2E8F0' } },
+        name: 'SHAP value (impact on model output)',
+        nameLocation: 'center', nameGap: 22,
+        nameTextStyle: { fontSize: 10, color: '#94A3B8' },
       },
       yAxis: {
-        type: 'category',
-        data: reversed.map(d => d.feature),
-        axisLabel: { fontSize: 10, color: '#374151', fontFamily: 'monospace' },
+        type: 'value',
+        min: -0.5, max: featOrder.length - 0.5,
+        interval: 1,
+        axisLabel: {
+          fontSize: 10, color: '#374151', fontFamily: 'monospace',
+          formatter: v => featOrder[Math.round(v)] ?? '',
+        },
         axisTick: { show: false },
+        splitLine: { lineStyle: { color: '#F8FAFC', type: 'dashed' } },
       },
       series: [{
-        type: 'bar',
-        data: reversed.map(d => {
-          const v = parseFloat(d.mean_shap)
-          return {
-            value: +v.toFixed(5),
-            itemStyle: {
-              color: d.feature === selFeat
-                ? '#7C3AED'
-                : v >= 0 ? '#EF4444' : '#3B82F6',
-              borderRadius: v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
+        type: 'scatter',
+        data: scatterData,
+        symbolSize: 5,
+        large: true,
+        largeThreshold: 2000,
+        markLine: {
+          silent: true, symbol: 'none',
+          data: [{ xAxis: 0 }],
+          lineStyle: { color: '#CBD5E1', width: 1 },
+          label: { show: false },
+        },
+      }],
+      graphic: [{
+        type: 'group', right: 8, top: '15%',
+        children: [
+          { type: 'text', style: { text: 'High', fontSize: 10, fill: '#EF4444', fontWeight: 700 }, left: 2, top: 0 },
+          {
+            type: 'rect', left: 0, top: 16,
+            shape: { width: 12, height: 120 },
+            style: {
+              fill: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgb(239,68,68)' },
+                  { offset: 1, color: 'rgb(59,130,246)' },
+                ],
+              },
             },
-          }
-        }),
-        barMaxWidth: 14,
-        label: { show: false },
+          },
+          { type: 'text', style: { text: 'Low', fontSize: 10, fill: '#3B82F6', fontWeight: 700 }, left: 2, top: 140 },
+          { type: 'text', style: { text: 'Feature\nvalue', fontSize: 9, fill: '#94A3B8' }, left: -2, top: 158 },
+        ],
       }],
     }
-  }, [top20Shap, selFeat])
+  }, [shapBeeswarmRaw, beeswarmFeats])
 
-  // 피처/SHAP 클릭 → selFeat 토글
-  const onFiClick   = p => { if (p.name) setSelFeat(f => f === p.name ? null : p.name) }
-  const onShapClick = p => { if (p.name) setSelFeat(f => f === p.name ? null : p.name) }
-
-  // ── 피처 분포 스캐터 (피처 클릭 연동) ── 먼저 선언해야 riskDistOption에서 사용 가능
-  const top5FeatNames = useMemo(() =>
-    [...fiRaw].sort((a, b) => parseFloat(b.lgbm_gain) - parseFloat(a.lgbm_gain))
-      .slice(0, 5).map(d => d.feature),
-    [fiRaw])
-
-  // feature_dist.csv 컬럼 목록 (ufs_serial, health, is_defect 제외)
+  // ── 피처 분포 / 바이올린 ──
   const featDistCols = useMemo(() => {
     if (!featDistRaw.length) return []
     return Object.keys(featDistRaw[0]).filter(k => !['ufs_serial','health','is_defect'].includes(k))
@@ -199,14 +308,12 @@ export default function ModelPerformance() {
     return null
   }, [selFeat, featDistCols])
 
-  // grade1/grade4 구분을 위한 ufs_serial → grade 맵
   const gradeMap = useMemo(() => {
     const m = {}
     unitsRaw.forEach(u => { m[u.ufs_serial] = u.grade })
     return m
   }, [unitsRaw])
 
-  // ── 고위험(grade4) vs 저위험(grade1) 피처값 분포 — 밀도 라인 차트 ──
   const riskDistOption = useMemo(() => {
     if (!featDistRaw.length || !activeFeat) return null
 
@@ -218,7 +325,6 @@ export default function ModelPerformance() {
       if (grade === 'grade4') highVals.push(x)
       else if (grade === 'grade1') lowVals.push(x)
     }
-    // grade 정보 없으면 is_defect fallback
     if (!highVals.length && !lowVals.length) {
       for (const r of featDistRaw) {
         const x = parseFloat(r[activeFeat])
@@ -236,7 +342,6 @@ export default function ModelPerformance() {
     const binSz = (maxV - minV) / BIN || 1
     const bins  = Array.from({ length: BIN }, (_, i) => minV + i * binSz)
 
-    // 중앙값 → 가장 가까운 bin 인덱스
     const median = arr => {
       const s = [...arr].sort((a, b) => a - b)
       const m = Math.floor(s.length / 2)
@@ -303,8 +408,7 @@ export default function ModelPerformance() {
           lineStyle: { color: '#3B82F6', width: 2 },
           areaStyle: { color: 'rgba(59,130,246,0.12)' },
           markLine: {
-            silent: false,
-            symbol: 'none',
+            silent: false, symbol: 'none',
             data: [{ xAxis: medLowIdx, name: `Grade4 중앙값: ${fmtX(median(lowVals))}` }],
             lineStyle: { color: '#3B82F6', type: 'dashed', width: 1.5 },
             label: { show: false },
@@ -320,8 +424,7 @@ export default function ModelPerformance() {
           lineStyle: { color: '#EF4444', width: 2 },
           areaStyle: { color: 'rgba(239,68,68,0.12)' },
           markLine: {
-            silent: false,
-            symbol: 'none',
+            silent: false, symbol: 'none',
             data: [{ xAxis: medHighIdx, name: `Grade1 중앙값: ${fmtX(median(highVals))}` }],
             lineStyle: { color: '#EF4444', type: 'dashed', width: 1.5 },
             label: { show: false },
@@ -330,7 +433,7 @@ export default function ModelPerformance() {
         },
       ],
     }
-  }, [featDistRaw, activeFeat])
+  }, [featDistRaw, activeFeat, gradeMap])
 
   const featScatterOption = useMemo(() => {
     if (!featDistRaw.length || !activeFeat) return null
@@ -343,7 +446,6 @@ export default function ModelPerformance() {
       if (grade === 'grade4') dataHigh.push([x, y])
       else if (grade === 'grade1') dataLow.push([x, y])
     }
-    // grade 정보 없으면 is_defect fallback
     if (!dataLow.length && !dataHigh.length) {
       for (const r of featDistRaw) {
         const x = parseFloat(r[activeFeat])
@@ -377,7 +479,6 @@ export default function ModelPerformance() {
     }
   }, [featDistRaw, activeFeat, gradeMap])
 
-  // ── 바이올린 차트 (KDE 기반 부드러운 폴리곤) ──
   const violinOption = useMemo(() => {
     if (!violinRaw.length || !violinFeat) return null
     const rows = violinRaw.filter(r => r.feature === violinFeat)
@@ -396,7 +497,6 @@ export default function ModelPerformance() {
       if (!d || !d.kde.length) return []
 
       const maxDens = Math.max(...d.kde.map(([, dens]) => dens)) || 1
-      // KDE 폴리곤: 오른쪽 → 왼쪽 대칭
       const rightPts = d.kde.map(([y, dens]) => [xi + (dens / maxDens) * W, y])
       const leftPts  = [...d.kde].reverse().map(([y, dens]) => [xi - (dens / maxDens) * W, y])
       const polygon  = [...rightPts, ...leftPts]
@@ -404,7 +504,6 @@ export default function ModelPerformance() {
       const { q1, median: med, q3, mean } = d
 
       return [
-        // 바이올린 몸체 (부드러운 KDE)
         {
           type: 'custom', name: date,
           renderItem(params, api) {
@@ -414,7 +513,6 @@ export default function ModelPerformance() {
           },
           data: [0], z: 2,
         },
-        // 중앙값 빨간 점
         {
           type: 'scatter', name: '_median',
           data: [[xi, med]], symbolSize: 8,
@@ -484,62 +582,90 @@ export default function ModelPerformance() {
         />
       </div>
 
-      {/* ── Row 2: 피처 중요도 + SHAP (항상 표시) ── */}
+      {/* ── 2×2 고정 그리드 ── */}
       <div className="mp-grid-2x2">
 
-        {/* 좌: 피처 중요도 — 박스 안 스크롤 */}
-        <ChartCard title="피처 중요도 순위" scrollable>
+        {/* 좌상단: 피처 임포턴스 */}
+        <ChartCard
+          title="피처 중요도 순위"
+          controls={
+            <>
+              <SortBtn
+                options={[{ value: 'desc', label: '↓ 내림차순' }, { value: 'asc', label: '↑ 오름차순' }]}
+                value={fiSortDir}
+                onChange={setFiSortDir}
+              />
+              <SortBtn
+                options={[{ value: 'fi', label: 'FI 기준' }, { value: 'shap', label: 'SHAP 기준' }]}
+                value={fiSortBy}
+                onChange={setFiSortBy}
+              />
+            </>
+          }
+          scrollable
+        >
           {fiOption
             ? <ReactECharts
                 option={fiOption}
-                style={{ height: chartH(top20Fi.length) }}
+                style={{ height: fiChartHeight }}
                 onEvents={{ click: onFiClick }}
               />
             : <div className="mp-empty">feature_importance.csv 없음</div>}
         </ChartCard>
 
-        {/* 우: SHAP 분석 — 박스 안 스크롤 */}
-        <ChartCard title="SHAP 기여도 분석" scrollable>
-          {shapOption
-            ? <ReactECharts
-                option={shapOption}
-                style={{ height: chartH(top20Shap.length) }}
-                onEvents={{ click: onShapClick }}
+        {/* 우상단: SHAP Beeswarm */}
+        <ChartCard
+          title="SHAP 분석 (Beeswarm)"
+          controls={
+            <>
+              <SortBtn
+                options={[{ value: 'desc', label: '↓ 내림차순' }, { value: 'asc', label: '↑ 오름차순' }]}
+                value={shapSortDir}
+                onChange={setShapSortDir}
               />
-            : <div className="mp-empty">shap_bar.csv 없음</div>}
+              <SortBtn
+                options={[{ value: 'shap', label: 'SHAP 기준' }, { value: 'fi', label: 'FI 기준' }]}
+                value={shapSortBy}
+                onChange={setShapSortBy}
+              />
+            </>
+          }
+          scrollable
+        >
+          {shapBeeswarmOption
+            ? <ReactECharts
+                option={shapBeeswarmOption}
+                style={{ height: Math.max(300, beeswarmFeats.length * 18) }}
+              />
+            : <div className="mp-empty">shap_beeswarm.csv 없음</div>}
+        </ChartCard>
+
+        {/* 좌하단: 히스토그램 (피처 분포) */}
+        <ChartCard title={activeFeat ? `피처 분포 · ${activeFeat}` : '피처 분포'}>
+          {activeFeat && riskDistOption
+            ? <ReactECharts option={riskDistOption} style={{ height: 360 }} />
+            : <div className="mp-empty">{activeFeat ? 'dashboard_units.csv 없음' : '위 차트에서 피처를 클릭하세요'}</div>}
+        </ChartCard>
+
+        {/* 우하단: 피처 일별 분포 (바이올린) */}
+        <ChartCard
+          title="피처 일별 분포"
+          tag={activeFeat
+            ? <select
+                value={violinFeat ?? ''}
+                onChange={e => setSelFeat(e.target.value)}
+                style={{ fontSize: 13, color: '#475569', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}
+              >
+                {violinFeats.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            : null}
+        >
+          {activeFeat && violinOption
+            ? <ReactECharts option={violinOption} style={{ height: 360 }} />
+            : <div className="mp-empty">{activeFeat ? 'feature_violin.json 없음' : '위 차트에서 피처를 클릭하세요'}</div>}
         </ChartCard>
 
       </div>
-
-      {/* ── Row 3: 피처 클릭 시에만 표시 ── */}
-      {activeFeat && (
-        <div className="mp-grid-2x2">
-
-          {/* 좌: 고위험 vs 저위험 분포 */}
-          <ChartCard title={`피처 분포 · ${activeFeat}`}>
-            {riskDistOption
-              ? <ReactECharts option={riskDistOption} style={{ height: 360 }} />
-              : <div className="mp-empty">dashboard_units.csv 없음</div>}
-          </ChartCard>
-
-          {/* 우: 피처 월별 분포 바이올린 */}
-          <ChartCard title="피처 월별 분포" tag={
-            <select
-              value={violinFeat ?? ''}
-              onChange={e => setSelFeat(e.target.value)}
-              style={{ fontSize: 13, color: '#475569', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}
-            >
-              {violinFeats.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
-          }>
-            {violinOption
-              ? <ReactECharts option={violinOption} style={{ height: 360 }} />
-              : <div className="mp-empty">feature_violin.csv 없음</div>}
-          </ChartCard>
-
-        </div>
-      )}
-
 
     </div>
   )

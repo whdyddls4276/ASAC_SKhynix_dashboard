@@ -13,6 +13,7 @@ export default function App() {
   const [activePage, setActivePage] = useState('overview')
   const [notifOpen, setNotifOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   // 페이지 간 selection 전달용 (Overview에서 클릭한 unit → Drilldown으로 전달)
   const [pendingSelection, setPendingSelection] = useState(null)  // { lot, wafer, unit }
   const { data: units } = useCSV('/dashboard_units.csv')
@@ -72,7 +73,7 @@ export default function App() {
       <TopBar notifOpen={notifOpen} setNotifOpen={setNotifOpen} />
 
       <div className="app-body">
-        <Sidebar activePage={activePage} setActivePage={setActivePage} />
+        <Sidebar activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
 
         <main className="main-content">
           {renderPageWithProps(activePage)}

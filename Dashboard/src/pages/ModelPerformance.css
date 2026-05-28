@@ -125,3 +125,46 @@
   padding: 24px;
   text-align: center;
 }
+
+/* ── 전체 너비 그리드 (beeswarm용) ── */
+.mp-grid-1x1 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+/* ── 차트 헤더 컨트롤 영역 ── */
+.mp-cc-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── 정렬 버튼 그룹 ── */
+.mp-sort-btngroup {
+  display: flex;
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.mp-sort-btn {
+  font-size: 11px;
+  padding: 3px 9px;
+  background: #F8FAFC;
+  color: #64748B;
+  border: none;
+  border-right: 1px solid #E2E8F0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.13s, color 0.13s;
+  font-family: inherit;
+}
+.mp-sort-btn:last-child { border-right: none; }
+.mp-sort-btn:hover { background: #EFF6FF; color: #1D4ED8; }
+.mp-sort-btn.active {
+  background: #3B82F6;
+  color: #fff;
+  font-weight: 600;
+}

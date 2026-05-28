@@ -518,7 +518,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
     const res = await fetch(`${apiUrl || API_URL}/report/pptx`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ report_data: reportData || {}, filename: '품질불량개선조치보고서.pptx' }),
+      body: JSON.stringify({ report_data: currentReportRef.current || reportData || {}, filename: '품질불량개선조치보고서.pptx' }),
     })
     if (!res.ok) { alert('PPTX 생성 실패'); return }
     const blob = await res.blob()

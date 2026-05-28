@@ -1,7 +1,7 @@
-"""
+﻿"""
 대시보드 CSV 생성 스크립트
 실행: python generate_all.py
-출력: Dashboard/public/ 에 CSV 자동 저장
+출력: data/processed/ 에 CSV 자동 저장
 
 모델 기준: ZIT pphp/001 (ZITboost, val RMSE 최저)
 - wafer_map.csv pred    : ZIT die-level pred (포지션별 다른 값)
@@ -18,6 +18,7 @@ import pickle
 import shap
 from pathlib import Path
 from sklearn.ensemble import IsolationForest
+import shutil
 
 # ZITboost 모듈 경로 추가
 ROOT = Path(__file__).parent.parent.parent  # sk_하이닉스/
@@ -25,8 +26,8 @@ sys.path.insert(0, str(ROOT / "3_modeling"))
 sys.path.insert(0, str(ROOT))
 
 OUTPUT  = ROOT / "4_output"
-ZIT_RUN = OUTPUT / "zit_only" / "pphp" / "001"
-PUBLIC  = ROOT / "6_분업" / "Dashboard" / "public"
+ZIT_RUN = ROOT / "5_분석시스템" / "data" / "raw"
+PUBLIC  = ROOT / "5_분석시스템" / "data" / "processed"
 
 XS_PATH    = ROOT / "0_data" / "compet_xs_data.csv"
 UNIT_TRAIN = OUTPUT / "unit_train.csv"
@@ -236,8 +237,10 @@ xs_cols_in_file = set(pd.read_csv(XS_PATH, nrows=0).columns)
 feat_names_xs = [f for f in feat_names if f in xs_cols_in_file]   # xs에 있는 것만
 feat_names_meta = [f for f in feat_names if f not in xs_cols_in_file]  # die_x, die_y 등
 
-xs_val = pd.read_csv(XS_PATH, usecols=["ufs_serial", "split", "run_wf_xy"] + feat_names_xs)
-xs_val = xs_val[xs_val["split"] == "val"].drop(columns="split")
+# xs에는 val split이 없으므로 val_die의 ufs_serial로 직접 필터링
+val_serials_set = set(val_die["ufs_serial"].unique())
+xs_val = pd.read_csv(XS_PATH, usecols=["ufs_serial", "run_wf_xy"] + feat_names_xs)
+xs_val = xs_val[xs_val["ufs_serial"].isin(val_serials_set)]
 
 # die_x, die_y 파싱 (run_wf_xy = "run_wafer_x_y", e.g. "0000000_25_24_25")
 if "die_x" in feat_names_meta or "die_y" in feat_names_meta:
@@ -250,25 +253,27 @@ xs_val = xs_val.drop(columns="run_wf_xy")
 val_serials_ordered = val_die[["ufs_serial"]].copy()
 xs_val_merged = val_serials_ordered.merge(xs_val, on="ufs_serial", how="left")
 
-X_val = xs_val_merged[feat_names].fillna(0).values
+X_val_df = xs_val_merged[feat_names].copy()
+X_val = X_val_df.fillna(0).values
 serials_val = xs_val_merged["ufs_serial"].values
 print(f"  X_val shape: {X_val.shape}")
 
-# fold 0 lgb_mu_로 SHAP 계산 (대표 fold)
-mu_model = fold_models[0].lgb_mu_
-print("  TreeExplainer 계산 중 (배치 1000)...")
-explainer = shap.TreeExplainer(mu_model)
-
+# 전체 fold lgb_mu_ SHAP 평균 계산
 BATCH = 1000
-shap_batches = []
 n = len(X_val)
-for i in range(0, n, BATCH):
-    sv = explainer.shap_values(X_val[i:i+BATCH])
-    shap_batches.append(sv)
-    if (i // BATCH) % 10 == 0:
-        print(f"  배치 {i//BATCH + 1}/{(n + BATCH - 1)//BATCH}")
+shap_sum = np.zeros((n, len(feat_names)))
 
-shap_values = np.vstack(shap_batches)  # (n_die, n_feat)
+for fold_i, fold_model in enumerate(fold_models):
+    mu_model = fold_model.lgb_mu_
+    print(f"  TreeExplainer fold {fold_i+1}/{len(fold_models)} 계산 중...")
+    explainer = shap.TreeExplainer(mu_model)
+    fold_batches = []
+    for i in range(0, n, BATCH):
+        sv = explainer.shap_values(X_val[i:i+BATCH])
+        fold_batches.append(sv)
+    shap_sum += np.vstack(fold_batches)
+
+shap_values = shap_sum / len(fold_models)  # fold 평균
 print(f"  SHAP 완료: {shap_values.shape}")
 
 # shap_bar.csv: 피처별 mean_abs_shap, mean_shap
@@ -290,8 +295,8 @@ TOP_SHAP = 20
 top_feat_idx = rank_order[:TOP_SHAP]
 top_feat_names = [feat_names[i] for i in top_feat_idx]
 
-shap_top20 = shap_values[:, top_feat_idx]  # (n_die, 20)
-feat_vals_top20 = X_val[:, top_feat_idx]   # (n_die, 20)
+shap_top20 = shap_values[:, top_feat_idx]                           # (n_die, 20)
+feat_vals_top20 = X_val_df[top_feat_names].values                   # NaN 유지 (min-max 계산용)
 
 # die → unit 평균 (ufs_serial 기준)
 shap_df = pd.DataFrame(shap_top20, columns=top_feat_names)
@@ -302,13 +307,13 @@ feat_df["ufs_serial"] = serials_val
 shap_unit = shap_df.groupby("ufs_serial")[top_feat_names].mean()
 feat_unit = feat_df.groupby("ufs_serial")[[f"fv_{c}" for c in top_feat_names]].mean()
 
-# feat_norm: 피처값을 0~1 min-max 정규화
+# feat_norm: 피처값을 0~1 min-max 정규화 (NaN 무시)
 beeswarm_rows = []
 for rank_i, feat in enumerate(top_feat_names):
     sv_col = shap_unit[feat]
     fv_col = feat_unit[f"fv_{feat}"]
-    fv_min, fv_max = fv_col.min(), fv_col.max()
-    feat_norm = ((fv_col - fv_min) / (fv_max - fv_min + 1e-12)).round(4)
+    fv_min, fv_max = fv_col.min(skipna=True), fv_col.max(skipna=True)
+    feat_norm = ((fv_col - fv_min) / (fv_max - fv_min + 1e-12)).round(4).fillna(0)
     tmp = pd.DataFrame({
         "ufs_serial": sv_col.index,
         "feature":    feat,
@@ -410,7 +415,6 @@ print(f"  저장 완료: threshold={_q3:.8f} (전체 die pred Q3)")
 
 
 # ── dist/ 동기화 (대시보드 정적 빌드용) ──────────────────────────────────────
-import shutil
 DIST = PUBLIC.parent / "dist"
 SYNC_FILES = [
     "wafer_map.csv", "dashboard_units.csv", "feature_importance.csv",

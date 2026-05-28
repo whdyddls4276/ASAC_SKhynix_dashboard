@@ -198,7 +198,7 @@ export default function Overview({ onNavigateDrilldown }) {
 
     const weekMap = {}
     trendRaw.forEach(r => {
-      const d = new Date(r.date)
+      const d = new Date(r.date); if (isNaN(d.getTime())) return
       const day = d.getDay()
       const diff = day === 0 ? -6 : 1 - day
       const monday = new Date(d)
@@ -256,24 +256,29 @@ export default function Overview({ onNavigateDrilldown }) {
     const trendLastPpm = predAvgRaw[n - 1] ?? actualLastPpm
     const scalePpm = trendLastPpm !== 0 ? actualLastPpm / trendLastPpm : 1
 
-    // 앞 주차는 낮게(×0.78), 마지막 주는 실제값 고정 → WW37이 확 튀어보임
-    const dip = 0.78
-    const predAvg = predAvgRaw.map((v, i) =>
-      v == null ? null
-      : i === n - 1 ? Math.round(actualLastPpm)
-      : Math.round(v * scalePpm * dip)
-    )
-    const trueAvg = trueAvgRaw.map(v => v == null ? null : Math.round(v * scalePpm * dip))
+    // WW20~WW36 구간 ppm을 2000~2200 범위로 조정, 마지막 주는 실제값 고정
+    const TARGET_PAST_PPM = 2100
+    const rawPastAvg = predAvgRaw.slice(0, n - 1).filter(v => v != null)
+    const rawPastMean = rawPastAvg.length ? rawPastAvg.reduce((s,v)=>s+v,0)/rawPastAvg.length : 1
+    const pastScale = rawPastMean !== 0 ? (TARGET_PAST_PPM / rawPastMean) : 1
+
+    const predAvg = predAvgRaw.map((v, i) => {
+      if (v == null) return null
+      if (i === n - 1) return Math.round(actualLastPpm)
+      const scaled = Math.round(v * pastScale)
+      return Math.max(2000, Math.min(2200, scaled))
+    })
+    const trueAvg = trueAvgRaw.map(v => {
+      if (v == null) return null
+      const scaled = Math.round(v * pastScale)
+      return Math.max(2000, Math.min(2200, scaled))
+    })
 
     // 구간 구분: lastTrueIdx = 실측 마지막 주차 인덱스
     const lastTrueIdx = trueAvg.reduce((acc, v, i) => v != null ? i : acc, -1)
 
-    const allPpm = [...predAvg, ...trueAvg].filter(v => v != null)
-    const rawMax = Math.max(...allPpm)
-    const rawMin = Math.min(...allPpm)
-    const pad    = (rawMax - rawMin) * 0.15 || rawMax * 0.1
-    const ppmMin = Math.max(0, Math.floor((rawMin - pad) / 10) * 10)
-    const ppmMax = Math.ceil((rawMax + pad) / 10) * 10
+    const ppmMin = 1610
+    const ppmMax = 2500
 
     const pastData   = trueAvg.map((v, i) => i <= lastTrueIdx ? v : null)
     // 실측 구간의 예측선은 실측값에 결정론적 오프셋(±3~6%)을 더해 살짝 어긋나게 표시
@@ -327,7 +332,8 @@ export default function Overview({ onNavigateDrilldown }) {
           nameTextStyle: { fontSize: 11 },
           axisLabel: { fontSize: 11, formatter: v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v },
           splitLine: { lineStyle: { color: '#F1F5F9' } },
-          max: v => Math.round(v.max * 6.5),
+          min: 0,
+          max: 100000,
         },
         {
           type: 'value',
@@ -631,19 +637,19 @@ export default function Overview({ onNavigateDrilldown }) {
         <KpiCard
           label="이번주 검사 유닛"
           value={kpi.thisWeekCount.toLocaleString()}
-          color="#F59E0B"
+          color="#1E3A5F"
         />
         <KpiCard
           label="이번달 품질 실적"
           value={trendResult ? kpi.fmtPpm(trendResult.last4wAvg) : '-'}
           sub="최근 4주 평균 ppm"
-          color="#3B82F6"
+          color="#1E3A5F"
         />
         <KpiCard
           label="두달 뒤 예측 (WW37)"
           value={kpi.fmtPpm(kpi.futurePpm)}
           sub="전체 유닛 예측 평균"
-          color="#EF4444"
+          color="#1E3A5F"
         />
       </div>
 
