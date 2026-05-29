@@ -1089,8 +1089,16 @@ def _handle_command(cmd: dict, d: dict):
     elif action == "change_scatter":
         feat1 = cmd.get("feat1", "")
         feat2 = cmd.get("feat2", "")
+        if not feat1 and not feat2:
+            return False, "변경할 피처명(X숫자 형식)을 알려주세요."
+        # 하나만 지정된 경우 기존 값 유지
+        existing = d.get("feat_scatter", {})
+        if not feat1:
+            feat1 = existing.get("feat1", {}).get("name", "")
+        if not feat2:
+            feat2 = existing.get("feat2", {}).get("name", "")
         if not feat1 or not feat2:
-            return False, "feat1, feat2 모두 지정해야 합니다"
+            return False, "기존 피처 정보가 없습니다. feat1, feat2 모두 지정해 주세요."
         try:
             d["feat_scatter"] = get_feature_scatter_data(feat1=feat1, feat2=feat2)
         except Exception as e:
@@ -1237,25 +1245,26 @@ def _try_direct_action(message: str, d: dict):
                         "chart_type": chart_type, "response": f"{name} 차트로 변경했습니다."}, None
         return None, None
 
-    # ── 숫자 추출
-    nums = [int(x) for x in _re.findall(r'\b(\d+)\b', msg)]
+    # ── 숫자 추출 (X피처명 제거 후 추출 — 한글이 \w라 \b가 안 먹히는 문제 우회)
+    _clean = _re.sub(r'[Xx]\d+', '', msg)   # X1064 등 피처명 제거
+    nums = [int(x) for x in _re.findall(r'\d+', _clean)]
     n = nums[0] if nums else None
 
     # ── 섹션 판별 키워드
-    is_anomaly    = bool(_re.search(r'anomaly|이상\s*(피처|feature|탐지|감지)|Anomaly', msg, _re.IGNORECASE))
+    is_anomaly    = bool(_re.search(r'anomaly|어노말리|이상\s*(피처|feature|탐지|감지)|Anomaly', msg, _re.IGNORECASE))
     is_importance = bool(_re.search(r'importance|중요도|feature\s*importance|shap|SHAP', msg, _re.IGNORECASE))
     is_trend_lot  = bool(_re.search(r'lot\s*수|로트\s*수|pred_ppm|R3|trend_lot', msg, _re.IGNORECASE))
     is_trend_week = bool(_re.search(r'주\s*수|주차\s*수|L2|L3|trend_week|주간|불량\s*트렌드|트렌드\s*(차트|기간|수정|변경|주)', msg, _re.IGNORECASE))
-    is_period_chg = bool(_re.search(r'기간|날짜|범위|주로|주\s*로|주\s*만|주\s*보', msg, _re.IGNORECASE))
+    is_period_chg = bool(_re.search(r'기간|날짜|범위|주로|주\s*로|주\s*만|주\s*보|최근\s*\d', msg, _re.IGNORECASE))
 
     # ── 액션 판별 키워드
-    is_topn   = bool(_re.search(r'개로|개\s*(로|만|변경|바꿔|줄여|늘려)|줄여|늘려|줄이|늘리|top[\s-]?n|상위\s*\d+', msg, _re.IGNORECASE))
+    is_topn   = bool(_re.search(r'개로|개\s*(로|만|변경|바꿔|줄여|늘려)|줄여|늘려|줄이|늘리|top[\s-]?(?:\d+|n)|상위\s*\d+', msg, _re.IGNORECASE))
     is_hide   = bool(_re.search(r'숨겨|숨기|제거|빼줘|빼\s*줘|없애|안\s*보이', msg, _re.IGNORECASE))
     is_show   = bool(_re.search(r'보여|복원|다시\s*보|표시\s*해|보이게', msg, _re.IGNORECASE))
     is_serial = bool(_re.search(r'S\d{4,}', msg))
 
-    # ── 피처명 추출 (X숫자 형식)
-    feats = _re.findall(r'\bX\d+\b', msg)
+    # ── 피처명 추출 (X숫자 형식, \b 안 씀 — 한글이 \w라 뒤에 \b 안 먹힘)
+    feats = [f.upper() for f in _re.findall(r'[Xx]\d+', msg)]
 
     # ── 트렌드 기간 변경 요청 (숫자 없이 기간 언급) → 바로 질문
     if (is_trend_week or is_trend_lot) and is_period_chg and n is None:
@@ -1284,6 +1293,18 @@ def _try_direct_action(message: str, d: dict):
             return None, f"{n}개로 변경할 섹션을 알려주세요. Feature Importance, Anomaly Feature, 트렌드 주수 중 어느 쪽인가요?"
         else:
             return None, f"Feature Importance와 Anomaly Feature 중 {n}개로 변경할 섹션을 선택해 주세요."
+
+    # ── change_scatter 직접 감지 (피처명 + feat1/feat2 위치 명시)
+    is_scatter = bool(_re.search(r'scatter|분포\s*(차트|그래프)|이상\s*피처\s*분포|산점도', msg, _re.IGNORECASE))
+    if feats and is_scatter:
+        has_feat1 = bool(_re.search(r'feat\s*1|1번|첫\s*번째', msg, _re.IGNORECASE))
+        has_feat2 = bool(_re.search(r'feat\s*2|2번|두\s*번째', msg, _re.IGNORECASE))
+        if has_feat1 and not has_feat2:
+            return {"action": "change_scatter", "feat1": feats[0], "response": f"이상 피처 분포 feat1을 {feats[0]}로 변경했습니다."}, None
+        if has_feat2 and not has_feat1:
+            return {"action": "change_scatter", "feat2": feats[0], "response": f"이상 피처 분포 feat2를 {feats[0]}로 변경했습니다."}, None
+        if len(feats) >= 2:
+            return {"action": "change_scatter", "feat1": feats[0], "feat2": feats[1], "response": f"이상 피처 분포를 {feats[0]}, {feats[1]}로 변경했습니다."}, None
 
     # ── filter_anomaly 감지 (특정 피처명 언급)
     if feats and is_anomaly:
