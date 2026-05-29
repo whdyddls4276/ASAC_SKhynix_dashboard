@@ -975,3 +975,143 @@
   flex-direction: column;
   overflow-y: auto;
 }
+
+/* ── 탭 바 ── */
+.dd-tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.dd-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dd-tab:hover {
+  color: var(--text);
+  background: rgba(30, 58, 95, 0.04);
+}
+.dd-tab.active {
+  color: #1E3A5F;
+  border-bottom-color: #1E3A5F;
+}
+
+/* ── 패턴 분류 뷰 ── */
+.dd-pattern-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.dd-pattern-hint {
+  padding: 24px;
+  text-align: center;
+  color: var(--text2);
+  font-size: 13px;
+}
+.dd-pattern-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.dd-pattern-card {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dd-pattern-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.dd-pattern-card.active {
+  border-width: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+}
+.dd-pattern-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.dd-pattern-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.dd-pattern-card-count {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1E3A5F;
+  margin-bottom: 6px;
+}
+.dd-pattern-card-desc {
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+
+/* 패턴 wafer 미니 그리드 */
+.dd-pattern-grid {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.dd-pattern-grid-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.dd-pattern-grid-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.dd-pattern-mini {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #fff;
+  transition: all 0.15s;
+}
+.dd-pattern-mini:hover {
+  border-color: #1E3A5F;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+.dd-pattern-mini-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #F8FAFC;
+  border-bottom: 1px solid var(--border);
+}
+.dd-pattern-mini-risk {
+  color: #DC2626;
+  font-weight: 700;
+}
+.dd-pattern-mini-map {
+  height: 160px;
+  padding: 4px;
+}

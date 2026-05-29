@@ -1,4 +1,4 @@
-.overview {
+﻿.overview {
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -24,7 +24,7 @@
 }
 
 .pie-card-title{
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text2);
   margin-bottom: 2px;
@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   box-shadow: var(--shadow-sm);
-  border: 1.5px solid var(--kpi-color, var(--border));
+  border: 1.5px solid color-mix(in srgb, var(--kpi-color, var(--border)) 18%, var(--border));
   transition: box-shadow .2s, transform .2s;
 }
 
@@ -57,18 +57,18 @@
 }
 
 .kpi-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text2);
 }
 
 .kpi-sub {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text3);
   margin-top: 1px;
 }
 
-/* 공통 차트 카드 */
+
 .chart-card {
   background: var(--surface);
   border-radius: var(--radius);
@@ -89,7 +89,7 @@
 }
 
 .cc-title{
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -109,14 +109,14 @@
 
 .cc-body { padding: 16px 18px; }
 
-/* 2컬럼 행 */
+
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
 
-/* 3컬럼 행 */
+
 .three-col {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -124,7 +124,7 @@
 }
 
 
-/* ── 포지션-유닛 박스 ── */
+
 .pu-section {
   display: flex;
   flex-direction: column;
@@ -252,7 +252,7 @@
   color: var(--text2);
 }
 
-/* ── 더미/미연결 표시 블록 ── */
+
 .dummy-block {
   display: flex;
   flex-direction: column;
@@ -319,7 +319,7 @@
   color: #B91C1C;
 }
 
-/* 미니 더미 플레이스홀더 */
+
 .mini-trend-dummy {
   height: 200px;
   display: flex;
@@ -383,19 +383,19 @@
   opacity: .6;
 }
 
-/* ── 위험 Lot 순위 테이블 ── */
+
 .ov-lot-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .ov-lot-table th {
   padding: 6px 12px;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text3);
+  color: var(--text2);
   border-bottom: 1.5px solid var(--border);
   background: var(--surface2);
   text-transform: uppercase;
@@ -418,7 +418,7 @@
 }
 
 .ov-lot-rank {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
@@ -426,7 +426,7 @@
 }
 
 .ov-lot-id {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
@@ -439,7 +439,7 @@
 
 .ov-risk-badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   padding: 2px 8px;
@@ -466,7 +466,7 @@
 }
 
 .ov-lot-ppm {
-  font-size: 10px;
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text2);
   white-space: nowrap;
@@ -474,9 +474,13 @@
 }
 
 .ov-lot-count {
-  font-size: 10px;
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text3);
   white-space: nowrap;
   text-align: right;
 }
+
+
+
+

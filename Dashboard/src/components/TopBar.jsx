@@ -4,7 +4,6 @@ import './TopBar.css'
 const FIXED_DATE = '2026-06-11'
 
 export default function TopBar({ notifOpen, setNotifOpen }) {
-  const [profileOpen, setProfileOpen] = useState(false)
   const [timeStr, setTimeStr] = useState('')
 
   useEffect(() => {
@@ -19,9 +18,7 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <div className="logo">QMS</div>
-        <div className="topbar-div" />
-        <div className="topbar-title">품질 분석 시스템 & 의사결정 지원</div>
+        <div className="topbar-title">품질 분석 시스템</div>
       </div>
 
       <div className="topbar-right">
@@ -32,28 +29,9 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
           onClick={() => setNotifOpen(v => !v)}
           title="알림"
         >
-          🔕
+          🔔
           <span className="notif-dot" />
         </button>
-
-        <div className="profile-wrap">
-          <button
-            className="profile-btn"
-            onClick={() => setProfileOpen(v => !v)}
-          >
-            <div className="avatar">👤</div>
-            <span className="profile-name">이정훈</span>
-            <span className="profile-arrow">{profileOpen ? '▲' : '▼'}</span>
-          </button>
-          {profileOpen && (
-            <div className="profile-dropdown">
-              <div className="pd-item">내 프로필</div>
-              <div className="pd-item">설정</div>
-              <div className="pd-divider" />
-              <div className="pd-item pd-logout">로그아웃</div>
-            </div>
-          )}
-        </div>
       </div>
     </header>
   )

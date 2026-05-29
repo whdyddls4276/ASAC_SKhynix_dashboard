@@ -50,11 +50,16 @@ print(f"  전체 die: {len(all_die):,}행")
 # ── 2. xs 피처 로드 및 정렬 ──────────────────────────────
 print("\n[2] xs 피처 로드 및 feat_names 정렬...")
 xs_cols_in_file = set(pd.read_csv(XS_PATH, nrows=0).columns)
-feat_in_xs   = [f for f in feat_names if f in xs_cols_in_file]
-feat_in_meta = [f for f in feat_names if f not in xs_cols_in_file]  # die_x, die_y 등
-print(f"  xs 피처: {len(feat_in_xs)}개  |  메타 피처: {len(feat_in_meta)}개 {feat_in_meta}")
 
-xs_all = pd.read_csv(XS_PATH, usecols=["ufs_serial", "run_wf_xy"] + feat_in_xs)
+# _missing 인디케이터 피처 분리
+missing_feats = [f for f in feat_names if f.endswith("_missing")]
+missing_base  = [f.replace("_missing", "") for f in missing_feats]
+feat_in_xs   = [f for f in feat_names if f in xs_cols_in_file and not f.endswith("_missing")]
+feat_in_meta = [f for f in feat_names if f not in xs_cols_in_file and not f.endswith("_missing")]
+print(f"  xs 피처: {len(feat_in_xs)}개  |  메타 피처: {len(feat_in_meta)}개 {feat_in_meta}  |  missing 피처: {len(missing_feats)}개")
+
+extra_for_missing = [c for c in missing_base if c in xs_cols_in_file and c not in feat_in_xs]
+xs_all = pd.read_csv(XS_PATH, usecols=["ufs_serial", "run_wf_xy"] + feat_in_xs + extra_for_missing)
 
 # die_x, die_y 파싱
 if feat_in_meta:
@@ -64,6 +69,16 @@ if feat_in_meta:
     if "die_y" in feat_in_meta:
         xs_all["die_y"] = parts.str[-1].apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
 xs_all = xs_all.drop(columns="run_wf_xy")
+
+# _missing 인디케이터 생성
+for base, miss_col in zip(missing_base, missing_feats):
+    if base in xs_all.columns:
+        xs_all[miss_col] = xs_all[base].isna().astype(int)
+    else:
+        xs_all[miss_col] = 0
+
+cols_to_drop = [c for c in extra_for_missing if c not in feat_names]
+xs_all = xs_all.drop(columns=cols_to_drop, errors="ignore")
 
 # all_die 순서 기준으로 merge
 xs_merged = all_die[["ufs_serial", "split"]].merge(xs_all, on="ufs_serial", how="left")

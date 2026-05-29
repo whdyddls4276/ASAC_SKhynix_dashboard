@@ -11,7 +11,8 @@
  */
 import { useState, useMemo, useEffect } from 'react'
 import { useCSV } from '../hooks/useCSV'
-import './Drilldown.css'
+import ALL_DIE_POSITIONS from './diePositions.js'
+import './DrilldownV2.css'
 
 // ── 색상 로직 (1팀 colors.ts 포팅) ───────────────────
 const NORMAL_STOPS = [
@@ -56,34 +57,21 @@ function predColor(pred, predMin, predMax, threshold) {
 const COLOR_LEGEND_GRADIENT =
   'linear-gradient(to right, #f3f4f6, #dbeafe, #a5d7dc, #fef08a, #fef08a, #fb923c, #dc2626)'
 
+// 전체 데이터(oof+val+test)의 die 좌표 글로벌 범위 — 웨이퍼맵 격자 고정용
+const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
+const GLOBAL_DIE_Y_MIN = 11, GLOBAL_DIE_Y_MAX = 32
+
 // ── 스케일 계산 ───────────────────────────────────────
 function computeScale(allDies) {
   const preds = allDies.map(d => parseFloat(d.pred)).filter(isFinite)
-  if (!preds.length) return { predMin: 0, predMax: 0.02, threshold: 0.005, gridXRange: 1, gridYRange: 1 }
+  const gx = { xRange: GLOBAL_DIE_X_MAX - GLOBAL_DIE_X_MIN + 1, yRange: GLOBAL_DIE_Y_MAX - GLOBAL_DIE_Y_MIN + 1, xMin: GLOBAL_DIE_X_MIN, xMax: GLOBAL_DIE_X_MAX, yMin: GLOBAL_DIE_Y_MIN, yMax: GLOBAL_DIE_Y_MAX }
+  if (!preds.length) return { predMin: 0, predMax: 0.02, threshold: 0.005, gridXRange: gx.xRange, gridYRange: gx.yRange, gridXMin: gx.xMin, gridXMax: gx.xMax, gridYMin: gx.yMin, gridYMax: gx.yMax }
   preds.sort((a, b) => a - b)
   const predMin = preds[0]
   const predMax = preds[preds.length - 1]
-  // threshold = Q3 (IQR 기반 위험 판정 기준)
-  const q1 = preds[Math.floor(preds.length * 0.25)] ?? predMin
   const q3 = preds[Math.floor(preds.length * 0.75)] ?? predMin
   const threshold = q3
-  // 전체 데이터의 die 좌표 범위 (다이 종횡비 고정용) — 큰 배열 spread 회피용 루프
-  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity
-  for (const d of allDies) {
-    const x = parseInt(d.die_x)
-    const y = parseInt(d.die_y)
-    if (Number.isFinite(x)) {
-      if (x < xMin) xMin = x
-      if (x > xMax) xMax = x
-    }
-    if (Number.isFinite(y)) {
-      if (y < yMin) yMin = y
-      if (y > yMax) yMax = y
-    }
-  }
-  const gridXRange = Number.isFinite(xMin) ? (xMax - xMin + 1) : 1
-  const gridYRange = Number.isFinite(yMin) ? (yMax - yMin + 1) : 1
-  return { predMin, predMax, threshold, gridXRange, gridYRange }
+  return { predMin, predMax, threshold, gridXRange: gx.xRange, gridYRange: gx.yRange, gridXMin: gx.xMin, gridXMax: gx.xMax, gridYMin: gx.yMin, gridYMax: gx.yMax }
 }
 
 // ── WaferMap SVG 컴포넌트 (1팀 WaferMap.tsx 포팅) ────
@@ -114,28 +102,31 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
   const radius = D / 2
 
   const { xMin, xMax, yMin, yMax, xRange, yRange } = layout
-  const centerX = (xMin + xMax) / 2
-  const centerY = (yMin + yMax) / 2
 
-  // 격자 셀 크기: 전체 데이터의 die 좌표 범위를 기준으로 계산 (다이 종횡비 고정)
-  // 어떤 lot/wafer를 선택해도 다이의 가로:세로 비율이 동일하게 유지됨
-  // SCALE: 다이 크기 배율 (다닥다닥 붙은 채로 격자 전체가 작아짐)
-  const SCALE = 0.9
+  // 전체 데이터 기준 중심/범위 사용 → 웨이퍼마다 포지션이 달라도 격자가 고정됨
+  const refXMin = scale.gridXMin ?? xMin
+  const refXMax = scale.gridXMax ?? xMax
+  const refYMin = scale.gridYMin ?? yMin
+  const refYMax = scale.gridYMax ?? yMax
   const refXRange = scale.gridXRange ?? xRange
   const refYRange = scale.gridYRange ?? yRange
+  const centerX = (refXMin + refXMax) / 2
+  const centerY = (refYMin + refYMax) / 2
+
+  const SCALE = 0.9
   const cellW = (D / refXRange) * SCALE
   const cellH = (D / refYRange) * SCALE
 
-  // mask: 모든 die 좌표 집합
-  const mask = [...dieMap.keys()].map(k => k.split(',').map(Number))
+  // mask: 전체 데이터 기준 모든 die 좌표 (웨이퍼마다 격자 일정)
+  const mask = ALL_DIE_POSITIONS
 
-  // 격자선: 모든 die 셀 경계마다 (각 die 사이)
+  // 격자선: 전체 좌표 범위 기준 (결측 포지션 있어도 격자 일정)
   const gridXs = []
-  for (let xi = xMin; xi <= xMax + 1; xi++) {
+  for (let xi = refXMin; xi <= refXMax + 1; xi++) {
     gridXs.push(cx + (xi - centerX) * cellW - cellW / 2)
   }
   const gridYs = []
-  for (let yi = yMin; yi <= yMax + 1; yi++) {
+  for (let yi = refYMin; yi <= refYMax + 1; yi++) {
     gridYs.push(cy + (yi - centerY) * cellH - cellH / 2)
   }
 
@@ -154,30 +145,27 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
             {/* die 색상 셀 */}
             {mask.map(([dx, dy]) => {
               const die = dieMap.get(`${dx},${dy}`)
+              if (!die) return null
               const x = cx + (dx - centerX) * cellW - cellW / 2
               const y = cy + (dy - centerY) * cellH - cellH / 2
-              const isUnitSel = die?.ufs_serial === selectedUnit
-              const isDieSel  = selectedDie && die && String(die.die_x) === String(selectedDie.die_x) && String(die.die_y) === String(selectedDie.die_y)
-              const fill = die
-                ? predColor(parseFloat(die.pred), scale.predMin, scale.predMax, scale.threshold)
-                : '#f1f5f9'
+              const isUnitSel = die.ufs_serial === selectedUnit
+              const isDieSel  = selectedDie && String(die.die_x) === String(selectedDie.die_x) && String(die.die_y) === String(selectedDie.die_y)
+              const fill = predColor(parseFloat(die.pred), scale.predMin, scale.predMax, scale.threshold)
               return (
                 <g key={`${dx}-${dy}`}>
-                  <title>
-                    {die
-                      ? `${die.ufs_serial ?? ''}\n(${dx}, ${dy})\npred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`
-                      : `(${dx}, ${dy}) — die 없음`}
-                  </title>
+                  <title>{`${die.ufs_serial ?? ''}
+(${dx}, ${dy})
+pred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`}</title>
                   <rect
                     x={x} y={y}
                     width={cellW}
                     height={cellH}
                     fill={fill}
-                    stroke={isDieSel ? '#7C3AED' : isUnitSel ? '#0f172a' : die ? 'rgba(15,23,42,0.12)' : 'rgba(15,23,42,0.04)'}
+                    stroke={isDieSel ? '#7C3AED' : isUnitSel ? '#0f172a' : 'rgba(15,23,42,0.12)'}
                     strokeWidth={isDieSel ? 4 : isUnitSel ? 3 : 0.6}
-                    style={die && onSelectUnit ? { cursor: 'pointer' } : undefined}
+                    style={onSelectUnit ? { cursor: 'pointer' } : undefined}
                     onClick={() => {
-                      if (!die?.ufs_serial || !onSelectUnit) return
+                      if (!die.ufs_serial || !onSelectUnit) return
                       onSelectUnit(die.ufs_serial)
                       onSelectDie?.(die)
                     }}
@@ -221,15 +209,17 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial }) {
   }, [shapBeeswarm, ufsSerial])
 
   // 2) fallback: shap_bar.csv (모델 전체 평균)
-  const bars = unitShap ?? (
+  const allBars = unitShap ?? (
     shapData?.length
-      ? shapData.slice(0, 10).map(f => ({
+      ? shapData.slice(0, 20).map(f => ({
           feature: f.feature,
           val: parseFloat(f.mean_shap ?? f.effect_norm) || 0,
           magnitude: Math.abs(parseFloat(f.mean_abs_shap ?? f.lgbm_gain) || 0),
         })).sort((a, b) => b.magnitude - a.magnitude)
       : []
   )
+  // X0~X1086 피처만 표시
+  const bars = allBars.filter(b => /^X\d+$/.test(b.feature)).slice(0, 10)
 
   if (!bars.length) return null
   const maxMag = Math.max(...bars.map(b => b.magnitude), 1e-9)
@@ -244,7 +234,7 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial }) {
             <div style={{ flex: 1, background: '#f1f5f9', height: 10, borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ width: `${w}%`, height: '100%', background: clr, borderRadius: 2 }} />
             </div>
-            <span style={{ width: 60, fontSize: 11, color: clr, fontWeight: 700, textAlign: 'right' }}>{b.val >= 0 ? '+' : ''}{Math.round(b.val * 1e6).toLocaleString()} ppm</span>
+            <span style={{ width: 52, fontSize: 11, color: clr, fontWeight: 700, textAlign: 'right' }}>{b.val >= 0 ? '+' : ''}{Math.round(b.val * 1e6).toLocaleString()}</span>
           </div>
         )
       })}
@@ -316,7 +306,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
 
       {/* 주요 기여 변수 (unit별 SHAP - shap_beeswarm.csv 기반) */}
       <div className="dd-section" style={{ padding: '6px 4px 4px' }}>
-        <div className="dd-section-title">주요 기여 변수 Top 10 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>unit별 SHAP</span></div>
+        <div className="dd-section-title">주요 기여 변수 Top 10 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>unit별 SHAP</span><span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginLeft: 6 }}>(ppm)</span></div>
         <ShapBar shapData={shapData} shapBeeswarm={shapBeeswarm} ufsSerial={ufsSerial} />
       </div>
 
@@ -347,27 +337,6 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
           </div>
         )
       })()}
-
-      {/* 예측 상세 */}
-      <div className="dd-section-box">
-        <div className="dd-section-title">예측 상세</div>
-        <div className="dd-detail-rows">
-          <div className="dd-detail-row">
-            <span className="dd-detail-key">예측 PPM</span>
-            <span className={`dd-detail-val mono ${isRisk ? 'danger' : ''}`}>{ppm.toLocaleString()} ppm</span>
-          </div>
-          {clfProba !== null && (
-            <div className="dd-detail-row">
-              <span className="dd-detail-key">불량 확률</span>
-              <span className="dd-detail-val mono">{(clfProba * 100).toFixed(1)}%</span>
-            </div>
-          )}
-          <div className="dd-detail-row">
-            <span className="dd-detail-key">Die 수</span>
-            <span className="dd-detail-val">{dies.length}</span>
-          </div>
-        </div>
-      </div>
 
       {/* 가장 위험한 die */}
       {worstDie && (
@@ -643,7 +612,55 @@ function DieReport({ die, scale, onClose }) {
 }
 
 // ── 메인 ─────────────────────────────────────────────
-export default function Drilldown({ initialSelection }) {
+// ── Wafer 패턴 휴리스틱 분류 ──
+// die 위치 + pred를 받아 Edge Ring / Center Cluster / Random / Normal 분류
+function classifyWaferPattern(dies, threshold) {
+  if (!dies.length) return 'normal'
+  const xs = dies.map(d => d.die_x), ys = dies.map(d => d.die_y)
+  const cx = (Math.max(...xs) + Math.min(...xs)) / 2
+  const cy = (Math.max(...ys) + Math.min(...ys)) / 2
+  const rMax = Math.max(...dies.map(d => Math.hypot(d.die_x - cx, (d.die_y - cy) * 2.5)))
+  if (rMax === 0) return 'normal'
+
+  let centerSum = 0, centerN = 0
+  let edgeSum = 0, edgeN = 0
+  let highCount = 0
+
+  dies.forEach(d => {
+    const r = Math.hypot(d.die_x - cx, (d.die_y - cy) * 2.5) / rMax
+    const p = parseFloat(d.pred)
+    if (!isFinite(p)) return
+    if (p > threshold) highCount++
+    if (r < 0.45) { centerSum += p; centerN++ }
+    if (r > 0.75) { edgeSum += p; edgeN++ }
+  })
+
+  if (centerN === 0 || edgeN === 0) return 'normal'
+  const centerAvg = centerSum / centerN
+  const edgeAvg = edgeSum / edgeN
+  const highRatio = highCount / dies.length
+
+  // 위험 die 비율이 낮으면 정상
+  if (highRatio < 0.08) return 'normal'
+
+  // Edge Ring: 외곽이 중심 대비 1.6배 이상
+  if (edgeAvg > centerAvg * 1.6 && edgeAvg > threshold * 0.9) return 'edge'
+
+  // Center Cluster: 중심이 외곽 대비 1.6배 이상
+  if (centerAvg > edgeAvg * 1.6 && centerAvg > threshold * 0.9) return 'center'
+
+  // 그 외 위험 die가 흩어진 경우
+  return 'random'
+}
+
+const PATTERN_META = {
+  edge:   { label: 'Edge Ring',      color: '#EF4444', desc: '외곽 die 불량 집중 — 식각/세정 균일성 의심' },
+  center: { label: 'Center Cluster', color: '#F59E0B', desc: '중심 die 불량 집중 — CMP/Coater 중심 결함 의심' },
+  random: { label: 'Random Scatter', color: '#3B82F6', desc: '불량 산발 — 파티클/오염 가능성' },
+  normal: { label: 'Normal',         color: '#22C55E', desc: '뚜렷한 패턴 없음' },
+}
+
+export default function DrilldownV2({ initialSelection }) {
   const { data: summaryData, loading: loadingSummary } = useCSV('/dashboard_lot_summary.csv')
   const { data: shapData } = useCSV('/shap_bar.csv')
   const { data: unitData } = useCSV('/dashboard_units.csv')
@@ -654,8 +671,10 @@ export default function Drilldown({ initialSelection }) {
       predMin: s.pred_min,
       predMax: s.pred_max,
       threshold: s.threshold,
-      gridXRange: s.grid_x_range,
-      gridYRange: s.grid_y_range,
+      gridXRange: GLOBAL_DIE_X_MAX - GLOBAL_DIE_X_MIN + 1,
+      gridYRange: GLOBAL_DIE_Y_MAX - GLOBAL_DIE_Y_MIN + 1,
+      gridXMin: GLOBAL_DIE_X_MIN, gridXMax: GLOBAL_DIE_X_MAX,
+      gridYMin: GLOBAL_DIE_Y_MIN, gridYMax: GLOBAL_DIE_Y_MAX,
     })).catch(() => {})
   }, [])
 
@@ -672,26 +691,32 @@ export default function Drilldown({ initialSelection }) {
   const [loadedLot, setLoadedLot] = useState(null)
   const { data: dieData, loading: loadingDie } = useCSV(loadedLot ? `/wafer_map_lots/lot_${loadedLot}.csv` : null)
 
-  // 외부에서 initialSelection 전달받으면 자동 선택
-  // selectedKey 변경 시 selectedUnit이 리셋되는 effect보다 나중에 unit을 설정해야 함
+  // 외부에서 initialSelection 전달받으면 자동 선택 (Lot 즉시 → die 로드 트리거)
   useEffect(() => {
-    if (!initialSelection || !dieData.length) return
-    const { lot, wafer, unit } = initialSelection
+    if (!initialSelection) return
+    const { lot } = initialSelection
     if (lot) {
       setSelectedLot(String(lot))
       setExpandedLot(String(lot))
       setLoadedLot(String(lot))
     }
+  }, [initialSelection])
+
+  // die 데이터 도착 후 wafer/unit 선택 (selectedKey 리셋 effect보다 나중)
+  useEffect(() => {
+    if (!initialSelection || !dieData.length) return
+    const { lot, wafer, unit } = initialSelection
     if (lot && wafer) {
       setSelectedKey(`${lot}_${wafer}`)
     }
-    // unit 선택은 selectedKey 리셋 effect가 끝난 후로 미룸
     if (unit) {
       setTimeout(() => setSelectedUnit(unit), 0)
     }
   }, [initialSelection, dieData])
   const [waferSort, setWaferSort]       = useState('default') // 'default' | 'risk_desc' | 'risk_asc'
   const [lotSort, setLotSort]           = useState('risk_desc') // 'risk_desc' | 'risk_asc' | 'default'
+  const [activeTab, setActiveTab]       = useState('default')   // 'default' | 'pattern'
+  const [selectedPattern, setSelectedPattern] = useState(null)  // 'edge' | 'center' | 'random' | 'normal'
 
   const scale = useMemo(() => globalScale ?? computeScale(dieData), [globalScale, dieData])
 
@@ -755,6 +780,35 @@ export default function Drilldown({ initialSelection }) {
   useEffect(() => { setSelectedUnit(null); setSelectedDie(null) }, [selectedKey])
   useEffect(() => { if (selectedUnit) setShapBeeswarmEnabled(true) }, [selectedUnit])
 
+  // ── 패턴 분류: 현재 로드된 lot의 wafer별 패턴 분류 ──
+  const patternResult = useMemo(() => {
+    if (!dieData.length || !scale) return null
+    const threshold = scale.threshold
+
+    // wafer별 die 그룹핑
+    const waferMap = {}
+    dieData.forEach(d => {
+      const lot = String(d.run_id)
+      const wno = String(d.wafer_no)
+      const key = `${lot}_${wno}`
+      if (!waferMap[key]) waferMap[key] = { lot, wno, dies: [] }
+      waferMap[key].dies.push(d)
+    })
+
+    // 각 wafer 분류
+    const classified = Object.values(waferMap).map(w => ({
+      ...w,
+      pattern: classifyWaferPattern(w.dies, threshold),
+      riskRatio: w.dies.filter(d => parseFloat(d.pred) > threshold).length / w.dies.length,
+      avgPred: w.dies.reduce((s, d) => s + parseFloat(d.pred), 0) / w.dies.length,
+    }))
+
+    // 카테고리별 집계
+    const buckets = { edge: [], center: [], random: [], normal: [] }
+    classified.forEach(w => buckets[w.pattern].push(w))
+    return { wafers: classified, buckets }
+  }, [dieData, scale])
+
   // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
   // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
   function absBarWidth(ratio) {
@@ -770,6 +824,105 @@ export default function Drilldown({ initialSelection }) {
 
   return (
     <div className="drilldown">
+
+      {/* ── 탭 바 ── */}
+      <div className="dd-tab-bar">
+        <button
+          className={`dd-tab ${activeTab === 'default' ? 'active' : ''}`}
+          onClick={() => setActiveTab('default')}
+        >
+          기본 보기 (Lot → Wafer → Unit)
+        </button>
+        <button
+          className={`dd-tab ${activeTab === 'pattern' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pattern')}
+        >
+          패턴 분류 {patternResult ? `(${patternResult.wafers.length}장)` : ''}
+        </button>
+      </div>
+
+      {activeTab === 'pattern' && (
+        <div className="dd-pattern-view">
+          {!selectedLot && (
+            <div className="dd-pattern-hint">
+              좌측 트리에서 Lot을 선택하면 해당 Lot의 wafer 패턴이 분류됩니다.
+              <br/><br/>
+              <button className="dd-tab" onClick={() => setActiveTab('default')}>← 기본 보기로 돌아가 Lot 선택</button>
+            </div>
+          )}
+          {selectedLot && !patternResult && (
+            <div className="dd-pattern-hint">패턴 분류 중...</div>
+          )}
+          {selectedLot && patternResult && (
+            <>
+              <div className="dd-pattern-cards">
+                {['edge', 'center', 'random', 'normal'].map(pat => {
+                  const meta = PATTERN_META[pat]
+                  const wafers = patternResult.buckets[pat]
+                  const pct = patternResult.wafers.length
+                    ? (wafers.length / patternResult.wafers.length * 100).toFixed(0)
+                    : 0
+                  const isActive = selectedPattern === pat
+                  return (
+                    <div
+                      key={pat}
+                      className={`dd-pattern-card ${isActive ? 'active' : ''}`}
+                      style={{ borderColor: isActive ? meta.color : undefined }}
+                      onClick={() => setSelectedPattern(isActive ? null : pat)}
+                    >
+                      <div className="dd-pattern-card-head" style={{ color: meta.color }}>
+                        <span className="dd-pattern-dot" style={{ background: meta.color }} />
+                        {meta.label}
+                      </div>
+                      <div className="dd-pattern-card-count">
+                        {wafers.length}<span style={{ fontSize: 12, color: '#94A3B8' }}>장 ({pct}%)</span>
+                      </div>
+                      <div className="dd-pattern-card-desc">{meta.desc}</div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {selectedPattern && (
+                <div className="dd-pattern-grid">
+                  <div className="dd-pattern-grid-title">
+                    {PATTERN_META[selectedPattern].label} — {patternResult.buckets[selectedPattern].length}장
+                  </div>
+                  <div className="dd-pattern-grid-list">
+                    {patternResult.buckets[selectedPattern].length === 0 && (
+                      <div className="dd-pattern-hint" style={{ padding: 16 }}>해당 패턴의 wafer가 없습니다.</div>
+                    )}
+                    {patternResult.buckets[selectedPattern]
+                      .sort((a, b) => b.riskRatio - a.riskRatio)
+                      .slice(0, 12)
+                      .map(w => (
+                      <div
+                        key={`${w.lot}_${w.wno}`}
+                        className="dd-pattern-mini"
+                        onClick={() => {
+                          setSelectedKey(`${w.lot}_${w.wno}`)
+                          setActiveTab('default')
+                        }}
+                        title="클릭 → 기본 보기에서 상세 분석"
+                      >
+                        <div className="dd-pattern-mini-head">
+                          Lot {w.lot} · #{w.wno}
+                          <span className="dd-pattern-mini-risk">{(w.riskRatio * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="dd-pattern-mini-map">
+                          <WaferMap dies={w.dies} scale={scale} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'default' && (
       <div className="dd-body-3col">
 
         {/* ── 좌: 아코디언 트리 ── */}
@@ -988,6 +1141,7 @@ export default function Drilldown({ initialSelection }) {
         </div>
 
       </div>
+      )}
     </div>
   )
 }

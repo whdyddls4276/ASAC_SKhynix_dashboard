@@ -168,6 +168,60 @@
 .badge-med  { background: var(--warn-bg); color: var(--warn); }
 .badge-low  { background: var(--good-bg); color: var(--good); }
 
+.np-grade-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.np-grade-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid;
+}
+
+.np-grade-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.np-grade-count {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.np-unit-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.np-unit-item {
+  padding: 5px 12px;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text2);
+  border-bottom: 1px solid var(--border);
+}
+
+.np-unit-item:last-child {
+  border-bottom: none;
+}
+
+.np-unit-more {
+  padding: 5px 12px;
+  font-size: 10px;
+  color: var(--text3);
+  font-style: italic;
+  text-align: center;
+}
+
 .chatbot-fab {
   position: fixed;
   bottom: 28px;

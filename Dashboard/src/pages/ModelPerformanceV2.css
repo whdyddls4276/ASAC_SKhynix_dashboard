@@ -60,6 +60,12 @@
   gap: 14px;
 }
 
+.mp-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
 /* ── 차트 카드 ── */
 .mp-chart-card {
   background: var(--surface);
@@ -167,4 +173,38 @@
   background: #3B82F6;
   color: #fff;
   font-weight: 600;
+}
+
+/* ── FI + SHAP 합친 카드 내부 레이아웃 ── */
+.mp-fi-shap-row {
+  display: flex;
+  gap: 0;
+  width: 100%;
+}
+
+.mp-fi-shap-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.mp-fi-shap-divider {
+  width: 1px;
+  background: var(--border);
+  margin: 0 12px;
+  flex-shrink: 0;
+}
+
+.mp-fi-shap-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94A3B8;
+  padding: 0 4px 6px;
+  letter-spacing: 0.01em;
+}
+
+/* ── 하단 2칸 그리드 ── */
+.mp-grid-2x2-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }

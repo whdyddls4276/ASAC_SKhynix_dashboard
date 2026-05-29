@@ -3,9 +3,11 @@ import TopBar from './components/TopBar'
 import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
 import Overview from './pages/Overview'
+import Overview2 from './pages/Overview2'
 import WaferMap from './pages/WaferMap'
-import ModelPerformance from './pages/ModelPerformance'
-import Drilldown from './pages/Drilldown'
+import ModelPerformanceV2 from './pages/ModelPerformanceV2'
+import ProcessFactor from './pages/ProcessFactor'
+import DrilldownV2 from './pages/DrilldownV2'
 import { useCSV } from './hooks/useCSV'
 import './App.css'
 
@@ -14,55 +16,43 @@ export default function App() {
   const [notifOpen, setNotifOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  // 페이지 간 selection 전달용 (Overview에서 클릭한 unit → Drilldown으로 전달)
+  // 페이지 간 selection 전달용 (Overview에서 클릭한 unit → DrilldownV2로 전달)
   const [pendingSelection, setPendingSelection] = useState(null)  // { lot, wafer, unit }
   const { data: units } = useCSV('/dashboard_units.csv')
 
-  // Overview에서 호출: drilldown으로 이동하면서 unit 선택
+  // Overview에서 호출: DrilldownV2로 이동하면서 unit 선택
   const navigateToDrilldown = (selection) => {
     setPendingSelection(selection)
-    setActivePage('drilldown')
+    setActivePage('drilldown-v2')
   }
 
-  // 실제 위험 Lot 알림: lot별 평균 reg_pred 상위 4개
-  const notifItems = useMemo(() => {
-    if (!units.length) return []
-    const lotMap = {}
+  // grade별 unit 목록
+  const notifByGrade = useMemo(() => {
+    if (!units.length) return { grade1: [], grade2: [], grade3: [], grade4: [] }
+    const result = { grade1: [], grade2: [], grade3: [], grade4: [] }
     units.forEach(u => {
-      const lot = String(u.run_id)
-      if (!lotMap[lot]) lotMap[lot] = { lot, predSum: 0, count: 0, riskCount: 0 }
-      const pred = parseFloat(u.reg_pred)
-      if (isFinite(pred)) { lotMap[lot].predSum += pred; lotMap[lot].count++ }
-      if (u.risk === 'HIGH') lotMap[lot].riskCount++
+      const g = u.grade
+      if (result[g]) result[g].push(u.ufs_serial)
     })
-    return Object.values(lotMap)
-      .map(l => ({
-        lot:      `LOT-${l.lot}`,
-        avgPpm:   l.count ? Math.round(l.predSum / l.count * 1e6) : 0,
-        riskCount: l.riskCount,
-        level:    l.riskCount > 50 ? 'HIGH' : l.riskCount > 20 ? 'MED' : 'LOW',
-      }))
-      .sort((a, b) => b.avgPpm - a.avgPpm)
-      .slice(0, 4)
+    return result
   }, [units])
   function renderPageWithProps(page) {
     switch (page) {
       case 'overview':
         return <Overview onNavigateDrilldown={navigateToDrilldown} />
+      case 'overview2':
+        return <Overview2
+          onNavigateDrilldown={(sel) => { setPendingSelection(sel); setActivePage('drilldown-v2') }}
+          onNavigateProcessFactor={() => setActivePage('process-factor')}
+        />
       case 'wafer-map':
         return <WaferMap />
-      case 'feat-importance':
-        return <ModelPerformance />
-      case 'drilldown':
-      case 'lot-level':
-      case 'wafer-level':
-      case 'unit-level':
-      case 'die-level':
-        return <Drilldown initialTab={
-          page === 'wafer-level' ? 'wafer' :
-          page === 'unit-level'  ? 'unit'  :
-          page === 'die-level'   ? 'die'   : 'lot'
-        } initialSelection={pendingSelection} />
+      case 'feat-importance-v2':
+        return <ModelPerformanceV2 />
+      case 'process-factor':
+        return <ProcessFactor />
+      case 'drilldown-v2':
+        return <DrilldownV2 initialSelection={pendingSelection} />
       default:
         return <Overview onNavigateDrilldown={navigateToDrilldown} />
     }
@@ -94,25 +84,33 @@ export default function App() {
           <div className="np-title">🔔 위험 감지 알림</div>
           <button className="np-close" onClick={() => setNotifOpen(false)}>✕</button>
         </div>
-        <div style={{ margin: '6px 12px 0', fontSize: 12, color: '#94A3B8' }}>
-          예측 ppm 기준 위험 Lot 상위 4개 · dashboard_units.csv
-        </div>
         <div className="np-list">
-          {notifItems.map((n, i) => (
-            <div key={i} className="np-item">
-              <div className="np-top">
-                <span className={`np-lot level-${n.level.toLowerCase()}`}>{n.lot}</span>
-                <span className="np-time">
-                  <span className={`badge badge-${n.level.toLowerCase()}`}>{n.level}</span>
-                </span>
+          {[
+            { key: 'grade4', label: '매우위험 (G4)', color: '#EF4444', bg: '#FEE2E2' },
+            { key: 'grade3', label: '위험 (G3)',     color: '#F59E0B', bg: '#FEF3C7' },
+            { key: 'grade2', label: '조심 (G2)',     color: '#EAB308', bg: '#FEF9C3' },
+            { key: 'grade1', label: '정상 (G1)',     color: '#22C55E', bg: '#F0FDF4' },
+          ].map(({ key, label, color, bg }) => {
+            const list = notifByGrade[key] ?? []
+            if (!list.length) return null
+            return (
+              <div key={key} className="np-grade-section">
+                <div className="np-grade-header" style={{ background: bg, borderColor: color }}>
+                  <span className="np-grade-label" style={{ color }}>{label}</span>
+                  <span className="np-grade-count" style={{ color }}>{list.length.toLocaleString()}개</span>
+                </div>
+                <div className="np-unit-list">
+                  {list.slice(0, 30).map(serial => (
+                    <div key={serial} className="np-unit-item">{serial}</div>
+                  ))}
+                  {list.length > 30 && (
+                    <div className="np-unit-more">+{(list.length - 30).toLocaleString()}개 더</div>
+                  )}
+                </div>
               </div>
-              <div className="np-msg">
-                평균 {n.avgPpm.toLocaleString()} ppm
-                {n.riskCount > 0 && ` · HIGH risk unit ${n.riskCount}개`}
-              </div>
-            </div>
-          ))}
-          {notifItems.length === 0 && (
+            )
+          })}
+          {!units.length && (
             <div style={{ padding: 16, color: '#94A3B8', fontSize: 11 }}>데이터 로딩 중…</div>
           )}
         </div>

@@ -186,7 +186,7 @@ export default function WaferMap() {
     const symH = Math.max(3, Math.floor(CANVAS / yRange) - 1)
     return {
       tooltip: { formatter: p => `die(${p.data.origX}, ${p.data.origY})<br/>예측 불량지수: ${parseFloat(p.data.value[2]).toFixed(6)}` },
-      visualMap: { min: 0, max: maxPred || 0.01, dimension: 2, calculable: true, orient: 'horizontal', left: 'center', bottom: 8, inRange: { color: ['#22C55E', '#FCD34D', '#EF4444'] }, textStyle: { fontSize: 12 } },
+      visualMap: { min: 0, max: maxPred || 0.01, dimension: 2, calculable: true, orient: 'horizontal', left: 'center', bottom: 8, inRange: { color: ['#166534', '#84CC16', '#FCD34D', '#F97316', '#DC2626'] }, textStyle: { fontSize: 12 } },
       grid: { top: 20, bottom: 70, left: 20, right: 20, containLabel: false },
       xAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
       yAxis: { type: 'value', min: -(NORM_R + PAD), max: NORM_R + PAD, show: false, splitLine: { show: false } },
@@ -265,7 +265,7 @@ export default function WaferMap() {
         <div style={{ ...CARD, marginBottom: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>
             🗺 Lot {selLot} — Wafer {selWafer} 웨이퍼맵
-            <span style={{ marginLeft: 8, fontSize: 13, color: '#64748B', fontWeight: 400 }}>색상: 예측 불량지수 (초록→노랑→빨강)</span>
+            <span style={{ marginLeft: 8, fontSize: 13, color: '#64748B', fontWeight: 400 }}>색상: 예측 불량지수 (진초록→연두→노랑→주황→빨강)</span>
           </div>
           {waferMapOption
             ? <div style={{ display: 'flex', justifyContent: 'center' }}>

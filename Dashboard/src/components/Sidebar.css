@@ -46,7 +46,7 @@
 }
 
 .sidebar-logo-btn:hover {
-  background: rgba(255,255,255,.07);
+  background: rgba(255,255,255,.10);
 }
 
 .sidebar-logo-text {
@@ -60,6 +60,24 @@
 
 .sidebar.open .sidebar-logo-text {
   opacity: 1;
+}
+
+.sidebar-logo-text--hint {
+  color: rgba(255,255,255,.55);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.sidebar-toggle-icon {
+  font-size: 22px;
+  font-weight: 300;
+  color: rgba(255,255,255,.85);
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .sidebar-divider {
@@ -129,5 +147,51 @@
 }
 
 .sidebar.open .nav-label {
+  opacity: 1;
+}
+
+/* 하단 프로필 */
+.sidebar-spacer {
+  flex: 1;
+}
+
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 0;
+  margin: 2px 6px 4px;
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: default;
+}
+
+.sidebar.open .sidebar-profile {
+  justify-content: flex-start;
+  padding: 10px 14px;
+}
+
+.sidebar-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-profile-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,.75);
+  opacity: 0;
+  transition: opacity .12s;
+}
+
+.sidebar.open .sidebar-profile-name {
   opacity: 1;
 }

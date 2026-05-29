@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+﻿import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useCSV } from '../hooks/useCSV'
 import './Overview.css'
@@ -136,14 +136,11 @@ function makePieOption(data, centerText = '') {
 export default function Overview({ onNavigateDrilldown }) {
   const { data: units, loading: loadingUnits } = useCSV('/dashboard_units.csv')
   const { data: trendRaw, loading: loadingTrend } = useCSV('/trend_data.csv')
-  const { data: shapRaw, loading: loadingShap } = useCSV('/shap_beeswarm.csv')
-
-  const { defectThresh, q1, q2, q3, iqr, upperFence } = useMemo(() => {
-    if (!units.length) return { defectThresh: 0, q1: 0, q2: 0, q3: 0, iqr: 0, upperFence: 0 }
-    return computeThresholds(units)
+  const { q2, q3, upperFence } = useMemo(() => {
+    if (!units.length) return { q2: 0, q3: 0, upperFence: 0 }
+    const t = computeThresholds(units)
+    return { q2: t.q2, q3: t.q3, upperFence: t.upperFence }
   }, [units])
-
-  const thresholds = useMemo(() => ({ q2, q3, upperFence }), [q2, q3, upperFence])
 
   // KPI
   const kpi = useMemo(() => {
@@ -262,13 +259,33 @@ export default function Overview({ onNavigateDrilldown }) {
     const rawPastMean = rawPastAvg.length ? rawPastAvg.reduce((s,v)=>s+v,0)/rawPastAvg.length : 1
     const pastScale = rawPastMean !== 0 ? (TARGET_PAST_PPM / rawPastMean) : 1
 
-    const predAvg = predAvgRaw.map((v, i) => {
+    // null 구간을 선형 보간해서 선이 끊기지 않도록
+    const predAvgFilled = predAvgRaw.map((v, i, arr) => {
+      if (v != null) return v
+      // 앞뒤 non-null 값 찾아서 선형 보간
+      let li = i - 1; while (li >= 0 && arr[li] == null) li--
+      let ri = i + 1; while (ri < arr.length && arr[ri] == null) ri++
+      if (li >= 0 && ri < arr.length) return arr[li] + (arr[ri] - arr[li]) * (i - li) / (ri - li)
+      if (li >= 0) return arr[li]
+      if (ri < arr.length) return arr[ri]
+      return null
+    })
+    const predAvg = predAvgFilled.map((v, i) => {
       if (v == null) return null
       if (i === n - 1) return Math.round(actualLastPpm)
       const scaled = Math.round(v * pastScale)
       return Math.max(2000, Math.min(2200, scaled))
     })
-    const trueAvg = trueAvgRaw.map(v => {
+    const trueAvgFilled = trueAvgRaw.map((v, i, arr) => {
+      if (v != null) return v
+      let li = i - 1; while (li >= 0 && arr[li] == null) li--
+      let ri = i + 1; while (ri < arr.length && arr[ri] == null) ri++
+      if (li >= 0 && ri < arr.length) return arr[li] + (arr[ri] - arr[li]) * (i - li) / (ri - li)
+      if (li >= 0) return arr[li]
+      if (ri < arr.length) return arr[ri]
+      return null
+    })
+    const trueAvg = trueAvgFilled.map(v => {
       if (v == null) return null
       const scaled = Math.round(v * pastScale)
       return Math.max(2000, Math.min(2200, scaled))
@@ -280,7 +297,13 @@ export default function Overview({ onNavigateDrilldown }) {
     const ppmMin = 1610
     const ppmMax = 2500
 
-    const pastData   = trueAvg.map((v, i) => i <= lastTrueIdx ? v : null)
+    // 실측선은 보간 없이 원본 데이터만 표시 (없는 구간은 null = 선 끊김)
+    const trueAvgRaw2 = trueAvgRaw.map(v => {
+      if (v == null) return null
+      const scaled = Math.round(v * pastScale)
+      return Math.max(2000, Math.min(2200, scaled))
+    })
+    const pastData   = trueAvgRaw2.map((v, i) => i <= lastTrueIdx ? v : null)
     // 실측 구간의 예측선은 실측값에 결정론적 오프셋(±3~6%)을 더해 살짝 어긋나게 표시
     const futureData = predAvg.map((v, i) => {
       if (i > n - 2) return null
@@ -313,12 +336,32 @@ export default function Overview({ onNavigateDrilldown }) {
           return html
         },
       },
+      graphic: (() => {
+        const total = n
+        const rects = []
+        if (lastTrueIdx >= 0) {
+          const w = ((lastTrueIdx + 1) / total * 100).toFixed(2) + '%'
+          rects.push({ type: 'rect', left: '0%', top: '10%', width: w, height: '84%',
+            style: { fill: 'rgba(148,163,184,0.10)' }, z: 0, silent: true })
+        }
+        if (lastTrueIdx >= 0 && lastTrueIdx < n - 2) {
+          const l = ((lastTrueIdx + 1) / total * 100).toFixed(2) + '%'
+          const w = ((n - 2 - lastTrueIdx) / total * 100).toFixed(2) + '%'
+          rects.push({ type: 'rect', left: l, top: '10%', width: w, height: '84%',
+            style: { fill: 'rgba(59,130,246,0.08)' }, z: 0, silent: true })
+        }
+        const ll = ((n - 1) / total * 100).toFixed(2) + '%'
+        const lw = (1 / total * 100).toFixed(2) + '%'
+        rects.push({ type: 'rect', left: ll, top: '10%', width: lw, height: '84%',
+          style: { fill: 'rgba(220,38,38,0.10)' }, z: 0, silent: true })
+        return rects
+      })(),
       legend: {
         data: ['생산량', '실측 구간', '예측 구간', '최신 주차'],
         top: 4,
         textStyle: { fontSize: 11 },
       },
-      grid: { top: 52, bottom: 68, left: 80, right: 70 },
+      grid: { top: 52, bottom: 68, left: 8, right: 8, containLabel: true },
       xAxis: {
         type: 'category',
         data: wwLabels,
@@ -329,7 +372,8 @@ export default function Overview({ onNavigateDrilldown }) {
         {
           type: 'value',
           name: '생산량(개)',
-          nameTextStyle: { fontSize: 11 },
+          nameLocation: 'end',
+          nameTextStyle: { fontSize: 11, align: 'left' },
           axisLabel: { fontSize: 11, formatter: v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v },
           splitLine: { lineStyle: { color: '#F1F5F9' } },
           min: 0,
@@ -338,7 +382,8 @@ export default function Overview({ onNavigateDrilldown }) {
         {
           type: 'value',
           name: '불량 ppm',
-          nameTextStyle: { fontSize: 11 },
+          nameLocation: 'end',
+          nameTextStyle: { fontSize: 11, align: 'right' },
           axisLabel: { fontSize: 11, formatter: v => `${v} ppm` },
           splitLine: { show: false },
           min: ppmMin,
@@ -359,36 +404,22 @@ export default function Overview({ onNavigateDrilldown }) {
           type: 'line',
           yAxisIndex: 1,
           data: pastData,
-          smooth: true,
+          smooth: false,
           connectNulls: false,
           lineStyle: { color: '#94A3B8', width: 2.5 },
           itemStyle: { color: '#94A3B8' },
           symbolSize: 5,
-          markArea: lastTrueIdx >= 0 ? {
-            silent: true,
-            data: [[
-              { xAxis: 0, itemStyle: { color: 'rgba(148,163,184,0.10)' } },
-              { xAxis: lastTrueIdx },
-            ]],
-          } : undefined,
         },
         {
           name: '예측 구간',
           type: 'line',
           yAxisIndex: 1,
           data: futureData,
-          smooth: true,
+          smooth: false,
           connectNulls: false,
           lineStyle: { color: '#3B82F6', width: 2.5 },
           itemStyle: { color: '#3B82F6' },
           symbolSize: 5,
-          markArea: lastTrueIdx >= 0 && lastTrueIdx < n - 2 ? {
-            silent: true,
-            data: [[
-              { xAxis: lastTrueIdx, itemStyle: { color: 'rgba(59,130,246,0.08)' } },
-              { xAxis: n - 2 },
-            ]],
-          } : undefined,
         },
         {
           name: '최신 주차',
@@ -400,13 +431,6 @@ export default function Overview({ onNavigateDrilldown }) {
           lineStyle: { color: '#DC2626', width: 2.5, type: 'dashed' },
           itemStyle: { color: '#DC2626' },
           symbolSize: (_, params) => params.dataIndex === n - 1 ? 12 : 5,
-          markArea: {
-            silent: true,
-            data: [[
-              { xAxis: n - 2, itemStyle: { color: 'rgba(220,38,38,0.10)' } },
-              { xAxis: n - 1 },
-            ]],
-          },
           markPoint: {
             data: [{ coord: [wwLabels[n - 1], predAvg[n - 1]], value: `${Math.round(predAvg[n-1]/1000)}k`, itemStyle: { color: '#DC2626' }, label: { color: '#fff', fontSize: 12, fontWeight: 700 } }],
             symbolSize: 36,
@@ -416,216 +440,6 @@ export default function Overview({ onNavigateDrilldown }) {
     } }
   }, [trendRaw, units])
 
-  // 포지션별 위험 unit 비율
-  const positionRiskData = useMemo(() => {
-    if (!units.length) return []
-    const posMap = {}
-    units.forEach(u => {
-      const pos = u.position
-      if (!posMap[pos]) posMap[pos] = { total: 0, danger: 0 }
-      posMap[pos].total++
-      if (parseFloat(u.reg_pred) >= defectThresh) posMap[pos].danger++
-    })
-    return Object.entries(posMap)
-      .sort(([a], [b]) => Number(a) - Number(b))
-      .map(([pos, { total, danger }]) => ({
-        pos: `P${pos}`,
-        rate: total ? +((danger / total) * 100).toFixed(1) : 0,
-      }))
-  }, [units, defectThresh])
-
-  // 위험 Lot 순위표 (val 전체, 위험 unit 비율 기준 Top 15)
-  const lotRankData = useMemo(() => {
-    if (!units.length) return []
-    const lotMap = {}
-    units.forEach(u => {
-      const lot = u.run_id
-      if (!lotMap[lot]) lotMap[lot] = { lot, total: 0, danger: 0, avgPpm: 0, predSum: 0 }
-      lotMap[lot].total++
-      const pred = parseFloat(u.reg_pred)
-      if (isFinite(pred)) lotMap[lot].predSum += pred
-      if (pred >= defectThresh) lotMap[lot].danger++
-    })
-    return Object.values(lotMap)
-      .map(l => ({
-        ...l,
-        riskRate: l.total ? +((l.danger / l.total) * 100).toFixed(1) : 0,
-        avgPpm: l.total ? Math.round(l.predSum / l.total * 1e6) : 0,
-      }))
-      .sort((a, b) => b.riskRate - a.riskRate)
-      .slice(0, 15)
-  }, [units, defectThresh])
-
-  // 임계 이상 유닛 (Grade 4) — 테이블용
-  const criticalUnits = useMemo(() => {
-    if (!units.length) return []
-    return units
-      .filter(u => u.grade === 'grade4')
-      .map(u => ({
-        ufs_serial: u.ufs_serial,
-        run_id: u.run_id,
-        wafer_no: u.wafer_no,
-        reg_pred: parseFloat(u.reg_pred),
-        ppm: Math.round(parseFloat(u.reg_pred) * 1_000_000),
-        split: u.split,
-      }))
-      .sort((a, b) => b.reg_pred - a.reg_pred)
-  }, [units])
-
-  // Lot별 grade 비율 스택 바 (dashboard_units.csv 실데이터)
-  const gradeTrendOption = useMemo(() => {
-    if (!units.length || q2 === 0) return null
-
-    // train+val+test 모든 lot, run_id 순 정렬
-    const lotMap = {}
-    units.forEach(u => {
-      const lot = String(u.run_id)
-      if (!lotMap[lot]) lotMap[lot] = { grade1: 0, grade2: 0, grade3: 0, grade4: 0, total: 0 }
-      const grade = getGrade(parseFloat(u.reg_pred), { q2, q3, upperFence })
-      lotMap[lot][grade]++
-      lotMap[lot].total++
-    })
-
-    const lotEntries = Object.entries(lotMap).sort((a, b) => Number(a[0]) - Number(b[0]))
-    const lotLabels = lotEntries.map(([lot]) => `L${lot}`)
-    const mkRate = (key) => lotEntries.map(([, d]) => d.total ? +((d[key] / d.total) * 100).toFixed(1) : 0)
-
-    // val/test 시작 lot 인덱스 (구분선용)
-    const valLots  = new Set(units.filter(u => u.split === 'val').map(u => String(u.run_id)))
-    const testLots = new Set(units.filter(u => u.split === 'test').map(u => String(u.run_id)))
-    const valStartIdx  = lotEntries.findIndex(([lot]) => valLots.has(lot))
-    const testStartIdx = lotEntries.findIndex(([lot]) => testLots.has(lot))
-
-    const mkLine = (key, color) => ({
-      name: key === 'grade1' ? '정상 (G1)' : key === 'grade2' ? '조심 (G2)' : key === 'grade3' ? '위험 (G3)' : '매우위험 (G4)',
-      type: 'line',
-      data: mkRate(key),
-      smooth: true,
-      lineStyle: { color, width: 2 },
-      itemStyle: { color },
-      symbolSize: 4,
-      markLine: key === 'grade1' ? {
-        silent: true, symbol: 'none',
-        data: [
-          ...(valStartIdx >= 0 ? [{ xAxis: valStartIdx - 0.5, lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 },
-            label: { show: true, formatter: 'val→', fontSize: 12, color: '#94A3B8' } }] : []),
-          ...(testStartIdx >= 0 ? [{ xAxis: testStartIdx - 0.5, lineStyle: { color: '#F97316', type: 'dashed', width: 1.5 },
-            label: { show: true, formatter: 'test→', fontSize: 12, color: '#F97316' } }] : []),
-        ]
-      } : undefined,
-    })
-
-    return {
-      tooltip: {
-        trigger: 'axis',
-        formatter: params => {
-          const idx = params[0].dataIndex
-          const [lot, d] = lotEntries[idx]
-          return `<b>LOT ${lot}</b> (총 ${d.total}개)<br/>` +
-            params.map(p => `${p.marker} ${p.seriesName}: ${p.value}%`).join('<br/>')
-        },
-      },
-      legend: { data: ['정상 (G1)', '조심 (G2)', '위험 (G3)', '매우위험 (G4)'], top: 4, textStyle: { fontSize: 11 } },
-      grid: { top: 36, bottom: 40, left: 50, right: 16 },
-      xAxis: {
-        type: 'category',
-        data: lotLabels,
-        axisLabel: { fontSize: 9, rotate: 45, interval: 3 },
-        axisTick: { alignWithLabel: true },
-      },
-      yAxis: {
-        type: 'value',
-        name: '비율(%)',
-        max: 100,
-        nameTextStyle: { fontSize: 11 },
-        axisLabel: { fontSize: 11, formatter: '{value}%' },
-        splitLine: { lineStyle: { color: '#F1F5F9' } },
-      },
-      series: [
-        mkLine('grade1', GRADE_COLORS.grade1.bar),
-        mkLine('grade2', GRADE_COLORS.grade2.bar),
-        mkLine('grade3', GRADE_COLORS.grade3.bar),
-        mkLine('grade4', GRADE_COLORS.grade4.bar),
-      ],
-    }
-  }, [units, q2, q3, upperFence])
-
-  // 임계 초과 유닛 SHAP Top10 수평 바 (shap_beeswarm.csv 기반)
-  const shapWaterfallOption = useMemo(() => {
-    if (!shapRaw.length || !units.length || upperFence === 0) return null
-
-    // Grade 4 (임계초과) 유닛 serial 목록
-    const criticalSerials = new Set(
-      units.filter(u => u.grade === 'grade4')
-           .map(u => u.ufs_serial)
-    )
-
-    // Grade 4 유닛의 shap만 필터 후 feature별 (합, 개수)
-    const featMap = {}
-    shapRaw.forEach(r => {
-      if (!criticalSerials.has(r.ufs_serial)) return
-      if (!featMap[r.feature]) featMap[r.feature] = { sumAbs: 0, sum: 0, cnt: 0 }
-      const v = parseFloat(r.shap_value)
-      featMap[r.feature].sumAbs += Math.abs(v)
-      featMap[r.feature].sum    += v
-      featMap[r.feature].cnt++
-    })
-
-    // |mean_shap| 기준 상위 10개, 오름차순(y축 위로 갈수록 중요)
-    const sorted = Object.entries(featMap)
-      .map(([feat, { sumAbs, sum, cnt }]) => ({
-        feat,
-        absAvg: sumAbs / cnt,
-        meanShap: sum / cnt,
-      }))
-      .sort((a, b) => b.absAvg - a.absAvg)
-      .slice(0, 10)
-      .reverse()
-
-    // 막대 크기 = |SHAP| 평균 (영향력 크기) / 색깔 = meanShap 부호 (방향)
-    const xMax = Math.max(...sorted.map(d => d.absAvg))
-    const xBound = Math.ceil(xMax * 1.15 * 1000) / 1000
-
-    return {
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: params => {
-          const p = params[0]
-          const d = sorted[p.dataIndex]
-          return `<b>${d.feat}</b><br/>|SHAP| 평균: ${d.absAvg.toFixed(5)}<br/>방향: ${d.meanShap >= 0 ? '▲ 불량 증가' : '▼ 불량 감소'}`
-        },
-      },
-      grid: { top: 8, bottom: 24, left: 80, right: 70, containLabel: true },
-      xAxis: {
-        type: 'value',
-        min: 0,
-        max: xBound,
-        axisLabel: { fontSize: 10, formatter: v => v.toFixed(3) },
-        splitLine: { lineStyle: { color: '#F1F5F9' } },
-        axisLine: { show: true },
-      },
-      yAxis: {
-        type: 'category',
-        data: sorted.map(d => d.feat),
-        axisLabel: { fontSize: 10 },
-        axisTick: { show: false },
-      },
-      series: [{
-        name: 'SHAP',
-        type: 'bar',
-        data: sorted.map(d => ({
-          value: +d.absAvg.toFixed(5),
-          itemStyle: {
-            color: d.meanShap >= 0 ? '#EF4444' : '#3B82F6',
-            borderRadius: [0, 3, 3, 0],
-          },
-        })),
-        barMaxWidth: 16,
-        label: { show: false },
-      }],
-    }
-  }, [shapRaw, units, q2, q3, upperFence])
 
   if (loadingUnits || loadingTrend || !kpi || kpi.thisWeekCount == null) {
     return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:11 }}>데이터 로딩 중…</div>
@@ -682,3 +496,5 @@ export default function Overview({ onNavigateDrilldown }) {
     </div>
   )
 }
+
+

@@ -234,29 +234,46 @@ print("\n[4] SHAP 계산 (ZIT lgb_mu_, val die 기준)...")
 # val xs 로드 (die_x/die_y는 xs에 없으므로 run_wf_xy에서 파싱)
 print("  xs val 로드 중...")
 xs_cols_in_file = set(pd.read_csv(XS_PATH, nrows=0).columns)
-feat_names_xs = [f for f in feat_names if f in xs_cols_in_file]   # xs에 있는 것만
-feat_names_meta = [f for f in feat_names if f not in xs_cols_in_file]  # die_x, die_y 등
+
+# _missing 인디케이터 피처 분리
+missing_feats = [f for f in feat_names if f.endswith("_missing")]
+missing_base  = [f.replace("_missing", "") for f in missing_feats]
+feat_names_xs   = [f for f in feat_names if f in xs_cols_in_file and not f.endswith("_missing")]
+feat_names_meta = [f for f in feat_names if f not in xs_cols_in_file and not f.endswith("_missing")]  # die_x, die_y 등
 
 # xs에는 val split이 없으므로 val_die의 ufs_serial로 직접 필터링
 val_serials_set = set(val_die["ufs_serial"].unique())
-xs_val = pd.read_csv(XS_PATH, usecols=["ufs_serial", "run_wf_xy"] + feat_names_xs)
+# _missing 생성을 위해 base 컬럼도 함께 로드
+extra_for_missing = [c for c in missing_base if c in xs_cols_in_file and c not in feat_names_xs]
+xs_val = pd.read_csv(XS_PATH, usecols=["ufs_serial", "run_wf_xy"] + feat_names_xs + extra_for_missing)
 xs_val = xs_val[xs_val["ufs_serial"].isin(val_serials_set)]
 
-# die_x, die_y 파싱 (run_wf_xy = "run_wafer_x_y", e.g. "0000000_25_24_25")
+# die_x, die_y 파싱
 if "die_x" in feat_names_meta or "die_y" in feat_names_meta:
     parts = xs_val["run_wf_xy"].str.split("_")
     xs_val["die_x"] = parts.str[-2].apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
     xs_val["die_y"] = parts.str[-1].apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
 xs_val = xs_val.drop(columns="run_wf_xy")
 
-# val_die와 ufs_serial 순서 맞추기 (position은 xs_val에도 있으므로 val_die에서 drop)
+# _missing 인디케이터 생성 (해당 컬럼이 NaN이면 1, 아니면 0)
+for base, miss_col in zip(missing_base, missing_feats):
+    if base in xs_val.columns:
+        xs_val[miss_col] = xs_val[base].isna().astype(int)
+    else:
+        xs_val[miss_col] = 0
+
+# extra_for_missing 중 feat_names에 없는 것 제거
+cols_to_drop = [c for c in extra_for_missing if c not in feat_names]
+xs_val = xs_val.drop(columns=cols_to_drop, errors="ignore")
+
+# val_die와 ufs_serial 순서 맞추기
 val_serials_ordered = val_die[["ufs_serial"]].copy()
 xs_val_merged = val_serials_ordered.merge(xs_val, on="ufs_serial", how="left")
 
 X_val_df = xs_val_merged[feat_names].copy()
 X_val = X_val_df.fillna(0).values
 serials_val = xs_val_merged["ufs_serial"].values
-print(f"  X_val shape: {X_val.shape}")
+print(f"  X_val shape: {X_val.shape}  (missing 피처 {len(missing_feats)}개 포함)")
 
 # 전체 fold lgb_mu_ SHAP 평균 계산
 BATCH = 1000

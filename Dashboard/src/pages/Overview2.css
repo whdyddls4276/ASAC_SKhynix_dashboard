@@ -1,0 +1,68 @@
+﻿/* KPI 카드 4개 가로 한 줄 */
+.ov2-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+/* 위험 Lot 순위 + 도넛 좌우 배치 */
+.ov2-mid-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+/* SPC 두 차트 좌우 배치 */
+.ov2-spc-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+/* 위험 Lot 순위표 */
+.ov2-lot-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.ov2-lot-row:hover td {
+  background: var(--primary-pale, #EFF6FF);
+}
+
+.ov2-bar-wrap {
+  display: inline-block;
+  width: 120px;
+  height: 8px;
+  background: #9CA3AF;
+  border-radius: 4px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+.ov2-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.ov2-bar-fill.danger { background: #EF4444; }
+.ov2-bar-fill.warn   { background: #F59E0B; }
+.ov2-bar-fill.ok     { background: #22C55E; }
+
+/* 테이블 셀 패딩 축소 */
+.ov2-lot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ov2-lot-table th,
+.ov2-lot-table td {
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+

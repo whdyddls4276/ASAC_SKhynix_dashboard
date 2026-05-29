@@ -13,24 +13,11 @@
 
 .topbar-left { display: flex; align-items: center; gap: 14px; }
 
-.logo {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
-  letter-spacing: 1px;
-}
-
-.topbar-div {
-  width: 1px;
-  height: 18px;
-  background: var(--border);
-}
-
 .topbar-title {
-  font-size: 11px;
-  color: var(--text3);
-  font-weight: 400;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.3px;
 }
 
 .topbar-right { display: flex; align-items: center; gap: 8px; }
@@ -75,62 +62,3 @@
   border: 1.5px solid var(--surface);
 }
 
-.profile-wrap { position: relative; }
-
-.profile-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px 5px 6px;
-  border-radius: 9px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  cursor: pointer;
-  transition: border-color .15s, box-shadow .15s;
-}
-
-.profile-btn:hover {
-  border-color: var(--accent-mid);
-  box-shadow: 0 0 0 3px var(--accent-pale);
-}
-
-.avatar {
-  width: 28px; height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-light));
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.profile-name { font-size: 11px; font-weight: 500; color: var(--text); }
-.profile-arrow { font-size: 11px; color: var(--text3); }
-
-.profile-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 160px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
-  z-index: 200;
-  overflow: hidden;
-}
-
-.pd-item {
-  padding: 10px 14px;
-  font-size: 12px;
-  color: var(--text2);
-  cursor: pointer;
-  transition: background .15s;
-}
-
-.pd-item:hover { background: var(--accent-pale); color: var(--accent); }
-.pd-divider { height: 1px; background: var(--border); }
-.pd-logout { color: var(--bad); }
-.pd-logout:hover { background: var(--bad-bg); color: var(--bad); }
