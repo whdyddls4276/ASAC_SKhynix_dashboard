@@ -330,8 +330,17 @@ def get_anomaly_feature_stats(top_n: int = 5) -> list:
     val_units = units[["ufs_serial", "grade"]]
     merged    = xs.merge(val_units, on="ufs_serial", how="inner")
 
-    g_danger = merged[merged["grade"] == "grade4"]  # 매우위험
-    g_normal = merged[merged["grade"] == "grade1"]  # 정상
+    # 데이터에 실제 존재하는 grade 중 최고·최저 번호를 자동 감지
+    # → grade4 있으면 grade4, 없으면 grade3 등 현재 최고 위험 grade 사용
+    existing = merged["grade"].unique().tolist()
+    grade_nums = sorted([int(g.replace("grade", "")) for g in existing if g.startswith("grade")])
+    if len(grade_nums) < 2:
+        return []
+    danger_grade = f"grade{grade_nums[-1]}"  # 숫자 최대 = 가장 위험
+    normal_grade = f"grade{grade_nums[0]}"   # 숫자 최소 = 정상
+
+    g_danger = merged[merged["grade"] == danger_grade]
+    g_normal = merged[merged["grade"] == normal_grade]
 
     if len(g_danger) < 5 or len(g_normal) < 5:
         return []
