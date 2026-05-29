@@ -13,7 +13,8 @@ from tools import (infer_period, scan_data, analyze_features, get_importance,
                    get_position_defect_rate, get_ppm_delta, get_feature_scatter_data,
                    get_lot_trend_with_split, get_wafer_die_data, get_recent_lot_trend,
                    get_pred_ppm_trend, get_weekly_grade_trend, get_weekly_yield_trend,
-                   get_anomaly_feature_stats, get_val_rmse, get_feat_vs_health_scatter)
+                   get_anomaly_feature_stats, get_val_rmse, get_feat_vs_health_scatter,
+                   get_lot_grade_stack, get_pred_health_hist)
 from report import build_html
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -254,7 +255,14 @@ def _build_report_data(tool_cache: dict) -> dict:
     # 어노멀리 피처 실데이터 (grade1 vs grade4, importance 상위 N개 — 전체 보존용)
     anomaly_stats = []
     try:
-        anomaly_stats = get_anomaly_feature_stats(top_n=10)
+        anomaly_stats = get_anomaly_feature_stats(top_n=20)
+    except Exception:
+        pass
+
+    # Feature Importance 전체 풀 (늘리기 복원용, top_n=20 미리 로드)
+    importance_all = []
+    try:
+        importance_all = get_importance(top_n=20).get("features", [])
     except Exception:
         pass
 
@@ -289,8 +297,9 @@ def _build_report_data(tool_cache: dict) -> dict:
         "recent_lot_trend":   recent_lot_trend,
         "pred_ppm_trend":     pred_ppm_trend,
         "wafer_die":        wafer_die,
+        "importance_all":    importance_all,           # Feature Importance 전체 풀 (top20)
         "anomaly_stats":     anomaly_stats[:5],       # 표시용: top5만
-        "anomaly_stats_all": list(anomaly_stats),  # 원본 전체 보존 (늘리기 복원용)
+        "anomaly_stats_all": list(anomaly_stats),     # 원본 전체 보존 (늘리기 복원용)
         "feat_vs_health":    feat_vs_health,
         "actions":          [],
     }
@@ -850,8 +859,8 @@ d.setdefault("custom_sections", []).append({
 | 요청 유형 | action JSON 형식 |
 |----------|----------------|
 | importance/anomaly top-N 변경 | `{"action":"set_top_n","section":"importance","n":5,"response":"..."}` |
-| 트렌드 주수 변경 (L2) | `{"action":"set_top_n","section":"trend_weeks","n":4,"response":"..."}` |
-| 트렌드 LOT 수 변경 (L3) | `{"action":"set_top_n","section":"trend_lots","n":10,"response":"..."}` |
+| 불량 트렌드 기간/주수 변경 (L3) | `{"action":"set_top_n","section":"trend_weeks","n":4,"response":"..."}` |
+| LOT ppm 트렌드 기간 변경 (R3) | `{"action":"set_top_n","section":"trend_lots","n":10,"response":"..."}` |
 | anomaly 특정 피처만 표시 | `{"action":"filter_anomaly","features":["X1064","X592"],"response":"..."}` |
 | scatter 피처 변경 (R3) | `{"action":"change_scatter","feat1":"X1064","feat2":"X592","response":"..."}` |
 | 보고서 제목 변경 | `{"action":"set_text","key":"report_title","value":"새 제목","response":"..."}` |
@@ -882,6 +891,144 @@ section_label key 예시: `"section_label_L1"` | `"section_label_L2"` | `"sectio
 - 응답 없이 JSON만: {"action": "...", "response": ""} ← response는 항상 한국어로 작성"""
 
 
+def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | None:
+    """chart_type 문자열로 custom_section dict 생성."""
+    if chart_type == "importance":
+        features = d.get("importance", {}).get("features", [])[:10]
+        total = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
+        labels = [f.get("feature", "") for f in features]
+        data   = [round((f.get("lgbm_gain", 0) or 0) / total * 100, 2) for f in features]
+        return {"title": "Feature Importance", "chart_type": "bar", "position": position,
+                "labels": labels, "horizontal": True, "height": 150,
+                "datasets": [{"label": "Gain %", "data": data, "color": "#3B82F6"}]}
+
+    elif chart_type == "anomaly":
+        stats = d.get("anomaly_stats", [])[:10]
+        labels = [s.get("feature", "") for s in stats]
+        danger = [s.get("danger", 0) for s in stats]
+        normal = [s.get("normal", 100) for s in stats]
+        return {"title": "Anomaly Feature 비교", "chart_type": "bar", "position": position,
+                "labels": labels, "horizontal": False, "height": 150,
+                "datasets": [{"label": "위험 %", "data": danger, "color": "#EF4444"},
+                             {"label": "정상 %", "data": normal, "color": "#22C55E"}]}
+
+    elif chart_type == "lot_trend":
+        trend = d.get("lot_trend_split", {})
+        labels = trend.get("labels", [])
+        high   = trend.get("high_count", trend.get("defect_count", []))
+        return {"title": "LOT별 HIGH 건수", "chart_type": "line", "position": position,
+                "labels": labels, "horizontal": False, "height": 150,
+                "datasets": [{"label": "HIGH 건수", "data": high, "color": "#F59E0B"}]}
+
+    elif chart_type == "weekly_trend":
+        wyt = d.get("weekly_yield_trend", {})
+        labels = wyt.get("labels", [])
+        yield_ = wyt.get("pred_yield", wyt.get("yield_pct", []))
+        return {"title": "주차별 수율 트렌드", "chart_type": "line", "position": position,
+                "labels": labels, "horizontal": False, "height": 150,
+                "datasets": [{"label": "수율(%)", "data": yield_, "color": "#6366F1"}]}
+
+    elif chart_type == "ppm_trend":
+        ppm = d.get("pred_ppm_trend", {})
+        labels = ppm.get("labels", [])
+        data   = ppm.get("defect_count", ppm.get("high_ppm", []))
+        return {"title": "LOT별 예측 ppm", "chart_type": "bar", "position": position,
+                "labels": labels, "horizontal": False, "height": 150,
+                "datasets": [{"label": "ppm", "data": data, "color": "#3B82F6"}]}
+
+    elif chart_type == "pos_defect":
+        pd_ = d.get("pos_defect", {})
+        labels = pd_.get("labels", ["P1", "P2", "P3", "P4"])
+        high   = pd_.get("high_ratio", [])
+        med    = pd_.get("med_ratio",  [])
+        return {"title": "포지션별 불량률", "chart_type": "bar", "position": position,
+                "labels": labels, "horizontal": False, "height": 150,
+                "datasets": [{"label": "HIGH", "data": high, "color": "#EF4444"},
+                             {"label": "MED",  "data": med,  "color": "#F59E0B"}]}
+
+    elif chart_type == "pred_actual":
+        fs = d.get("feat_scatter", {})
+        feat1 = fs.get("feat1", {}); feat2 = fs.get("feat2", {})
+        pts1 = feat1.get("points", [])[:30]
+        pts2 = feat2.get("points", [])[:30]
+        labels = [str(i + 1) for i in range(max(len(pts1), len(pts2)))]
+        ds = []
+        if pts1:
+            ds.append({"label": feat1.get("name", "Feat1"),
+                       "data": [p.get("health", 0) for p in pts1], "color": "#3B82F6"})
+        if pts2:
+            ds.append({"label": feat2.get("name", "Feat2"),
+                       "data": [p.get("health", 0) for p in pts2], "color": "#EF4444"})
+        return {"title": "예측 vs 실측", "chart_type": "line", "position": position,
+                "labels": labels, "horizontal": False, "height": 150, "datasets": ds}
+
+    elif chart_type == "grade_dist":
+        scan = d.get("scan", {})
+        return {"title": "Grade 분포", "chart_type": "doughnut", "position": position,
+                "labels": ["grade4(정상)", "grade3", "grade2", "grade1(위험)"],
+                "height": 150,
+                "datasets": [{"label": "unit 수",
+                               "data": [scan.get("grade4_count", 0), scan.get("grade3_count", 0),
+                                        scan.get("grade2_count", 0), scan.get("grade1_count", 0)],
+                               "color": "#7dd3fc",
+                               "colors": ["#7dd3fc", "#fb923c", "#f97316", "#dc2626"]}]}
+
+    elif chart_type == "weekly_grade_trend":
+        try:
+            wgt = get_weekly_grade_trend()
+        except Exception:
+            wgt = {}
+        return {"title": "주차별 Grade 비율", "chart_type": "line", "position": position,
+                "labels": wgt.get("labels", []), "height": 150, "stacked": True,
+                "datasets": [
+                    {"label": "grade4(정상)", "data": wgt.get("g4", []), "color": "#7dd3fc"},
+                    {"label": "grade3",       "data": wgt.get("g3", []), "color": "#fb923c"},
+                    {"label": "grade2",       "data": wgt.get("g2", []), "color": "#f97316"},
+                    {"label": "grade1(위험)", "data": wgt.get("g1", []), "color": "#dc2626"},
+                ]}
+
+    elif chart_type == "lot_grade_stack":
+        try:
+            lgs = get_lot_grade_stack()
+        except Exception:
+            lgs = {}
+        return {"title": "LOT별 Grade 구성", "chart_type": "bar", "position": position,
+                "labels": lgs.get("labels", []), "height": 150, "stacked": True,
+                "datasets": [
+                    {"label": "grade4(정상)", "data": lgs.get("g4", []), "color": "#7dd3fc"},
+                    {"label": "grade3",       "data": lgs.get("g3", []), "color": "#fb923c"},
+                    {"label": "grade2",       "data": lgs.get("g2", []), "color": "#f97316"},
+                    {"label": "grade1(위험)", "data": lgs.get("g1", []), "color": "#dc2626"},
+                ]}
+
+    elif chart_type == "health_hist":
+        try:
+            hh = get_pred_health_hist()
+        except Exception:
+            hh = {}
+        return {"title": "예측 Health 분포", "chart_type": "bar", "position": position,
+                "labels": hh.get("labels", []), "height": 150,
+                "datasets": [
+                    {"label": "전체 unit", "data": hh.get("counts",      []), "color": "#93C5FD"},
+                    {"label": "HIGH unit", "data": hh.get("high_counts", []), "color": "#EF4444"},
+                ]}
+
+    elif chart_type == "feat_vs_health":
+        try:
+            fvh = get_feat_vs_health_scatter()
+        except Exception:
+            fvh = {}
+        feat_name = fvh.get("feature", "Feature")
+        return {"title": f"{feat_name} vs Health", "chart_type": "scatter", "position": position,
+                "labels": [], "height": 150,
+                "datasets": [
+                    {"label": "grade1(위험)", "data": fvh.get("high_pts",   [])[:100], "color": "#EF4444"},
+                    {"label": "grade4(정상)", "data": fvh.get("normal_pts", [])[:100], "color": "#93C5FD"},
+                ]}
+
+    return None
+
+
 def _handle_command(cmd: dict, d: dict):
     """
     Claude가 action JSON을 반환했을 때 처리. (success: bool, err_msg: str | None) 반환.
@@ -896,17 +1043,37 @@ def _handle_command(cmd: dict, d: dict):
         except (TypeError, ValueError):
             return False, "n 값이 올바르지 않습니다"
         if section == "importance":
-            d.setdefault("importance", {})["features"] = d.get("importance", {}).get("features", [])[:n]
+            pool = d.get("importance_all") or d.get("importance", {}).get("features", [])
+            if n > len(pool):
+                # 풀이 부족하면 재조회
+                try:
+                    fresh = get_importance(top_n=max(n, 20)).get("features", [])
+                    if fresh:  # 빈 결과면 기존 풀 유지
+                        d["importance_all"] = fresh
+                        pool = fresh
+                except Exception:
+                    pass
+            if n > len(pool):
+                return False, f"현재 최대 {len(pool)}개까지만 가능합니다"
+            d.setdefault("importance", {})["features"] = pool[:n]
         elif section == "anomaly":
-            # anomaly_stats_all(원본 전체)에서 잘라야 늘리기도 가능
             source = d.get("anomaly_stats_all") or d.get("anomaly_stats", [])
+            if n > len(source):
+                # 풀이 부족하면 재조회
+                try:
+                    fresh = get_anomaly_feature_stats(top_n=max(n, 20))
+                    if fresh:  # 빈 결과면 기존 소스 유지
+                        d["anomaly_stats_all"] = fresh
+                        source = fresh
+                except Exception:
+                    pass
+            if n > len(source):
+                return False, f"현재 최대 {len(source)}개까지만 가능합니다"
             d["anomaly_stats"] = source[:n]
         elif section == "trend_weeks":
-            wyt = d.get("weekly_yield_trend", {})
-            d["weekly_yield_trend"] = {k: v[-n:] for k, v in wyt.items() if isinstance(v, list)}
+            d["weekly_yield_trend"] = get_weekly_yield_trend(recent_weeks=n)
         elif section == "trend_lots":
-            ppt = d.get("pred_ppm_trend", {})
-            d["pred_ppm_trend"] = {k: v[-n:] for k, v in ppt.items() if isinstance(v, list)}
+            d["pred_ppm_trend"] = get_pred_ppm_trend(recent_n=n)
         else:
             return False, f"알 수 없는 section: {section}"
         return True, None
@@ -972,6 +1139,23 @@ def _handle_command(cmd: dict, d: dict):
             return False, str(e)
         return True, None
 
+    elif action == "change_section":
+        target_sid = cmd.get("target_sid", "")
+        chart_type = cmd.get("chart_type", "")
+        if not target_sid or not chart_type:
+            return False, "target_sid, chart_type 모두 지정해야 합니다"
+        left_sids = {"L1_kpi", "L2_fi", "L3_trend"}
+        position = "left_col" if target_sid in left_sids else "right_col"
+        sec = _get_chart_section_data(chart_type, d, position)
+        if sec is None:
+            return False, f"알 수 없는 차트 유형: {chart_type}"
+        sec["replace_sid"] = target_sid
+        # 같은 target_sid 교체 이력 제거 후 추가 (중복 방지)
+        d["custom_sections"] = [s for s in d.get("custom_sections", [])
+                                if s.get("replace_sid") != target_sid]
+        d["custom_sections"].append(sec)
+        return True, None
+
     else:
         return False, f"알 수 없는 action: {action}"
 
@@ -1023,9 +1207,35 @@ def _try_direct_action(message: str, d: dict):
       - (None, question) : 파라미터가 불명확 → 질문 반환
       - (None, None)     : 패턴 불일치 → Claude에게 위임
     """
-    import re as _re
+    import re as _re, json as _json
 
     msg = message.strip()
+
+    # ── __direct__: prefix — iframe 액션 버튼에서 직접 전달된 명령
+    if msg.startswith("__direct__:"):
+        try:
+            cmd_raw = _json.loads(msg[len("__direct__:"):])
+        except Exception:
+            return None, None
+        action = cmd_raw.get("action", "")
+        if action == "remove":
+            sid = cmd_raw.get("sid", "")
+            if sid:
+                return {"action": "toggle_section", "sid": sid, "hide": True, "response": "섹션을 삭제했습니다."}, None
+        elif action == "change_chart":
+            target_sid = cmd_raw.get("target_sid", "")
+            chart_type = cmd_raw.get("chart_type", "")
+            if target_sid and chart_type:
+                chart_names = {
+                    "importance": "Feature Importance", "anomaly": "Anomaly Feature",
+                    "lot_trend": "LOT 트렌드", "weekly_trend": "주차별 수율",
+                    "ppm_trend": "LOT ppm", "pos_defect": "포지션별 불량률",
+                    "pred_actual": "예측 vs 실측",
+                }
+                name = chart_names.get(chart_type, chart_type)
+                return {"action": "change_section", "target_sid": target_sid,
+                        "chart_type": chart_type, "response": f"{name} 차트로 변경했습니다."}, None
+        return None, None
 
     # ── 숫자 추출
     nums = [int(x) for x in _re.findall(r'\b(\d+)\b', msg)]
@@ -1034,8 +1244,9 @@ def _try_direct_action(message: str, d: dict):
     # ── 섹션 판별 키워드
     is_anomaly    = bool(_re.search(r'anomaly|이상\s*(피처|feature|탐지|감지)|Anomaly', msg, _re.IGNORECASE))
     is_importance = bool(_re.search(r'importance|중요도|feature\s*importance|shap|SHAP', msg, _re.IGNORECASE))
-    is_trend_lot  = bool(_re.search(r'lot\s*수|로트\s*수|L3|trend_lot', msg, _re.IGNORECASE))
-    is_trend_week = bool(_re.search(r'주\s*수|주차\s*수|L2|trend_week|주간', msg, _re.IGNORECASE))
+    is_trend_lot  = bool(_re.search(r'lot\s*수|로트\s*수|pred_ppm|R3|trend_lot', msg, _re.IGNORECASE))
+    is_trend_week = bool(_re.search(r'주\s*수|주차\s*수|L2|L3|trend_week|주간|불량\s*트렌드|트렌드\s*(차트|기간|수정|변경|주)', msg, _re.IGNORECASE))
+    is_period_chg = bool(_re.search(r'기간|날짜|범위|주로|주\s*로|주\s*만|주\s*보', msg, _re.IGNORECASE))
 
     # ── 액션 판별 키워드
     is_topn   = bool(_re.search(r'개로|개\s*(로|만|변경|바꿔|줄여|늘려)|줄여|늘려|줄이|늘리|top[\s-]?n|상위\s*\d+', msg, _re.IGNORECASE))
@@ -1045,6 +1256,17 @@ def _try_direct_action(message: str, d: dict):
 
     # ── 피처명 추출 (X숫자 형식)
     feats = _re.findall(r'\bX\d+\b', msg)
+
+    # ── 트렌드 기간 변경 요청 (숫자 없이 기간 언급) → 바로 질문
+    if (is_trend_week or is_trend_lot) and is_period_chg and n is None:
+        return None, "불량 트렌드 차트를 최근 몇 주로 바꿔드릴까요? (예: 4주, 10주, 12주)"
+
+    # ── 트렌드 기간 변경 요청 (숫자 있음)
+    if (is_trend_week or is_trend_lot) and is_period_chg and n is not None:
+        if is_trend_week and not is_trend_lot:
+            return {"action": "set_top_n", "section": "trend_weeks", "n": n, "response": f"불량 트렌드를 최근 {n}주로 변경했습니다."}, None
+        if is_trend_lot and not is_trend_week:
+            return {"action": "set_top_n", "section": "trend_lots",  "n": n, "response": f"LOT ppm 트렌드를 최근 {n}개로 변경했습니다."}, None
 
     # ── set_top_n 감지
     if is_topn and n is not None:
@@ -1059,7 +1281,7 @@ def _try_direct_action(message: str, d: dict):
             if is_trend_week:
                 return {"action": "set_top_n", "section": "trend_weeks",  "n": n, "response": f"트렌드를 최근 {n}주로 변경했습니다."}, None
         elif section_count == 0:
-            return None, f"{n}개로 변경할 섹션을 알려주세요. Feature Importance, Anomaly Feature, 트렌드 LOT 수, 트렌드 주수 중 어느 쪽인가요?"
+            return None, f"{n}개로 변경할 섹션을 알려주세요. Feature Importance, Anomaly Feature, 트렌드 주수 중 어느 쪽인가요?"
         else:
             return None, f"Feature Importance와 Anomaly Feature 중 {n}개로 변경할 섹션을 선택해 주세요."
 
@@ -1140,12 +1362,16 @@ async def run_report_editor(user_message: str, history: list,
             try: d["pred_ppm_trend"] = get_pred_ppm_trend(recent_n=20)
             except Exception: d["pred_ppm_trend"] = {}
         if not d.get("anomaly_stats"):
-            try: d["anomaly_stats"] = get_anomaly_feature_stats(top_n=10)[:5]
+            try: d["anomaly_stats"] = get_anomaly_feature_stats(top_n=20)[:5]
             except Exception: d["anomaly_stats"] = []
-        # anomaly_stats_all: 원본 전체 리스트 보존 (늘리기 복원용)
+        # anomaly_stats_all: 원본 전체 리스트 보존 (top20 풀)
         if not d.get("anomaly_stats_all"):
-            try: d["anomaly_stats_all"] = get_anomaly_feature_stats(top_n=10)
+            try: d["anomaly_stats_all"] = get_anomaly_feature_stats(top_n=20)
             except Exception: d["anomaly_stats_all"] = list(d.get("anomaly_stats", []))
+        # importance_all: Feature Importance 전체 풀 (top20)
+        if not d.get("importance_all"):
+            try: d["importance_all"] = get_importance(top_n=20).get("features", [])
+            except Exception: d["importance_all"] = list(d.get("importance", {}).get("features", []))
     else:
         d = _build_report_data(cache)
 

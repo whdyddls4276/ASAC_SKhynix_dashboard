@@ -83,6 +83,21 @@
   background: #EF4444;
 }
 
+.rm-tool-btn.undo {
+  background: rgba(245,158,11,0.75);
+  border-color: #F59E0B;
+}
+
+.rm-tool-btn.undo:hover:not(:disabled) {
+  background: #F59E0B;
+}
+
+.rm-tool-btn.undo.disabled,
+.rm-tool-btn.undo:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ── 선택 영역 알림바 ─────────────────────────────────────── */
 .rm-selection-bar {
   padding: 7px 20px;

@@ -224,14 +224,19 @@ def analyze_features(start: str = "", end: str = "", top_n: int = 10) -> dict:
         top50 = None
         fi_rank = {}
 
-    xs = _load("compet_xs_data.csv")
+    # xs 부분 로드: anomaly 캐시 재사용 or 신규 로드
+    xs_cache_key = "xs_anomaly_60"
+    if xs_cache_key in _cache:
+        xs = _cache[xs_cache_key]
+    else:
+        xs = _load("compet_xs_data.csv")
     keep_cols = ["ufs_serial"] + ([c for c in top50 if c in xs.columns] if top50 else [c for c in xs.columns if c.startswith("X")])
-    merged = xs[keep_cols].merge(period_units, on="ufs_serial", how="inner")
+    merged = xs[[c for c in keep_cols if c in xs.columns]].merge(period_units, on="ufs_serial", how="inner")
 
     if merged.empty:
         return {"error": "해당 기간 feature 데이터가 없습니다.", "top_features": []}
 
-    feat_cols = [c for c in keep_cols if c != "ufs_serial"]
+    feat_cols = [c for c in keep_cols if c != "ufs_serial" and c in merged.columns]
 
     merged_unit = merged.groupby(["ufs_serial", "grade"])[feat_cols].mean().reset_index()
 
@@ -285,31 +290,60 @@ def get_importance(top_n: int = 10) -> dict:
     }
 
 
-# ── Anomaly Feature: importance 상위 피처의 grade1 vs grade4 위험 비율 ──
+# ── Anomaly Feature: importance 상위 피처의 grade4(위험) vs grade1(정상) 분포 비교 ──
 def get_anomaly_feature_stats(top_n: int = 5) -> list:
     """
-    importance 상위 top_n개 피처에 대해 grade1(위험) vs grade4(정상) 실제 분포 비교.
+    importance 상위 피처에 대해 grade4(매우위험) vs grade1(정상) 분포 비교.
     반환: [{"feature": "X592", "danger": 72, "normal": 28, "ratio": 2.52}, ...]
-    danger = grade1 평균이 grade4 대비 얼마나 벗어났는지 (0~100%)
+    xs는 usecols로 필요한 컬럼만 로드하여 캐시 — 캐시 키 "xs_anomaly_60" 고정.
     """
-    from scipy import stats as _stats
-
     fi    = _load("feature_importance.csv")
     units = _load("dashboard_units.csv")
-    xs    = _load("compet_xs_data.csv")
 
-    top_feats = fi.sort_values("lgbm_rank").head(top_n)["feature"].tolist()
+    # 후보 피처 목록 — 캐시 통일을 위해 항상 60개 기준 로드
+    POOL_SIZE = 60
+    candidate_n = min(len(fi), POOL_SIZE)
+    candidate_feats = fi.sort_values("lgbm_rank").head(candidate_n)["feature"].tolist()
 
-    val_units = units[["ufs_serial", "grade"]]  # train/val/test 전체 사용
+    # xs: 필요한 컬럼만 usecols로 로드 (속도·메모리 최적화), 캐시 키 고정
+    xs_cache_key = f"xs_anomaly_{POOL_SIZE}"
+    if xs_cache_key not in _cache:
+        xs_path = None
+        for d in [DATA_DIR] + _FALLBACK_DIRS:
+            p = os.path.join(d, "compet_xs_data.csv")
+            if os.path.exists(p):
+                xs_path = p
+                break
+        if xs_path is None:
+            return []
+        try:
+            header = pd.read_csv(xs_path, nrows=0).columns.tolist()
+            valid_feats = [f for f in candidate_feats if f in header]
+            if not valid_feats:
+                return []
+            xs_partial = pd.read_csv(xs_path, usecols=["ufs_serial"] + valid_feats)
+            _cache[xs_cache_key] = xs_partial
+        except Exception:
+            return []
+
+    xs = _cache[xs_cache_key]
+    val_units = units[["ufs_serial", "grade"]]
     merged    = xs.merge(val_units, on="ufs_serial", how="inner")
 
-    g1 = merged[merged["grade"] == "grade1"]
-    g4 = merged[merged["grade"] == "grade4"]
+    g_danger = merged[merged["grade"] == "grade4"]  # 매우위험
+    g_normal = merged[merged["grade"] == "grade1"]  # 정상
+
+    if len(g_danger) < 5 or len(g_normal) < 5:
+        return []
 
     result = []
-    for feat in top_feats:
-        h = g1[feat].dropna()
-        l = g4[feat].dropna()
+    for feat in candidate_feats:
+        if len(result) >= top_n:
+            break
+        if feat not in merged.columns:
+            continue
+        h = g_danger[feat].dropna()
+        l = g_normal[feat].dropna()
         if len(h) < 5 or len(l) < 5:
             continue
 
@@ -318,22 +352,20 @@ def get_anomaly_feature_stats(top_n: int = 5) -> list:
         l_std  = float(l.std()) if len(l) > 1 else 0.0
         ratio  = round(h_mean / l_mean, 3) if l_mean != 0 else None
 
-        # z-score: grade4 분포 기준으로 grade1 평균이 얼마나 벗어났는지
         z_score = round(abs(h_mean - l_mean) / l_std, 2) if l_std > 0 else None
 
-        # 위험 비율: ratio가 1에서 벗어난 정도 (최대 95%)
         dev = abs(ratio - 1.0) if ratio else 0.0
         danger = min(int(dev / 3.0 * 100), 95)
         normal = 100 - danger
 
         result.append({
-            "feature":    feat,
-            "grade1_mean": round(h_mean, 4),
-            "grade4_mean": round(l_mean, 4),
-            "ratio":      ratio,
-            "z_score":    z_score,
-            "danger":     danger,
-            "normal":     normal,
+            "feature":     feat,
+            "grade1_mean": round(h_mean, 4),   # grade4(위험) 평균
+            "grade4_mean": round(l_mean, 4),   # grade1(정상) 평균
+            "ratio":       ratio,
+            "z_score":     z_score,
+            "danger":      danger,
+            "normal":      normal,
         })
 
     return result
@@ -1058,3 +1090,41 @@ def get_mean_pred_ppm() -> int:
         return 0
     mean_pred = float(units["reg_pred"].mean())
     return int(round(mean_pred * 1_000_000))
+
+
+def get_lot_grade_stack(top_n: int = 20) -> dict:
+    """최신 top_n개 LOT별 grade1~4 unit 수 스택 바 데이터."""
+    units = _load("dashboard_units.csv")
+    grp = (
+        units.groupby(["run_id", "grade"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+    for g in ["grade1", "grade2", "grade3", "grade4"]:
+        if g not in grp.columns:
+            grp[g] = 0
+    grp = grp.sort_values("run_id").tail(top_n)
+    return {
+        "labels": [f"L{int(r)}" for r in grp["run_id"]],
+        "g1": [int(v) for v in grp["grade1"]],
+        "g2": [int(v) for v in grp["grade2"]],
+        "g3": [int(v) for v in grp["grade3"]],
+        "g4": [int(v) for v in grp["grade4"]],
+    }
+
+
+def get_pred_health_hist(bins: int = 10) -> dict:
+    """전체 unit reg_pred를 bins 구간으로 나눈 히스토그램 데이터."""
+    import numpy as _np
+    units = _load("dashboard_units.csv")
+    preds = units["reg_pred"].dropna().values
+    counts, edges = _np.histogram(preds, bins=bins)
+    high_preds = units.loc[units["risk"] == "HIGH", "reg_pred"].dropna().values
+    high_counts, _ = _np.histogram(high_preds, bins=edges)
+    labels = [f"{edges[i]:.4f}~{edges[i+1]:.4f}" for i in range(bins)]
+    return {
+        "labels":      labels,
+        "counts":      [int(c) for c in counts],
+        "high_counts": [int(c) for c in high_counts],
+    }

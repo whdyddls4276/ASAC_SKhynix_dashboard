@@ -1257,19 +1257,92 @@ def build_html(report_data: dict) -> str:
         return f'<div class="card" data-section="{sec_title}" style="margin-bottom:8px"><div class="card-label">{sec_title}</div>{content}</div>'
 
     def _render_custom_chart_js(sec, idx):
-        ctype = sec.get("chart_type","bar")
+        ctype = sec.get("chart_type", "bar")
         if ctype == "table": return ""
-        labels = _json.dumps(sec.get("labels",[]), ensure_ascii=False)
+        labels   = _json.dumps(sec.get("labels", []), ensure_ascii=False)
+        stacked  = sec.get("stacked", False)
         ds_js = []
-        for ds in sec.get("datasets",[]):
-            color = ds.get("color","#3B82F6")
-            ds_js.append(f'{{"label":{_json.dumps(ds.get("label",""))},"data":{_json.dumps(ds.get("data",[]))},"backgroundColor":"{color}","borderColor":"{color}","borderWidth":2,"tension":0.3,"fill":false}}')
+        for ds in sec.get("datasets", []):
+            color = ds.get("color", "#3B82F6")
+            bg    = _json.dumps(ds["colors"]) if "colors" in ds else f'"{color}"'
+            ds_js.append(
+                f'{{"label":{_json.dumps(ds.get("label",""))},"data":{_json.dumps(ds.get("data",[]))},'
+                f'"backgroundColor":{bg},"borderColor":"{color}","borderWidth":2,"tension":0.3,"fill":false}}'
+            )
         horizontal = _json.dumps(sec.get("horizontal", False))
-        return f"""(function(){{var ctx=document.getElementById('cs_{idx}_chart');if(!ctx)return;new Chart(ctx,{{type:{_json.dumps(ctype)},data:{{labels:{labels},datasets:[{",".join(ds_js)}]}},options:{{indexAxis:{horizontal}?'y':'x',responsive:true,maintainAspectRatio:false,plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:10,font:{{size:9}}}}}}}}}}}});}})();"""
+        scales_js  = ',"scales":{"x":{"stacked":true},"y":{"stacked":true}}' if stacked else ''
+        return (
+            f"(function(){{var ctx=document.getElementById('cs_{idx}_chart');if(!ctx)return;"
+            f"new Chart(ctx,{{type:{_json.dumps(ctype)},data:{{labels:{labels},"
+            f"datasets:[{','.join(ds_js)}]}},"
+            f"options:{{indexAxis:{horizontal}?'y':'x',responsive:true,maintainAspectRatio:false,"
+            f"plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:10,font:{{size:9}}}}}}}}"
+            f"{scales_js}}}}});}})();"
+        )
 
-    left_extra  = "".join(_render_custom_section(s,i) for i,s in enumerate(custom_sections) if s.get("position")=="left_col")
-    right_extra = "".join(_render_custom_section(s,i) for i,s in enumerate(custom_sections) if s.get("position")=="right_col")
-    custom_chart_js = "\n".join(_render_custom_chart_js(s,i) for i,s in enumerate(custom_sections))
+    def _render_replace_section_js(sec, idx):
+        """replace_sid 있는 섹션: 원본 위치에 인라인 주입 (JS DOM 조작)."""
+        replace_sid = sec.get("replace_sid", "")
+        sec_title   = sec.get("title", "")
+        ctype       = sec.get("chart_type", "bar")
+        height      = sec.get("height", 120)
+        canvas_id   = f"cs_{idx}_chart"
+        replace_attr = f'data-replace-for="{replace_sid}"'
+        new_sid      = f"cs_{idx}"
+        section_html = (
+            f'<div class="card ia-target" {replace_attr} data-sid="{new_sid}" data-origin-sid="{replace_sid}" data-section="{sec_title}" style="margin-bottom:8px;position:relative">'
+            f'<div class="card-label">{sec_title}</div>'
+            f'<div style="position:relative;height:{height}px"><canvas id="{canvas_id}"></canvas></div>'
+            f'</div>'
+        )
+        html_js = _json.dumps(section_html)
+        labels    = _json.dumps(sec.get("labels", []), ensure_ascii=False)
+        stacked   = sec.get("stacked", False)
+        ds_js = []
+        for ds in sec.get("datasets", []):
+            color = ds.get("color", "#3B82F6")
+            bg    = _json.dumps(ds["colors"]) if "colors" in ds else f'"{color}"'
+            ds_js.append(
+                f'{{"label":{_json.dumps(ds.get("label",""))},"data":{_json.dumps(ds.get("data",[]))},'
+                f'"backgroundColor":{bg},"borderColor":"{color}","borderWidth":2,"tension":0.3,"fill":false}}'
+            )
+        horizontal = _json.dumps(sec.get("horizontal", False))
+        scales_js  = ',"scales":{"x":{"stacked":true},"y":{"stacked":true}}' if stacked else ''
+        if ctype == "table":
+            chart_init = ""
+        else:
+            chart_init = (
+                'var ctx=document.getElementById(' + _json.dumps(canvas_id) + ');'
+                'if(ctx)new Chart(ctx,{type:' + _json.dumps(ctype) + ','
+                'data:{labels:' + labels + ',datasets:[' + ','.join(ds_js) + ']},'
+                'options:{indexAxis:' + horizontal + '?"y":"x",'
+                'responsive:true,maintainAspectRatio:false,'
+                'plugins:{legend:{display:true,position:"top",'
+                'labels:{boxWidth:10,font:{size:9}}}}' + scales_js + '}});'
+            )
+        return (
+            f'(function(){{'
+            f'var prev=document.querySelector(\'[data-replace-for="{replace_sid}"]\');'
+            f'if(prev)prev.remove();'
+            f'var orig=document.querySelector(\'[data-sid="{replace_sid}"]\');'
+            f'if(!orig)return;'
+            f'orig.style.display="none";'
+            f'var lbl=orig.previousElementSibling;'
+            f'if(lbl&&lbl.classList&&lbl.classList.contains("inum"))lbl.style.display="none";'
+            f'var wrapper=document.createElement("div");'
+            f'wrapper.innerHTML={html_js};'
+            f'orig.parentNode.insertBefore(wrapper.firstChild,orig.nextSibling);'
+            f'{chart_init}'
+            f'}})();'
+        )
+
+    # replace_sid 있으면 인라인 주입, 없으면 기존 {left_extra}/{right_extra} 슬롯
+    _add_secs     = [(i, s) for i, s in enumerate(custom_sections) if not s.get("replace_sid")]
+    _replace_secs = [(i, s) for i, s in enumerate(custom_sections) if s.get("replace_sid")]
+    left_extra       = "".join(_render_custom_section(s, i) for i, s in _add_secs if s.get("position") == "left_col")
+    right_extra      = "".join(_render_custom_section(s, i) for i, s in _add_secs if s.get("position") == "right_col")
+    custom_chart_js  = "\n".join(_render_custom_chart_js(s, i) for i, s in _add_secs)
+    replace_chart_js = "\n".join(_render_replace_section_js(s, i) for i, s in _replace_secs)
     commentary_html = "\n".join(
         f'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:8px">'
         f'<div style="font-size:11px;font-weight:700;color:#92400E;margin-bottom:4px">📝 {it.get("title","")}</div>'
@@ -1454,6 +1527,10 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 #ia-action-menu .ctx-item{{padding:7px 14px;font-size:11px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:6px;font-weight:700}}
 #ia-action-menu .ctx-item:hover{{background:#eff6ff;color:#3b82f6}}
 #ia-action-menu .ctx-sep{{height:1px;background:#e2e8f0;margin:2px 0}}
+#ia-chart-menu{{display:none;position:fixed;z-index:1000000;background:#fff;border:1px solid #9ca3af;box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:210px;overflow:hidden;border-radius:6px}}
+#ia-chart-menu .chart-item{{padding:7px 14px;font-size:11px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:7px}}
+#ia-chart-menu .chart-item:hover{{background:#eff6ff;color:#3b82f6}}
+#ia-chart-menu .chart-hdr{{padding:5px 14px;font-size:10px;font-weight:700;color:#6b7280;background:#f9fafb;border-bottom:1px solid #e5e7eb}}
 </style>
 </head>
 <body>
@@ -1582,9 +1659,25 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 
 <div id="ia-drag-overlay"></div>
 <div id="ia-action-menu">
-  <div class="ctx-item" id="act-edit">✏️ 수정</div>
-  <div class="ctx-item" id="act-explain">💬 설명</div>
+  <div class="ctx-item" id="act-edit">✏️ 수정 ▶</div>
+  <div class="ctx-sep"></div>
   <div class="ctx-item" id="act-delete">🗑️ 삭제</div>
+</div>
+<div id="ia-chart-menu">
+  <div class="chart-hdr">기존 차트</div>
+  <div class="chart-item" data-chart="importance">Feature Importance 바 차트</div>
+  <div class="chart-item" data-chart="anomaly">Anomaly Feature 비교</div>
+  <div class="chart-item" data-chart="lot_trend">LOT별 HIGH 건수 트렌드</div>
+  <div class="chart-item" data-chart="weekly_trend">주차별 수율 트렌드</div>
+  <div class="chart-item" data-chart="ppm_trend">LOT별 예측 ppm 트렌드</div>
+  <div class="chart-item" data-chart="pos_defect">포지션별 불량률</div>
+  <div class="chart-item" data-chart="pred_actual">예측 vs 실측 Scatter</div>
+  <div class="chart-hdr">추가 차트</div>
+  <div class="chart-item" data-chart="grade_dist">Grade 분포 도넛</div>
+  <div class="chart-item" data-chart="weekly_grade_trend">주차별 Grade 비율 트렌드</div>
+  <div class="chart-item" data-chart="lot_grade_stack">LOT별 Grade 구성 스택 바</div>
+  <div class="chart-item" data-chart="health_hist">예측 Health 분포</div>
+  <div class="chart-item" data-chart="feat_vs_health">피처 vs Health 분산도</div>
 </div>
 
 <div class="s-footer">
@@ -1869,6 +1962,7 @@ Chart.defaults.color       = '#202832';
 }})();
 
 {custom_chart_js}
+{replace_chart_js}
 
 /* === 통합 차트 편집 모드 ===
    외부(부모)에서 'SET_CHART_EDIT_MODE' 메시지로 모드를 ON/OFF.
@@ -1880,6 +1974,7 @@ Chart.defaults.color       = '#202832';
 (function(){{
   var editMode=false;
   var menu=document.getElementById('ia-action-menu');
+  var chartMenu=document.getElementById('ia-chart-menu');
   var overlay=document.getElementById('ia-drag-overlay');
   var selBox=document.getElementById('ia-selection-box');
   if(!selBox){{
@@ -1905,9 +2000,12 @@ Chart.defaults.color       = '#202832';
     selBox.style.display='none';
     selected=null;
   }}
-  function hideMenu(){{menu.style.display='none';}}
+  function hideMenu(){{menu.style.display='none';chartMenu.style.display='none';}}
   function showMenuAt(x,y){{
     menu.style.display='block';menu.style.left=x+'px';menu.style.top=y+'px';
+  }}
+  function showChartMenuAt(x,y){{
+    chartMenu.style.display='block';chartMenu.style.left=x+'px';chartMenu.style.top=y+'px';
   }}
 
   function selectSection(el,clientX,clientY){{
@@ -1918,7 +2016,7 @@ Chart.defaults.color       = '#202832';
     var r=el.getBoundingClientRect();
     selected={{
       kind:'section',
-      sid:el.getAttribute('data-sid'),
+      sid:el.getAttribute('data-origin-sid')||el.getAttribute('data-sid'),
       label:el.getAttribute('data-section')||el.getAttribute('data-sid'),
       rect:{{x:Math.round(r.left-pr.left),y:Math.round(r.top-pr.top),w:Math.round(r.width),h:Math.round(r.height)}}
     }};
@@ -1967,13 +2065,11 @@ Chart.defaults.color       = '#202832';
     var layout=getSnap();
     if(selected.kind==='section'){{
       var label=selected.label||selected.sid;
-      var prompt=({{
-        modify: label+' 섹션을 수정하고 싶습니다.',
-        explain:label+' 섹션의 데이터를 설명해주세요.',
-        remove: label+' 섹션을 삭제해 주세요.'
-      }})[actionKind]||label;
+      var prompt=(actionKind==='remove')
+        ? (label+' 섹션을 삭제해 주세요.')
+        : (label+' 섹션을 수정하고 싶습니다.');
       send({{
-        action:actionKind==='remove'?'remove':(actionKind==='explain'?'explain':'modify'),
+        action:actionKind==='remove'?'remove':'modify',
         sid:selected.sid, label:label,
         bbox:selected.rect, layout:layout, prompt:prompt
       }});
@@ -1983,22 +2079,15 @@ Chart.defaults.color       = '#202832';
       var labels=(selected.labels||[]).join(', ');
       var pos=selected.rect.x<640?'left_col':'right_col';
       var hasHits=hits.length>0;
-      var actMap={{
-        modify: hasHits ? ('드래그한 영역('+labels+')을 합쳐서 수정해 주세요.')
-                        : ('드래그한 빈 영역에 새 차트/표를 추가해 주세요.'),
-        explain:hasHits ? ('드래그한 영역('+labels+')에 대해 설명해 주세요.')
-                        : '드래그한 빈 영역에 대한 데이터 설명이 필요합니다.',
-        remove: hasHits ? ('드래그한 영역('+labels+')을 삭제해 주세요.')
-                        : '드래그한 빈 영역을 정리해 주세요.'
-      }};
+      var prompt=(actionKind==='remove')
+        ? (hasHits?('드래그한 영역('+labels+')을 삭제해 주세요.'):'드래그한 빈 영역을 정리해 주세요.')
+        : (hasHits?('드래그한 영역('+labels+')을 합쳐서 수정해 주세요.'):'드래그한 빈 영역에 새 차트/표를 추가해 주세요.');
       send({{
-        action: actionKind==='remove'?'remove'
-               :(actionKind==='explain'?'explain'
-               :(hasHits?'modify':'add')),
+        action: actionKind==='remove'?'remove':(hasHits?'modify':'add'),
         position: pos,
         sids: hits, labels: selected.labels||[],
         bbox: selected.rect, layout: layout,
-        prompt: actMap[actionKind]||actMap.modify
+        prompt: prompt
       }});
     }}
     hideMenu();
@@ -2006,13 +2095,30 @@ Chart.defaults.color       = '#202832';
   }}
 
   document.getElementById('act-edit').addEventListener('click',function(e){{
-    e.stopPropagation();dispatchAction('modify');
-  }});
-  document.getElementById('act-explain').addEventListener('click',function(e){{
-    e.stopPropagation();dispatchAction('explain');
+    e.stopPropagation();
+    if(!selected) return;
+    var r=menu.getBoundingClientRect();
+    menu.style.display='none';
+    showChartMenuAt(r.right+4, r.top);
   }});
   document.getElementById('act-delete').addEventListener('click',function(e){{
-    e.stopPropagation();dispatchAction('remove');
+    e.stopPropagation();
+    if(!selected) return;
+    var sid=selected.kind==='section'?selected.sid:null;
+    var sids=selected.kind==='box'?(selected.hits||[]):null;
+    hideMenu();clearSelection();
+    if(sid) send({{action:'remove',sid:sid}});
+    else if(sids&&sids.length) sids.forEach(function(s){{send({{action:'remove',sid:s}});}});
+  }});
+  document.querySelectorAll('#ia-chart-menu .chart-item').forEach(function(item){{
+    item.addEventListener('click',function(e){{
+      e.stopPropagation();
+      if(!selected) return;
+      var chartType=item.getAttribute('data-chart');
+      var sid=selected.kind==='section'?selected.sid:(selected.hits&&selected.hits[0])||null;
+      hideMenu();clearSelection();
+      if(sid) send({{action:'change_chart',chart_type:chartType,target_sid:sid}});
+    }});
   }});
 
   /* 빈 곳 클릭/ESC → 선택 해제 */
@@ -2027,6 +2133,7 @@ Chart.defaults.color       = '#202832';
     if(!editMode) return;
     if(e.button!==0) return;
     if(e.target.closest('#ia-action-menu')) return;
+    if(e.target.closest('#ia-chart-menu')) return;
     /* 액션 메뉴 떠있을 때 다른 곳 누르면 닫고 시작 */
     hideMenu();
     drag.active=true;drag.moved=false;

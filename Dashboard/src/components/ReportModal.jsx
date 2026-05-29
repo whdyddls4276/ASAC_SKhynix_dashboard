@@ -171,6 +171,8 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   const initialLoad       = useRef(true)
   const currentHtmlRef    = useRef(currentHtml)
   const currentReportRef  = useRef(currentReportData)
+  const undoStackRef      = useRef([])
+  const [canUndo, setCanUndo] = useState(false)
   const [blobUrl, setBlobUrl] = useState(null)
 
   // ref를 항상 최신 state로 동기화
@@ -239,6 +241,10 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
       if (e.data?.type === 'ia_event') {
         const payload = e.data.payload
         if (!payload) return
+        if (payload.action === 'remove' || payload.action === 'change_chart') {
+          sendDirectAction(payload)
+          return
+        }
         const displayLabel = payload.label
           || (payload.labels && payload.labels.length ? payload.labels.join(', ') : '')
           || (payload.bbox ? `드래그 영역(${payload.bbox.w}×${payload.bbox.h})` : '선택됨')
@@ -250,6 +256,78 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [])   // dep [] 고정 — 최신 state는 ref로 참조
+
+  // ── 직접 액션 전송 (Claude 불필요한 삭제·차트교체) ──────────
+  async function sendDirectAction(cmd) {
+    if (loading) return
+    setLoading(true)
+    const labels = { remove: '섹션 삭제 중...', change_chart: '차트 변경 중...' }
+    addMsg('user', labels[cmd.action] || '처리 중...')
+
+    const prompt = `__direct__:${JSON.stringify(cmd)}`
+    try {
+      const res = await fetch(`${apiUrl || API_URL}/report/interact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...cmd,
+          action: cmd.action,
+          prompt,
+          history: [],
+          tool_cache: toolCache || {},
+          current_report_data: currentReportRef.current,
+        }),
+      })
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let botText = ''
+      let buffer  = ''
+      const finalizeStreaming = () => {
+        setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m))
+        if (botText) historyRef.current.push({ role: 'assistant', content: botText })
+        botText = ''
+      }
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw || raw === '[DONE]') continue
+          let event
+          try { event = JSON.parse(raw) } catch { continue }
+          if (event.type === 'text') {
+            botText += event.content
+            const snap = botText
+            setMessages(prev => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              if (last?.role === 'bot' && last?.streaming) {
+                next[next.length - 1] = { ...last, text: snap }
+              } else {
+                next.push({ role: 'bot', text: snap, streaming: true })
+              }
+              return next
+            })
+          }
+          if (event.type === 'report_ready' && event.html) {
+            pushUndo()
+            setCurrentHtml(event.html)
+            if (event.report_data) setCurrentReportData(event.report_data)
+          }
+          if (event.type === 'done') setLoading(false)
+          if (event.type === 'error') { addMsg('bot', `⚠️ ${event.message}`); setLoading(false) }
+        }
+      }
+      finalizeStreaming()
+    } catch {
+      addMsg('bot', '⚠️ 서버 연결에 실패했습니다.')
+      setLoading(false)
+    }
+  }
 
   // ── /report/interact 전송 (ia_event 처리) ──────────────────
   async function sendInteract(payload) {
@@ -326,6 +404,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
             finalizeStreaming()
           }
           if (event.type === 'report_ready' && event.html) {
+            pushUndo()
             setCurrentHtml(event.html)
             if (event.report_data) setCurrentReportData(event.report_data)
           }
@@ -381,6 +460,22 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  function pushUndo() {
+    undoStackRef.current.push({
+      html: currentHtmlRef.current,
+      report_data: currentReportRef.current ? { ...currentReportRef.current } : null,
+    })
+    setCanUndo(true)
+  }
+
+  function handleUndo() {
+    if (!undoStackRef.current.length) return
+    const prev = undoStackRef.current.pop()
+    setCurrentHtml(prev.html)
+    if (prev.report_data) setCurrentReportData(prev.report_data)
+    setCanUndo(undoStackRef.current.length > 0)
+  }
 
   function addMsg(role, text) {
     setMessages(prev => [...prev, { role, text }])
@@ -463,6 +558,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
           }
           // 수정된 HTML이 보고서로 내려오면 미리보기 갱신
           if (event.type === 'report_ready' && event.html) {
+            pushUndo()
             setCurrentHtml(event.html)
             if (event.report_data) setCurrentReportData(event.report_data)
           }
@@ -527,6 +623,14 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
             </button>
             <button className="rm-tool-btn" onClick={clearSelect} title="선택 초기화">
               🔄 초기화
+            </button>
+            <button
+              className={`rm-tool-btn undo ${canUndo ? '' : 'disabled'}`}
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="이전 보고서로 되돌리기"
+            >
+              ↩ 되돌리기
             </button>
             <button className="rm-tool-btn ppt" onClick={downloadPptx}>
               📊 PPT
