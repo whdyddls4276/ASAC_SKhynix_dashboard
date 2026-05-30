@@ -258,27 +258,23 @@ const FEAT_HEATMAP_STOPS = [
   [1.0, [220, 38,  38]],
 ]
 
-function FeatureWaferMap({ feature, allDies, shapBeeswarm }) {
+function FeatureWaferMap({ feature, featNormData }) {
   const heatDies = useMemo(() => {
-    if (!feature || !allDies?.length || !shapBeeswarm?.length) return []
-    const serials = new Set(allDies.map(d => d.ufs_serial))
-    const featMap = {}
-    shapBeeswarm.forEach(r => {
-      if (r.feature === feature && serials.has(r.ufs_serial)) {
-        featMap[r.ufs_serial] = parseFloat(r.feat_norm)
-      }
-    })
-    return allDies.map(d => ({
-      die_x: parseInt(d.die_x),
-      die_y: parseInt(d.die_y),
-      val: featMap[d.ufs_serial] ?? null,
-    })).filter(d => d.val !== null && isFinite(d.val))
-  }, [feature, allDies, shapBeeswarm])
+    if (!feature || !featNormData?.length) return []
+    return featNormData
+      .filter(r => r.feature === feature)
+      .map(r => ({
+        die_x: parseInt(r.die_x),
+        die_y: parseInt(r.die_y),
+        val: parseFloat(r.feat_norm),
+      }))
+      .filter(d => isFinite(d.val))
+  }, [feature, featNormData])
 
   if (!feature) return null
-  if (!shapBeeswarm?.length) return (
+  if (!featNormData?.length) return (
     <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>
-      {feature} — SHAP 데이터 로딩 중..
+      피처 데이터 로딩 중..
     </div>
   )
   if (!heatDies.length) return (
@@ -342,7 +338,7 @@ function FeatureWaferMap({ feature, allDies, shapBeeswarm }) {
 }
 
 // ── Unit 진단 패널 (1팀 우측 패널 포팅) ──────────────
-function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm, unitData }) {
+function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm, unitData, featNormData }) {
   const [selectedFeature, setSelectedFeature] = useState(null)
   const dies = useMemo(() =>
     ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
@@ -454,7 +450,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
       {/* 피처 웨이퍼 히트맵 (SHAP 막대 클릭 시 표시) */}
       {selectedFeature && (
         <div className="dd-section-box">
-          <FeatureWaferMap feature={selectedFeature} allDies={allDies} shapBeeswarm={shapBeeswarm} />
+          <FeatureWaferMap feature={selectedFeature} featNormData={featNormData} />
         </div>
       )}
     </div>
@@ -770,6 +766,7 @@ const PATTERN_META = {
 export default function DrilldownV2({ initialSelection }) {
   const { data: summaryData, loading: loadingSummary } = useCSV('/dashboard_lot_summary.csv')
   const { data: shapData } = useCSV('/shap_bar.csv')
+  const { data: featNormData } = useCSV('/wafer_feat_norm.csv')
   const { data: unitData } = useCSV('/dashboard_units.csv')
   const { data: lotPatternsAll } = useCSV('/dashboard_lot_patterns.csv')
   const [lotPatternMaps, setLotPatternMaps] = useState({})
@@ -1317,6 +1314,7 @@ export default function DrilldownV2({ initialSelection }) {
               shapData={shapData}
               shapBeeswarm={shapBeeswarm}
               unitData={unitData}
+              featNormData={featNormData}
               onClose={selectedUnit ? () => { setSelectedUnit(null); setSelectedDie(null) } : undefined}
             />
           </div>
