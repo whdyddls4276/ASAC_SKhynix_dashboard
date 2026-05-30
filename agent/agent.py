@@ -923,7 +923,7 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
     elif chart_type == "lot_trend":
         trend = d.get("lot_trend_split", {})
         labels = trend.get("labels", [])
-        high   = trend.get("high_count", trend.get("defect_count", []))
+        high   = trend.get("high", trend.get("high_count", trend.get("defect_count", [])))
         return {"title": "LOT별 HIGH 건수", "chart_type": "line", "position": position,
                 "labels": labels, "horizontal": False, "height": 150,
                 "datasets": [{"label": "HIGH 건수", "data": high, "color": "#F59E0B"}]}
@@ -939,10 +939,14 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
     elif chart_type == "ppm_trend":
         ppm = d.get("pred_ppm_trend", {})
         labels = ppm.get("labels", [])
-        data   = ppm.get("defect_count", ppm.get("high_ppm", []))
-        return {"title": "LOT별 예측 ppm", "chart_type": "bar", "position": position,
+        mean_d = ppm.get("mean_ppm", ppm.get("med_ppm", []))
+        top_d  = ppm.get("top_ppm",  ppm.get("high_ppm", []))
+        return {"title": "LOT별 예측 ppm (평균/상위5%)", "chart_type": "line", "position": position,
                 "labels": labels, "horizontal": False, "height": 150,
-                "datasets": [{"label": "ppm", "data": data, "color": "#3B82F6"}]}
+                "datasets": [
+                    {"label": "LOT 평균",  "data": mean_d, "color": "#3B82F6"},
+                    {"label": "상위 5%",   "data": top_d,  "color": "#EF4444"},
+                ]}
 
     elif chart_type == "pos_defect":
         pd_ = d.get("pos_defect", {})
@@ -1047,8 +1051,8 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
         return {"title": f"이상 피처 분포 · {fname} (LOT 순서)", "chart_type": "scatter", "position": position,
                 "labels": [], "height": 150,
                 "datasets": [
-                    {"label": "위험(G1) 피처값", "data": high_data, "color": "#EF4444"},
-                    {"label": "정상(G4) 피처값", "data": med_data,  "color": "#3B82F6"},
+                    {"label": "위험(G3+G4) 피처값", "data": high_data, "color": "#EF4444"},
+                    {"label": "정상(G1+G2) 피처값", "data": med_data,  "color": "#22C55E"},
                 ]}
 
     return None

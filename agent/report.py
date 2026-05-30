@@ -1531,7 +1531,7 @@ def build_html(report_data: dict) -> str:
         r3_labels = [f"Lot {40+i}" for i in range(14)]
         r3_high   = []; r3_med = []
 
-    # ── custom_sections 렌더링
+    # ── custom_sections 렌더링 (다른 차트와 동일한 박스 스타일)
     def _render_custom_section(sec, idx):
         sec_title = sec.get("title",""); ctype = sec.get("chart_type","bar")
         height = sec.get("height", 120)
@@ -1543,10 +1543,15 @@ def build_html(report_data: dict) -> str:
                 cells = row if isinstance(row, list) else [row.get(c,"") for c in cols]
                 bg = "#fff" if ri%2==0 else "#F8FAFC"
                 trs += "<tr>" + "".join(f'<td style="background:{bg}">{v}</td>' for v in cells) + "</tr>"
-            content = f'<div style="max-height:{height}px;overflow-y:auto"><table><thead><tr>{ths}</tr></thead><tbody>{trs}</tbody></table></div>'
+            content = f'<div style="max-height:{height}px;overflow:auto;padding:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f3f4f6">{ths}</tr></thead><tbody>{trs}</tbody></table></div>'
         else:
-            content = f'<div style="position:relative;height:{height}px"><canvas id="cs_{idx}_chart"></canvas></div>'
-        return f'<div class="card" data-section="{sec_title}" style="margin-bottom:8px"><div class="card-label">{sec_title}</div>{content}</div>'
+            content = f'<div style="position:relative;height:{height}px;padding:4px"><canvas id="cs_{idx}_chart" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas></div>'
+        return (
+            f'<div class="cbox ia-target" data-sid="cs_{idx}" data-section="{sec_title}" '
+            f'style="margin-bottom:8px;position:relative;border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column">'
+            f'<div style="padding:5px 9px;background:#f3f4f6;border-bottom:1px solid #d1d5db;font-size:12px;font-weight:900;color:#111827">{sec_title}</div>'
+            f'{content}</div>'
+        )
 
     def _render_custom_chart_js(sec, idx):
         ctype = sec.get("chart_type", "bar")
@@ -1582,10 +1587,12 @@ def build_html(report_data: dict) -> str:
         replace_attr = f'data-replace-for="{replace_sid}"'
         new_sid      = f"cs_{idx}"
         section_html = (
-            f'<div class="card ia-target" {replace_attr} data-sid="{new_sid}" data-origin-sid="{replace_sid}" data-section="{sec_title}" style="margin-bottom:8px;position:relative">'
-            f'<div class="card-label">{sec_title}</div>'
-            f'<div style="position:relative;height:{height}px"><canvas id="{canvas_id}"></canvas></div>'
-            f'</div>'
+            f'<div class="cbox ia-target" {replace_attr} data-sid="{new_sid}" data-origin-sid="{replace_sid}" data-section="{sec_title}" '
+            f'style="margin-bottom:8px;position:relative;border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column">'
+            f'<div style="padding:5px 9px;background:#f3f4f6;border-bottom:1px solid #d1d5db;font-size:12px;font-weight:900;color:#111827">{sec_title}</div>'
+            f'<div style="position:relative;height:{height}px;padding:4px">'
+            f'<canvas id="{canvas_id}" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas>'
+            f'</div></div>'
         )
         html_js = _json.dumps(section_html)
         labels    = _json.dumps(sec.get("labels", []), ensure_ascii=False)
@@ -1780,7 +1787,7 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 .sbox{{border:1px solid #6b7280;background:#fff;display:flex;flex-direction:column;overflow:hidden;height:604px}}
 .shdr{{background:#f3f4f6;color:#111827;border-bottom:1px solid #6b7280;padding:4px 11px;font-size:13px;font-weight:900;position:relative;height:28px;box-sizing:border-box;flex-shrink:0}}
 .shdr::before{{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#6b7280}}
-.sbdy{{padding:5px 9px;height:576px;box-sizing:border-box;overflow:hidden}}
+.sbdy{{padding:5px 9px;height:576px;box-sizing:border-box;overflow-y:auto;overflow-x:hidden}}
 .sbdy.left-sbdy{{display:flex;flex-direction:column}}
 .sbdy.right-sbdy{{display:flex;flex-direction:column}}
 .kpi-cards{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:5px;height:58px;box-sizing:border-box;flex-shrink:0}}
@@ -1981,7 +1988,6 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
   <div class="chart-item" data-chart="lot_trend">LOT별 HIGH 건수 트렌드</div>
   <div class="chart-item" data-chart="weekly_trend">주차별 수율 트렌드</div>
   <div class="chart-item" data-chart="ppm_trend">LOT별 예측 ppm 트렌드</div>
-  <div class="chart-item" data-chart="pos_defect">포지션별 불량률</div>
   <div class="chart-item" data-chart="pred_actual">예측 vs 실측 Scatter</div>
   <div class="chart-hdr">추가 차트</div>
   <div class="chart-item" data-chart="grade_dist">Grade 분포 도넛</div>

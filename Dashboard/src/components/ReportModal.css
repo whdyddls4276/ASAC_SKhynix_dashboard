@@ -98,6 +98,21 @@
   cursor: not-allowed;
 }
 
+.rm-tool-btn.redo {
+  background: rgba(59,130,246,0.75);
+  border-color: #3B82F6;
+}
+
+.rm-tool-btn.redo:hover:not(:disabled) {
+  background: #3B82F6;
+}
+
+.rm-tool-btn.redo.disabled,
+.rm-tool-btn.redo:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ── 선택 영역 알림바 ─────────────────────────────────────── */
 .rm-selection-bar {
   padding: 7px 20px;

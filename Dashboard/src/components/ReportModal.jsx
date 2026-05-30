@@ -669,7 +669,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
               disabled={!canUndo}
               title="이전 보고서로 되돌리기"
             >
-              ↩ 되돌리기
+              ↩
             </button>
             <button
               className={`rm-tool-btn redo ${canRedo ? '' : 'disabled'}`}
@@ -677,7 +677,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
               disabled={!canRedo}
               title="앞으로 가기 (되돌린 작업 재실행)"
             >
-              ↪ 앞으로
+              ↪
             </button>
             <button className="rm-tool-btn ppt" onClick={downloadPptx}>
               📊 PPT
