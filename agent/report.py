@@ -333,6 +333,184 @@ def _pred_color(pred_ppm, pred_min, pred_max, threshold):
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def _chart_custom_png(sec: dict, w_px: int, h_px: int) -> bytes:
+    """custom_section dict를 matplotlib PNG로 렌더링.
+    chart_type: bar / line / doughnut / pie / scatter / table.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    _try_set_font()
+
+    ctype     = sec.get("chart_type", "bar")
+    labels    = sec.get("labels", [])
+    datasets  = sec.get("datasets", [])
+    horizontal = sec.get("horizontal", False)
+    stacked   = sec.get("stacked", False)
+
+    dpi = 96
+    fig, ax = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
+    fig.patch.set_facecolor("white"); ax.set_facecolor("white")
+
+    if ctype == "table":
+        cols = sec.get("columns", [])
+        rows = sec.get("rows", [])
+        ax.axis("off")
+        if cols and rows:
+            tbl_rows = [r if isinstance(r, list) else [r.get(c, "") for c in cols] for r in rows]
+            t = ax.table(cellText=tbl_rows, colLabels=cols, loc="upper left", cellLoc="left")
+            t.auto_set_font_size(False); t.set_fontsize(7); t.scale(1, 1.2)
+    elif ctype in ("doughnut", "pie"):
+        ds0 = datasets[0] if datasets else {}
+        data = ds0.get("data", [])
+        colors = ds0.get("colors") or [ds0.get("color", "#3B82F6")] * len(data)
+        if data:
+            wedges, _ = ax.pie(data, labels=labels, colors=colors, startangle=90,
+                                wedgeprops={"width": 0.4 if ctype == "doughnut" else 1.0,
+                                            "edgecolor": "white", "linewidth": 1},
+                                textprops={"fontsize": 7})
+        ax.set_aspect("equal")
+    elif ctype == "scatter":
+        for ds in datasets:
+            pts = ds.get("data", [])
+            xs = [p.get("x", 0) for p in pts]
+            ys = [p.get("y", 0) for p in pts]
+            ax.scatter(xs, ys, s=10, alpha=0.6, color=ds.get("color", "#3B82F6"),
+                       label=ds.get("label", ""))
+        if datasets: ax.legend(fontsize=6, loc="best")
+        ax.tick_params(labelsize=6, colors="#4b5563")
+        ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
+        for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
+    else:  # bar or line
+        xs = np.arange(len(labels))
+        n_ds = len(datasets)
+        bar_w = 0.8 / max(n_ds, 1) if not stacked else 0.7
+        bottoms = np.zeros(len(labels)) if stacked else None
+        for i, ds in enumerate(datasets):
+            data = ds.get("data", [])
+            color = ds.get("color", "#3B82F6")
+            colors_ds = ds.get("colors")
+            color_arg = colors_ds if (ctype == "bar" and colors_ds and len(colors_ds) == len(data)) else color
+            if ctype == "line":
+                ax.plot(xs, data, color=color, linewidth=1.5, marker="o", markersize=3,
+                        label=ds.get("label", ""))
+            else:  # bar
+                if horizontal:
+                    if stacked:
+                        ax.barh(xs, data, left=bottoms, color=color_arg, label=ds.get("label", ""))
+                        bottoms = bottoms + np.array(data)
+                    else:
+                        ax.barh(xs + (i - n_ds/2 + 0.5) * bar_w, data, height=bar_w,
+                                color=color_arg, label=ds.get("label", ""))
+                else:
+                    if stacked:
+                        ax.bar(xs, data, bottom=bottoms, color=color_arg, width=0.7, label=ds.get("label", ""))
+                        bottoms = bottoms + np.array(data)
+                    else:
+                        ax.bar(xs + (i - n_ds/2 + 0.5) * bar_w, data, width=bar_w,
+                               color=color_arg, label=ds.get("label", ""))
+        if horizontal:
+            ax.set_yticks(xs); ax.set_yticklabels(labels, fontsize=7)
+            ax.invert_yaxis()
+        else:
+            ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=6, rotation=20, ha="right")
+        ax.tick_params(labelsize=6, colors="#4b5563")
+        ax.grid(axis="x" if horizontal else "y", color="#eef0f2", linewidth=0.5, zorder=0)
+        ax.set_axisbelow(True)
+        for sp in ax.spines.values(): sp.set_visible(False)
+        if n_ds > 1 or any(ds.get("label") for ds in datasets):
+            ax.legend(fontsize=6, loc="upper right", framealpha=0.85, handlelength=1.2)
+
+    fig.tight_layout(pad=0.3)
+    buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
+    plt.close(fig); buf.seek(0); return buf.read()
+
+
+def _chart_fi_bar_png(features, w_px=580, h_px=200) -> bytes:
+    """L2 Feature Importance Top N 수평 바 차트 (HTML c-fi-top와 동일)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    _try_set_font()
+
+    feats_top = features[:5]
+    total_all = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
+    labels = [f.get("feature", "") for f in feats_top]
+    values = [round((f.get("lgbm_gain", 0) or 0) / total_all * 100, 2) for f in feats_top]
+    max_v  = max(values) if values else 1
+
+    dpi = 96
+    fig, ax = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
+    fig.patch.set_facecolor("white"); ax.set_facecolor("white")
+
+    if not labels:
+        ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
+                transform=ax.transAxes, fontsize=8, color="#9ca3af")
+    else:
+        ys = np.arange(len(labels))
+        colors = ["#1e3a5f" if i == 0 else "#374151" for i in range(len(labels))]
+        ax.barh(ys, values, color=colors, height=0.55)
+        ax.set_yticks(ys)
+        ax.set_yticklabels(labels, fontsize=8, color="#111827", fontweight="bold")
+        ax.invert_yaxis()
+        ax.set_xlim(0, max_v * 1.15)
+        from matplotlib.ticker import FuncFormatter
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}%"))
+        ax.tick_params(axis="x", labelsize=7, colors="#6b7280")
+        ax.tick_params(axis="y", length=0)
+        for sp in ax.spines.values(): sp.set_visible(False)
+        ax.grid(axis="x", color="#eef0f2", linewidth=0.5, zorder=0)
+        ax.set_axisbelow(True)
+
+    fig.tight_layout(pad=0.3)
+    buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
+    plt.close(fig); buf.seek(0); return buf.read()
+
+
+def _chart_fdc_line_png(labels, normal, danger, threshold, feature_name, w_px=300, h_px=240) -> bytes:
+    """R3 피처 정상/불량 분포 비교 라인 차트 (HTML c-feat-dist와 동일)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    _try_set_font()
+
+    dpi = 96
+    fig, ax = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
+    fig.patch.set_facecolor("white"); ax.set_facecolor("white")
+
+    if not labels:
+        ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
+                transform=ax.transAxes, fontsize=8, color="#9ca3af")
+    else:
+        xs = np.array(labels, dtype=float)
+        ax.fill_between(xs, normal, color="#3B82F6", alpha=0.12)
+        ax.plot(xs, normal, color="#3B82F6", linewidth=1.5, label="정상 (G1+G2)")
+        ax.fill_between(xs, danger, color="#EF4444", alpha=0.12)
+        ax.plot(xs, danger, color="#EF4444", linewidth=1.5, label="위험 (G3+G4)")
+        if threshold is not None:
+            ax.axvline(x=float(threshold), color="#dc2626", linewidth=1.2, linestyle="--")
+            ax.text(float(threshold), ax.get_ylim()[1]*0.95,
+                    f" 임계 {float(threshold):.2f}",
+                    color="#dc2626", fontsize=6.5, fontweight="bold", va="top")
+        ax.set_xlabel("피처값", fontsize=6.5, color="#4b5563", labelpad=2)
+        ax.set_ylabel("비율 (%)", fontsize=6.5, color="#4b5563", labelpad=2)
+        ax.tick_params(labelsize=6, colors="#4b5563", length=2)
+        ax.legend(fontsize=6, framealpha=0.8, loc="upper right",
+                  handlelength=1.2, borderpad=0.3, labelspacing=0.2)
+        for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
+        ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
+
+    fig.tight_layout(pad=0.3)
+    buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
+    plt.close(fig); buf.seek(0); return buf.read()
+
+
 def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220) -> bytes:
     """웨이퍼맵: 직사각형 die, pred 연속 그라디언트 색상, 원형 clip (DrilldownV2 동일)."""
     import matplotlib
@@ -399,14 +577,14 @@ def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220
     ax.set_aspect("equal")
     ax.axis("off")
 
-    # 색상바 범례 (정상→위험 그라디언트)
+    # 색상바 범례 (정상→위험 세로 그라디언트, 오른쪽 배치)
     grad_colors = ["#f3f4f6", "#dbeafe", "#a5d7dc", "#fef08a", "#fb923c", "#dc2626"]
     cmap = LinearSegmentedColormap.from_list("wafer", grad_colors)
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=pred_min, vmax=pred_max))
     sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax, orientation="horizontal", fraction=0.04, pad=0.02, aspect=30)
-    cbar.ax.tick_params(labelsize=5)
-    cbar.set_label("pred ppm", fontsize=5)
+    cbar = fig.colorbar(sm, ax=ax, orientation="vertical", fraction=0.05, pad=0.02, aspect=18)
+    cbar.ax.tick_params(labelsize=5, colors="#6b7280")
+    cbar.set_label("정상 ↑ 위험", fontsize=6, color="#374151", labelpad=3)
 
     fig.tight_layout(pad=0.2)
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
@@ -602,6 +780,13 @@ def build_pptx(report_data: dict) -> bytes:
     total_gain = sum(f.get("lgbm_gain",0) or 0 for f in features) or 1
     max_gain   = max((f.get("lgbm_gain",0) or 0 for f in features), default=1) or 1
 
+    # ── 보고서 수정 상태 (hidden / custom / commentary) ─────────
+    hidden_sids     = set(report_data.get("hidden_sections", []) or [])
+    custom_sections = report_data.get("custom_sections", []) or []
+    commentary_list = report_data.get("commentary", []) or []
+    replace_map = {s["replace_sid"]: s for s in custom_sections if s.get("replace_sid")}
+    extra_sections = [s for s in custom_sections if not s.get("replace_sid")]
+
     # ── 슬라이드 좌표 상수 ─────────────────────────────────────
     # 슬라이드: 1280×720px  DPI=96
     prs   = _new_prs()
@@ -679,62 +864,52 @@ def build_pptx(report_data: dict) -> bytes:
         tx(sub,  kx+8, cy+50, KPI_W-14, 14, sz=8, clr=(75,85,99))
     cy += KPI_H + 16
 
-    # ── 2. 불량 트렌드 ─────────────────────────────────────────
-    tx(f"2. {slabel('L2','불량 트렌드')}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
-    cy += 18
-    TREND_H = 128
-    bx(LX+12, cy, LW-24, TREND_H, (255,255,255), (156,163,175), 0.5)
-    try:
-        trend_png = _chart_trend_png(lot_labels, lot_production, lot_pred_yield,
-                                      w_px=LW-24, h_px=TREND_H, defect_ppm=lot_defect_ppm)
-        img(trend_png, LX+12, cy, LW-24, TREND_H)
-    except Exception as _e:
-        tx(f"차트 오류: {_e}", LX+16, cy+55, LW-32, 18, sz=7, clr=(220,80,80))
-    cy += TREND_H + 16
+    # ── 2. Feature Importance Top 5 (L2_fi) / 3. 불량 트렌드 (L3_trend) ─
+    show_l2 = "L2_fi" not in hidden_sids
+    show_l3 = "L3_trend" not in hidden_sids
 
-    # ── 3. Lot별 불량 개수 ─────────────────────────────────────
-    tx(f"3. {slabel('L3','Lot별 불량 개수')}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
-    cy += 18
-    LOT_H = 114
-    bx(LX+12, cy, LW-24, LOT_H, (255,255,255), (156,163,175), 0.5)
-    try:
-        lot_png = _chart_lot_defects_png(lot_defect, w_px=LW-24, h_px=LOT_H)
-        img(lot_png, LX+12, cy, LW-24, LOT_H)
-    except Exception as _e:
-        tx(f"차트 오류: {_e}", LX+16, cy+50, LW-32, 18, sz=7, clr=(220,80,80))
-    cy += LOT_H + 16
+    REMAIN_LEFT = BY + SBOX_H - cy - 8
+    if show_l2 and show_l3:
+        L2_H = (REMAIN_LEFT - 18 - 18) // 2
+        L3_H = REMAIN_LEFT - 18 - 18 - L2_H
+    elif show_l2:
+        L2_H = REMAIN_LEFT - 18; L3_H = 0
+    elif show_l3:
+        L2_H = 0; L3_H = REMAIN_LEFT - 18
+    else:
+        L2_H = 0; L3_H = 0
 
-    # ── 4. 주요 피처 임계값 분포 (scatter 2개) ─────────────────
-    tx(f"4. {slabel('L4','주요 피처 임계값 분포')}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
-    cy += 18
-    # 나머지 공간 전부 사용
-    SC_TOTAL_H = BY + SBOX_H - cy - 8
-    SC_TOTAL_H = max(SC_TOTAL_H, 130)
-    INNER_W    = LW - 24
-    GAP_SC     = 10
-    SC_W       = (INNER_W - GAP_SC) // 2
+    if show_l2:
+        l2_replace = replace_map.get("L2_fi")
+        l2_title = l2_replace.get("title") if l2_replace else slabel('L2','Feature Importance Top 5')
+        tx(f"2. {l2_title}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
+        cy += 18
+        bx(LX+12, cy, LW-24, L2_H, (255,255,255), (156,163,175), 0.5)
+        try:
+            if l2_replace:
+                png = _chart_custom_png(l2_replace, w_px=LW-24, h_px=L2_H)
+            else:
+                png = _chart_fi_bar_png(features, w_px=LW-24, h_px=L2_H)
+            img(png, LX+12, cy, LW-24, L2_H)
+        except Exception as _e:
+            tx(f"차트 오류: {_e}", LX+16, cy+L2_H//2, LW-32, 18, sz=7, clr=(220,80,80))
+        cy += L2_H + 8
 
-    bx(LX+12, cy, INNER_W, SC_TOTAL_H, (255,255,255), (156,163,175), 0.5)
-    # 범례 (상단 16px)
-    tx("● grade1(불량)", LX+16, cy+5, 95, 13, sz=7, clr=(220,38,38))
-    tx("● grade4(정상)", LX+114, cy+5, 95, 13, sz=7, clr=(59,130,246))
-    tx("X축:피처값  Y축:pred", LX+12+INNER_W-122, cy+5, 120, 13, sz=7, clr=(156,163,175), align="right")
-
-    SC1_X  = LX + 12
-    SC2_X  = SC1_X + SC_W + GAP_SC
-    CHART_H = SC_TOTAL_H - 18
-    try:
-        sc1_png = _chart_scatter_png(fs1_name, fs1_high, fs1_med, fs1_threshold,
-                                      w_px=SC_W, h_px=CHART_H)
-        img(sc1_png, SC1_X, cy+18, SC_W, CHART_H)
-    except Exception as _e:
-        tx(f"오류: {_e}", SC1_X+6, cy+SC_TOTAL_H//2, SC_W-12, 16, sz=6, clr=(220,80,80))
-    try:
-        sc2_png = _chart_scatter_png(fs2_name, fs2_high, fs2_med, fs2_threshold,
-                                      w_px=SC_W, h_px=CHART_H)
-        img(sc2_png, SC2_X, cy+18, SC_W, CHART_H)
-    except Exception as _e:
-        tx(f"오류: {_e}", SC2_X+6, cy+SC_TOTAL_H//2, SC_W-12, 16, sz=6, clr=(220,80,80))
+    if show_l3:
+        l3_replace = replace_map.get("L3_trend")
+        l3_title = l3_replace.get("title") if l3_replace else slabel('L3','불량 트렌드')
+        tx(f"3. {l3_title}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
+        cy += 18
+        bx(LX+12, cy, LW-24, L3_H, (255,255,255), (156,163,175), 0.5)
+        try:
+            if l3_replace:
+                png = _chart_custom_png(l3_replace, w_px=LW-24, h_px=L3_H)
+            else:
+                png = _chart_trend_png(lot_labels, lot_production, lot_pred_yield,
+                                        w_px=LW-24, h_px=L3_H, defect_ppm=lot_defect_ppm)
+            img(png, LX+12, cy, LW-24, L3_H)
+        except Exception as _e:
+            tx(f"차트 오류: {_e}", LX+16, cy+L3_H//2, LW-32, 18, sz=7, clr=(220,80,80))
 
     # ─── 우칼럼 sbox ───────────────────────────────────────────
     RW = COL_W
@@ -745,170 +920,199 @@ def build_pptx(report_data: dict) -> bytes:
 
     ry = BY + SHDR_H + 10
 
-    # ── R1. 대표 Unit ─────────────────────────────────────────
-    tx(f"1. {slabel('R1','대표 불량 unit 분석')}", RX+12, ry, RW-24, 16, sz=9, bold=True, clr=(17,24,39))
-    ry += 18
+    show_r1 = "R1_unit"    not in hidden_sids
+    show_r2 = "R2_anomaly" not in hidden_sids
+    show_r3 = "R3_scatter" not in hidden_sids
 
-    # 웨이퍼맵 | 정보 테이블
-    UNIT_H  = 234
-    WAFER_W = 208
-    INFO_W  = RW - 24 - WAFER_W - 10
-
-    # 웨이퍼맵
-    bx(RX+12, ry, WAFER_W, UNIT_H, (255,255,255), (156,163,175), 0.5)
-    tx(f"웨이퍼맵 · {unit_serial}", RX+15, ry+6, WAFER_W-8, 14, sz=8, bold=True, clr=(17,24,39))
-    bx(RX+12, ry+22, WAFER_W, 1, (209,213,219))
-    try:
-        wmap_png = _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, unit_serial,
-                                     w_px=WAFER_W, h_px=UNIT_H-23)
-        img(wmap_png, RX+12, ry+23, WAFER_W, UNIT_H-23)
-    except Exception as _e:
-        tx(f"웨이퍼맵 오류: {_e}", RX+16, ry+90, WAFER_W-8, 18, sz=7, clr=(220,80,80))
-
-    # 정보 테이블
-    INFO_X = RX + 12 + WAFER_W + 10
-    bx(INFO_X, ry, INFO_W, UNIT_H, (255,255,255), (156,163,175), 0.5)
-
-    pos_health_map = _tu.get("pos_health", {})
-    unit_rows = [
-        ("시리얼",      unit_serial,                        False),
-        ("LOT_ID",      unit_lot,                           False),
-        ("WAFER_ID",    unit_wafer,                         False),
-        ("예측 health", f"{_pred_h_disp}  (≥ 0.002)",       True),
-        ("생산 일자",   today_str,                          False),
-        ("예측 일자",   today_str,                          False),
-        ("P1 health",   str(pos_health_map.get("P1", "-")), False),
-        ("P2 health",   str(pos_health_map.get("P2", "-")), False),
-        ("P3 health",   str(pos_health_map.get("P3", "-")), False),
-        ("P4 health",   str(pos_health_map.get("P4", "-")), False),
-    ]
-    N_ROWS = len(unit_rows)
-    ROW_H  = UNIT_H // N_ROWS
-    LBL_W  = 74
-
-    for ri, (lbl, val, is_hot) in enumerate(unit_rows):
-        row_y = ry + ri * ROW_H
-        if row_y + ROW_H > ry + UNIT_H: break
-        bg = (255,255,255) if ri%2==0 else (248,250,252)
-        bx(INFO_X, row_y, INFO_W, ROW_H, bg, (209,213,219), 0.3)
-        tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=8, bold=True, clr=(55,65,81))
-        bx(INFO_X+LBL_W, row_y+3, 1, ROW_H-6, (209,213,219))
-        val_clr = (138,31,31) if is_hot else (17,24,39)
-        tx(str(val), INFO_X+LBL_W+6, row_y+4, INFO_W-LBL_W-10, ROW_H-8,
-           sz=8, bold=is_hot, clr=val_clr)
-
-    ry += UNIT_H + 14
-
-    # ── R2. Anomaly + FI 그리드 ────────────────────────────────
-    REMAIN_H = BY + SBOX_H - ry - 4
-    PANEL_GAP = 10
-    # Anomaly: 40%, FI: 60%
-    ANOM_W = int((RW - 24 - PANEL_GAP) * 0.40)
-    FI_W   = RW - 24 - PANEL_GAP - ANOM_W
-    HDR_H_PANEL = 28
-
-    # ── Anomaly Feature 패널 ────────────────────────────────────
-    AX = RX + 12
-    bx(AX, ry, ANOM_W, REMAIN_H, (255,254,248), (156,163,175), 0.5)
-    bx(AX, ry, ANOM_W, HDR_H_PANEL, (243,244,246), (156,163,175), 0.5)
-    tx(f"Anomaly Feature Top {len(anomaly_stats)}", AX+8, ry+7, ANOM_W-16, 16,
-       sz=9, bold=True, clr=(17,24,39))
-
-    n_anom = max(len(anomaly_stats), 1)
-    ACARD_H = max(36, (REMAIN_H - HDR_H_PANEL - 8) // n_anom)
-    # 라벨 너비: "정상" "불량" 텍스트를 바 왼쪽에 붙임
-    LBL_W_A = 20
-    BAR_W_A = ANOM_W - 16 - LBL_W_A  # 바 너비
-
-    for ai, s in enumerate(anomaly_stats):
-        ay = ry + HDR_H_PANEL + 4 + ai * ACARD_H
-        if ay + ACARD_H > ry + REMAIN_H - 2: break
-        fname      = s.get("feature","")
-        danger     = s.get("danger", 0)
-        normal_pct = s.get("normal", 100-danger)
-        g1m        = s.get("grade1_mean")
-        g4m        = s.get("grade4_mean")
-
-        bg = (255,255,255) if ai%2==0 else (248,250,252)
-        bx(AX+2, ay, ANOM_W-4, ACARD_H, bg, (229,231,235), 0.3)
-
-        # 피처명 (상단)
-        NAME_H = 15
-        tx(fname, AX+7, ay+3, ANOM_W-14, NAME_H, sz=8, bold=True, clr=(17,24,39))
-
-        # 바 비율 계산
-        if g1m is not None and g4m is not None:
+    # ── R1. 대표 Unit (웨이퍼맵 + 정보 테이블, 1:1 분할) ──────
+    UNIT_H  = 300 if show_r1 else 0
+    INNER_R = RW - 24
+    HALF_W  = (INNER_R - 7) // 2   # 1:1 grid with 7px gap
+    if show_r1:
+        r1_replace = replace_map.get("R1_unit")
+        if r1_replace:
+            # R1 자리를 custom 차트가 대체
+            bx(RX+12, ry, INNER_R, UNIT_H, (255,255,255), (156,163,175), 0.5)
+            tx(r1_replace.get("title",""), RX+15, ry+5, INNER_R-8, 14, sz=8, bold=True, clr=(17,24,39))
             try:
-                g1f=float(g1m); g4f=float(g4m)
-                mn=min(g1f,g4f); mx=max(g1f,g4f)
-                rng=max(abs(mx-mn)*1.4, abs(mx)*0.05, 1e-9)
-                axis_min=mn-rng*0.1; span=max(mx+rng*0.1-axis_min,1e-9)
-                g4_pct=min(100,max(4,(g4f-axis_min)/span*100))
-                g1_pct=min(100,max(4,(g1f-axis_min)/span*100))
-            except: g4_pct=normal_pct; g1_pct=danger
+                png = _chart_custom_png(r1_replace, w_px=INNER_R-6, h_px=UNIT_H-22)
+                img(png, RX+15, ry+22, INNER_R-6, UNIT_H-22)
+            except Exception as _e:
+                tx(f"차트 오류: {_e}", RX+16, ry+UNIT_H//2, INNER_R-8, 18, sz=7, clr=(220,80,80))
         else:
-            g4_pct=normal_pct; g1_pct=danger
+            # 웨이퍼맵 박스
+            bx(RX+12, ry, HALF_W, UNIT_H, (255,255,255), (156,163,175), 0.5)
+            tx("불량 위치 웨이퍼맵", RX+15, ry+6, HALF_W-8, 14, sz=8, bold=True, clr=(17,24,39))
+            bx(RX+12, ry+22, HALF_W, 1, (209,213,219))
+            try:
+                wmap_png = _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, unit_serial,
+                                             w_px=HALF_W-10, h_px=UNIT_H-44)
+                img(wmap_png, RX+17, ry+24, HALF_W-10, UNIT_H-44)
+            except Exception as _e:
+                tx(f"웨이퍼맵 오류: {_e}", RX+16, ry+UNIT_H//2, HALF_W-8, 18, sz=7, clr=(220,80,80))
+            tx(unit_serial, RX+12, ry+UNIT_H-16, HALF_W, 14, sz=9, bold=True, clr=(17,24,39), align="center")
 
-        # 바 높이: 피처명 아래 남은 공간을 정상/불량 2줄로
-        BAR_H_A = max(8, (ACARD_H - NAME_H - 14) // 2)
-        bar_top = ay + NAME_H + 4
-        bar_bot = bar_top + BAR_H_A + 4
+            # 정보 테이블 (상단 4행 + 포지션 4행)
+            INFO_X = RX + 12 + HALF_W + 7
+            bx(INFO_X, ry, HALF_W, UNIT_H, (255,255,255), (156,163,175), 0.5)
 
-        BAR_X = AX + 8 + LBL_W_A
+            pos_health_map = _tu.get("pos_health", {})
+            top_rows = [
+                ("ufs_serial",  unit_serial,    False),
+                ("LOT_ID",      unit_lot,       False),
+                ("WAFER_ID",    unit_wafer,     False),
+                ("예측 health", _pred_h_disp,   True),
+            ]
+            pos_rows = [
+                ("P1",  str(pos_health_map.get("P1", "-"))),
+                ("P2",  str(pos_health_map.get("P2", "-"))),
+                ("P3",  str(pos_health_map.get("P3", "-"))),
+                ("P4",  str(pos_health_map.get("P4", "-"))),
+            ]
+            POS_HDR_H = 22
+            ROW_H = (UNIT_H - POS_HDR_H) // 8
+            LBL_W = 80
 
-        # 정상 바 (초록) + 라벨
-        tx("정상", AX+7, bar_top, LBL_W_A-1, BAR_H_A, sz=6, clr=(22,128,60))
-        bx(BAR_X, bar_top, BAR_W_A, BAR_H_A, (220,235,220))
-        bx(BAR_X, bar_top, max(4,int(BAR_W_A*g4_pct/100)), BAR_H_A, (22,128,60))
+            for ri, (lbl, val, is_hot) in enumerate(top_rows):
+                row_y = ry + ri * ROW_H
+                bg = (255,255,255) if ri%2==0 else (248,250,252)
+                bx(INFO_X, row_y, HALF_W, ROW_H, bg, (209,213,219), 0.3)
+                tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=8, bold=True, clr=(55,65,81))
+                val_clr = (138,31,31) if is_hot else (17,24,39)
+                tx(str(val), INFO_X+LBL_W+6, row_y+4, HALF_W-LBL_W-10, ROW_H-8,
+                   sz=9, bold=is_hot, clr=val_clr)
 
-        # 불량 바 (빨강) + 라벨
-        tx("불량", AX+7, bar_bot, LBL_W_A-1, BAR_H_A, sz=6, clr=(185,28,28))
-        bx(BAR_X, bar_bot, BAR_W_A, BAR_H_A, (240,218,218))
-        bx(BAR_X, bar_bot, max(4,int(BAR_W_A*g1_pct/100)), BAR_H_A, (185,28,28))
+            ph_y = ry + 4*ROW_H
+            bx(INFO_X, ph_y, HALF_W, POS_HDR_H, (243,244,246), (209,213,219), 0.3)
+            tx("포지션별 예측 health값", INFO_X+6, ph_y+4, HALF_W-12, POS_HDR_H-8,
+               sz=8, bold=True, clr=(17,24,39))
 
-    # ── Feature Importance 패널 ─────────────────────────────────
-    FIX = AX + ANOM_W + PANEL_GAP
-    bx(FIX, ry, FI_W, REMAIN_H, (255,255,255), (156,163,175), 0.5)
-    bx(FIX, ry, FI_W, HDR_H_PANEL, (243,244,246), (156,163,175), 0.5)
-    tx("Feature Importance", FIX+8, ry+7, FI_W-16, 16, sz=9, bold=True, clr=(17,24,39))
+            for ri, (lbl, val) in enumerate(pos_rows):
+                row_y = ph_y + POS_HDR_H + ri * ROW_H
+                bg = (255,255,255) if ri%2==0 else (248,250,252)
+                bx(INFO_X, row_y, HALF_W, ROW_H, bg, (209,213,219), 0.3)
+                tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=8, bold=True, clr=(55,65,81))
+                tx(val, INFO_X+LBL_W+6, row_y+4, HALF_W-LBL_W-10, ROW_H-8,
+                   sz=9, bold=False, clr=(138,31,31))
 
-    n_fi = max(len(features), 1)
-    FIROW_H = max(20, (REMAIN_H - HDR_H_PANEL - 8) // n_fi)
+        ry += UNIT_H + 10
 
-    # 칼럼 레이아웃: [번호 20][피처명 68][바 가변][%값 44]
-    NUM_W   = 20
-    FNAME_W = 68
-    PCT_W   = 44
-    PAD_FI  = 8
-    BAR_X_OFF = PAD_FI + NUM_W + FNAME_W + 4
-    BAR_AREA_W = FI_W - BAR_X_OFF - PCT_W - PAD_FI - 6
+    # ── R2 Anomaly + R3 분포 비교 그리드 ──────────────────────
+    REMAIN_H  = BY + SBOX_H - ry - 4
+    PANEL_GAP = 7
+    HDR_H_PANEL = 24
 
-    for fi_i, f in enumerate(features):
-        fy = ry + HDR_H_PANEL + 4 + fi_i * FIROW_H
-        if fy + FIROW_H > ry + REMAIN_H - 2: break
-        fname     = f.get("feature","")
-        gain      = f.get("lgbm_gain",0) or 0
-        pct_val   = round(gain/total_gain*100, 1)
-        bar_fill  = max(2, int(gain/max_gain * BAR_AREA_W))
+    if show_r2 and show_r3:
+        R2_W = (RW - 24 - PANEL_GAP) // 2
+        R3_X_OFFSET = R2_W + PANEL_GAP
+        R3_W = R2_W
+    elif show_r2:
+        R2_W = RW - 24; R3_X_OFFSET = 0; R3_W = 0
+    elif show_r3:
+        R2_W = 0; R3_X_OFFSET = 0; R3_W = RW - 24
+    else:
+        R2_W = 0; R3_X_OFFSET = 0; R3_W = 0
 
-        bg = (255,255,255) if fi_i%2==0 else (248,250,252)
-        bx(FIX+2, fy, FI_W-4, FIROW_H, bg, (229,231,235), 0.3)
+    AX = RX + 12
 
-        tx(str(fi_i+1), FIX+PAD_FI, fy+4, NUM_W, FIROW_H-8,
-           sz=7, clr=(120,128,110))
-        tx(fname, FIX+PAD_FI+NUM_W, fy+4, FNAME_W, FIROW_H-8,
-           sz=8, bold=True, clr=(32,40,50))
+    # ── R2 Anomaly Feature 패널 ─────────────────────────────────
+    if show_r2:
+        r2_replace = replace_map.get("R2_anomaly")
+        bx(AX, ry, R2_W, REMAIN_H, (255,254,248), (156,163,175), 0.5)
+        bx(AX, ry, R2_W, HDR_H_PANEL, (243,244,246), (156,163,175), 0.5)
+        r2_title = r2_replace.get("title") if r2_replace else f"Anomaly Feature Top {len(anomaly_stats)}"
+        tx(r2_title, AX+8, ry+5, R2_W-16, 16, sz=9, bold=True, clr=(17,24,39))
 
-        # 바
-        BX_BAR = FIX + BAR_X_OFF
-        bx(BX_BAR, fy+5, BAR_AREA_W, FIROW_H-10, (238,233,223), (201,192,177), 0.3)
-        bx(BX_BAR, fy+5, min(bar_fill, BAR_AREA_W), FIROW_H-10, (55,65,81))
+        if r2_replace:
+            try:
+                png = _chart_custom_png(r2_replace, w_px=R2_W-6, h_px=REMAIN_H-HDR_H_PANEL-4)
+                img(png, AX+3, ry+HDR_H_PANEL+2, R2_W-6, REMAIN_H-HDR_H_PANEL-4)
+            except Exception as _e:
+                tx(f"차트 오류: {_e}", AX+6, ry+REMAIN_H//2, R2_W-12, 18, sz=7, clr=(220,80,80))
+        else:
+            n_anom  = max(len(anomaly_stats), 1)
+            ACARD_H = max(34, (REMAIN_H - HDR_H_PANEL - 6) // n_anom)
+            LBL_W_A = 20
+            BAR_W_A = R2_W - 18 - LBL_W_A - 50
 
-        # % 값 — PCT_W=44 으로 넉넉하게 확보
-        tx(f"{pct_val}%", BX_BAR+BAR_AREA_W+4, fy+4, PCT_W, FIROW_H-8,
-           sz=7, bold=True, clr=(55,65,81), align="left")
+            for ai, s in enumerate(anomaly_stats):
+                ay = ry + HDR_H_PANEL + 3 + ai * ACARD_H
+                if ay + ACARD_H > ry + REMAIN_H - 2: break
+                fname      = s.get("feature","")
+                danger     = s.get("danger", 0)
+                normal_pct = s.get("normal", 100-danger)
+                g1m        = s.get("grade1_mean")
+                g4m        = s.get("grade4_mean")
+
+                bg = (255,255,255) if ai%2==0 else (248,250,252)
+                bx(AX+2, ay, R2_W-4, ACARD_H, bg, (229,231,235), 0.3)
+
+                NAME_H = 14
+                tx(fname, AX+7, ay+2, R2_W-14, NAME_H, sz=8, bold=True, clr=(17,24,39))
+
+                if g1m is not None and g4m is not None:
+                    try:
+                        g1f=float(g1m); g4f=float(g4m)
+                        mn=min(g1f,g4f); mx=max(g1f,g4f)
+                        rng=max(abs(mx-mn)*1.4, abs(mx)*0.05, 1e-9)
+                        axis_min=mn-rng*0.1; span=max(mx+rng*0.1-axis_min,1e-9)
+                        g4_pct=min(100,max(4,(g4f-axis_min)/span*100))
+                        g1_pct=min(100,max(4,(g1f-axis_min)/span*100))
+                    except: g4_pct=normal_pct; g1_pct=danger
+                else:
+                    g4_pct=normal_pct; g1_pct=danger
+
+                BAR_H_A = max(7, (ACARD_H - NAME_H - 10) // 2)
+                bar_top = ay + NAME_H + 2
+                bar_bot = bar_top + BAR_H_A + 3
+                BAR_X = AX + 8 + LBL_W_A
+
+                tx("정상", AX+7, bar_top, LBL_W_A-1, BAR_H_A, sz=6, clr=(22,128,60))
+                bx(BAR_X, bar_top, BAR_W_A, BAR_H_A, (220,235,220))
+                bx(BAR_X, bar_top, max(4,int(BAR_W_A*g4_pct/100)), BAR_H_A, (22,128,60))
+                if g4m is not None:
+                    tx(f"{float(g4m):.4g}", BAR_X+BAR_W_A+4, bar_top, 46, BAR_H_A,
+                       sz=6, bold=True, clr=(22,128,60), align="right")
+
+                tx("불량", AX+7, bar_bot, LBL_W_A-1, BAR_H_A, sz=6, clr=(185,28,28))
+                bx(BAR_X, bar_bot, BAR_W_A, BAR_H_A, (240,218,218))
+                bx(BAR_X, bar_bot, max(4,int(BAR_W_A*g1_pct/100)), BAR_H_A, (185,28,28))
+                if g1m is not None:
+                    tx(f"{float(g1m):.4g}", BAR_X+BAR_W_A+4, bar_bot, 46, BAR_H_A,
+                       sz=6, bold=True, clr=(185,28,28), align="right")
+
+    # ── R3 피처 정상/불량 분포 비교 패널 ─────────────────────
+    if show_r3:
+        r3_replace = replace_map.get("R3_scatter")
+        feat_dist_compare = report_data.get("feat_dist_compare", {})
+        fdc_feature   = feat_dist_compare.get("feature", "")
+        fdc_labels    = feat_dist_compare.get("labels", [])
+        fdc_normal    = feat_dist_compare.get("normal", [])
+        fdc_danger    = feat_dist_compare.get("danger", [])
+        fdc_threshold = feat_dist_compare.get("threshold")
+        if not fdc_feature and features:
+            fdc_feature = features[0].get("feature", "")
+
+        FIX = AX + R3_X_OFFSET
+        bx(FIX, ry, R3_W, REMAIN_H, (255,255,255), (156,163,175), 0.5)
+        bx(FIX, ry, R3_W, HDR_H_PANEL, (243,244,246), (156,163,175), 0.5)
+        r3_title = r3_replace.get("title") if r3_replace else f"피처 정상/불량 분포 · {fdc_feature}"
+        tx(r3_title, FIX+8, ry+5, R3_W-16, 16, sz=9, bold=True, clr=(17,24,39))
+
+        try:
+            if r3_replace:
+                png = _chart_custom_png(r3_replace, w_px=R3_W-6, h_px=REMAIN_H-HDR_H_PANEL-4)
+            else:
+                png = _chart_fdc_line_png(fdc_labels, fdc_normal, fdc_danger, fdc_threshold,
+                                           fdc_feature, w_px=R3_W-6, h_px=REMAIN_H-HDR_H_PANEL-4)
+            img(png, FIX+3, ry+HDR_H_PANEL+2, R3_W-6, REMAIN_H-HDR_H_PANEL-4)
+        except Exception as _e:
+            tx(f"차트 오류: {_e}", FIX+6, ry+REMAIN_H//2, R3_W-12, 18, sz=7, clr=(220,80,80))
 
     # ─── 푸터 ──────────────────────────────────────────────────
+    has_extra_page = bool(extra_sections) or bool(commentary_list)
+    total_pages = 2 if has_extra_page else 1
+
     FTR_Y = SH - FTR_H
     bx(0, FTR_Y, SW, FTR_H, (241,245,249))
     bx(0, FTR_Y, SW, 1, (107,114,128))
@@ -916,8 +1120,69 @@ def build_pptx(report_data: dict) -> bytes:
        sz=8, bold=True, clr=(17,24,39))
     tx(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
        sz=8, clr=(75,85,99), align="center")
-    tx("Field Health Prediction Model v1.0  ·  Page 1 of 1", SW-270, FTR_Y+4, 258, 14,
+    tx(f"Field Health Prediction Model v1.0  ·  Page 1 of {total_pages}", SW-270, FTR_Y+4, 258, 14,
        sz=8, clr=(75,85,99), align="right")
+
+    # ─── 2번째 슬라이드: 추가 차트 + 메모 (있을 때만) ───────────
+    if has_extra_page:
+        slide2 = prs.slides.add_slide(prs.slide_layouts[6])
+
+        def bx2(x, y, w, h, fill, line=None, lpt=0.5):
+            return _box(slide2, x, y, w, h, fill, line, lpt, dpi=DPI)
+        def tx2(text, x, y, w, h, sz=9, bold=False, clr=(32,36,42), align="left", wrap=True):
+            return _txt(slide2, text, x, y, w, h, sz, bold, clr, align, wrap, DPI)
+        def img2(png_bytes, x, y, w, h):
+            return _png_shape(slide2, png_bytes, x, y, w, h, DPI)
+
+        # 헤더
+        bx2(0, 0, SW, SH, (255,255,255))
+        bx2(0, 0, SW, TOPBAR_H, (255,255,255))
+        bx2(0, TOPBAR_H-2, SW, 2, (30,58,138))
+        tx2(f"발행일자: {today_str}", 18, 9, 220, 20, sz=10, bold=True, clr=(51,78,118))
+        tx2(f"{report_title} (추가)", 0, 7, SW, 24, sz=14, bold=True, clr=(15,23,42), align="center")
+
+        # 본문
+        body_y = TOPBAR_H + 16
+        cur_y = body_y
+
+        # 메모 영역
+        for it in commentary_list:
+            note_h = 56
+            bx2(20, cur_y, SW-40, note_h, (255,251,235), (253,224,71), 0.75)
+            tx2(f"📝 {it.get('title','메모')}", 30, cur_y+6, SW-60, 18,
+                sz=10, bold=True, clr=(146,64,14))
+            tx2(_strip_html(it.get('content','')), 30, cur_y+26, SW-60, note_h-30,
+                sz=9, clr=(30,41,59))
+            cur_y += note_h + 8
+
+        # 추가 차트 — 2열 그리드, 각 셀 600×200
+        if extra_sections:
+            COL_W2 = (SW - 40 - 20) // 2  # 두 열 + 20 gap
+            CARD_H2 = 220
+            for idx, sec in enumerate(extra_sections):
+                col = idx % 2
+                row = idx // 2
+                cx2 = 20 + col * (COL_W2 + 20)
+                cy2 = cur_y + row * (CARD_H2 + 10)
+                if cy2 + CARD_H2 > SH - FTR_H - 10:
+                    break  # 페이지 초과 시 중단
+                bx2(cx2, cy2, COL_W2, CARD_H2, (255,255,255), (156,163,175), 0.5)
+                tx2(sec.get("title","섹션"), cx2+8, cy2+6, COL_W2-16, 16,
+                    sz=10, bold=True, clr=(17,24,39))
+                try:
+                    png = _chart_custom_png(sec, w_px=COL_W2-12, h_px=CARD_H2-28)
+                    img2(png, cx2+6, cy2+24, COL_W2-12, CARD_H2-28)
+                except Exception as _e:
+                    tx2(f"차트 오류: {_e}", cx2+10, cy2+CARD_H2//2, COL_W2-20, 18, sz=7, clr=(220,80,80))
+
+        # 푸터
+        bx2(0, FTR_Y, SW, FTR_H, (241,245,249))
+        bx2(0, FTR_Y, SW, 1, (107,114,128))
+        tx2("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14, sz=8, bold=True, clr=(17,24,39))
+        tx2(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
+            sz=8, clr=(75,85,99), align="center")
+        tx2(f"Field Health Prediction Model v1.0  ·  Page 2 of {total_pages}", SW-270, FTR_Y+4, 258, 14,
+            sz=8, clr=(75,85,99), align="right")
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -1212,7 +1477,7 @@ def build_html(report_data: dict) -> str:
             else:
                 val_display = '<span style="color:#9ca3af">-</span>'
         pos_health_rows += (
-            f'<div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center">'
+            f'<div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center">'
             f'<div class="unit-lbl">{p}</div>'
             f'<div class="unit-val">{val_display}</div>'
             f'</div>'
@@ -1385,7 +1650,7 @@ def build_html(report_data: dict) -> str:
     wd_serial   = wafer_die.get("serial", dummy_unit["serial"])
 
     # ── 웨이퍼맵 HTML (pred 연속 그라디언트 색상, DrilldownV2 동일)
-    wmap_w, wmap_h = 210, 210
+    wmap_w, wmap_h = 240, 240
     cx, cy_c = wmap_w / 2, wmap_h / 2
     pad = 14
     r_svg = min(cx, cy_c) - pad
@@ -1529,7 +1794,7 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 .inum{{font-size:11px;font-weight:900;color:#111827;margin:4px 0 2px;height:18px;box-sizing:border-box;flex-shrink:0}}
 .cbox{{border:1px solid #9ca3af;background:#fff;margin-bottom:5px;flex-shrink:0}}
 .cbox-body{{padding:3px 5px;position:relative}}
-.unit-main{{display:grid;grid-template-columns:220px 1fr;gap:6px;margin-bottom:5px;flex-shrink:0;align-items:stretch}}
+.unit-main{{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:5px;flex-shrink:0;align-items:stretch}}
 .wafer-box{{border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column;align-items:center;padding:5px;gap:2px;height:100%}}
 .wafer-box-title{{font-size:10px;font-weight:900;color:#111827;align-self:stretch;border-bottom:1px solid #d1d5db;padding-bottom:3px;margin-bottom:1px}}
 .unit-tbl{{border:1px solid #9ca3af;overflow:hidden;background:#fff}}
@@ -1632,13 +1897,13 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
         </div>
       </div>
 
-      <div class="inum">2. {slabel("L2","Feature Importance Top 5")} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px;letter-spacing:.02em">출처: ZIT_only</span></div>
-      <div class="cbox ia-target" data-sid="L2_fi" data-section="Feature Importance" style="position:relative;flex-shrink:0">
-        <div class="cbox-body" style="height:110px"><canvas id="c-fi-top"></canvas></div>
+      <div class="inum">2. {slabel("L2","Feature Importance Top 5")}</div>
+      <div class="cbox ia-target" data-sid="L2_fi" data-section="Feature Importance" style="position:relative;flex:1;display:flex;flex-direction:column">
+        <div class="cbox-body" style="flex:1;position:relative"><canvas id="c-fi-top" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas></div>
       </div>
 
       <div class="inum">3. {slabel("L3","불량 트렌드")}</div>
-      <div class="cbox ia-target" data-sid="L3_trend" data-section="불량 트렌드" style="position:relative;flex:1;display:flex;flex-direction:column"{_dummy_attr(_is_dummy_l2)}>
+      <div class="cbox ia-target" data-sid="L3_trend" data-section="불량 트렌드" style="position:relative;flex:1;display:flex;flex-direction:column;min-height:0"{_dummy_attr(_is_dummy_l2)}>
         <div class="cbox-body" style="flex:1;position:relative"><canvas id="c-trend" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas></div>
       </div>
 
@@ -1653,23 +1918,25 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
     <div class="shdr">{slabel("right_header","[ 불량 예측 현황 ]")}</div>
     <div class="sbdy right-sbdy">
 
-      <div class="inum">1. {slabel("R1","불량 예측 현황 · 대표 불량 unit 기준")}</div>
       <div class="unit-main ia-target" data-sid="R1_unit" data-section="대표 Unit 정보" style="position:relative"{_dummy_attr(_is_dummy_r1)}>
         <div class="wafer-box">
           <div class="wafer-box-title">불량 위치 웨이퍼맵</div>
-          <div style="display:flex;align-items:center;justify-content:center;flex:1">{wafer_svg}</div>
-          <div style="font-size:8px;color:#4b5563;display:flex;gap:7px;align-items:center;width:100%;justify-content:center;margin-top:1px">
-            <span style="display:inline-block;width:60px;height:7px;background:linear-gradient(to right,#f3f4f6,#dbeafe,#a5d7dc,#fef08a,#fb923c,#dc2626);border-radius:2px"></span>
-            <span style="font-size:7px;color:#6b7280">정상 → 위험</span>
-            <span style="font-family:Consolas,monospace;font-weight:900;margin-left:4px">{dummy_unit["serial"]}</span>
+          <div style="display:flex;align-items:center;justify-content:center;flex:1;gap:6px;width:100%">
+            {wafer_svg}
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:#6b7280;height:{wmap_h}px;padding:4px 2px">
+              <span style="font-size:8px;font-weight:700;color:#dc2626">위험</span>
+              <span style="display:inline-block;width:8px;flex:1;background:linear-gradient(to bottom,#dc2626,#fb923c,#fef08a,#a5d7dc,#dbeafe,#f3f4f6);border-radius:2px;margin:3px 0"></span>
+              <span style="font-size:8px;font-weight:700;color:#16803c">정상</span>
+            </div>
           </div>
+          <div style="font-size:9px;color:#4b5563;text-align:center;width:100%;font-family:Consolas,monospace;font-weight:900;margin-top:2px">{dummy_unit["serial"]}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
           <div class="unit-tbl">
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">ufs_serial</div><div class="unit-val">{dummy_unit["serial"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">LOT_ID</div><div class="unit-val">{dummy_unit["lot"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">WAFER_ID</div><div class="unit-val">{dummy_unit["wafer"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:28px;align-items:center"><div class="unit-lbl">예측 health</div><div class="unit-val hot">{dummy_unit["pred_health"]} <span style="font-size:9px;color:#6b7280">(평균대비 +51% 열화)</span></div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">ufs_serial</div><div class="unit-val">{dummy_unit["serial"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">LOT_ID</div><div class="unit-val">{dummy_unit["lot"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">WAFER_ID</div><div class="unit-val">{dummy_unit["wafer"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">예측 health</div><div class="unit-val hot">{dummy_unit["pred_health"]} <span style="font-size:9px;color:#6b7280">(평균대비 +51% 열화)</span></div></div>
           </div>
           <div class="pos-panel" style="position:relative"{_dummy_attr(_is_dummy_r1b)}>
             <div class="pos-hdr">포지션별 예측 health값</div>
@@ -1678,13 +1945,13 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:stretch;flex:1;overflow:hidden">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:stretch;height:260px;flex-shrink:0;overflow:hidden">
         <div class="anom-panel ia-target" data-sid="R2_anomaly" data-section="Anomaly Feature" style="position:relative">
-          <div class="anom-hdr">Anomaly Feature Top {len(anomaly_stats) if anomaly_stats else 5} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px">출처: ZIT_only</span></div>
+          <div class="anom-hdr">Anomaly Feature Top {len(anomaly_stats) if anomaly_stats else 5}</div>
           <div class="anom-list">{anomaly_rows}</div>
         </div>
         <div class="fi-panel ia-target" data-sid="R3_scatter" data-section="피처 정상/불량 분포" style="position:relative;display:flex;flex-direction:column">
-          <div class="fi-hdr">피처 정상/불량 분포 · {fdc.get("feature","") or (features[0].get("feature","") if features else "")} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px">출처: ZIT_only</span></div>
+          <div class="fi-hdr">피처 정상/불량 분포 · {fdc.get("feature","") or (features[0].get("feature","") if features else "")}</div>
           <div style="flex:1;position:relative;padding:4px">
             <canvas id="c-feat-dist" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas>
           </div>
