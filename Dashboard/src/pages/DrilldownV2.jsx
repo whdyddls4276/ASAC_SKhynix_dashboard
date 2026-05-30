@@ -276,6 +276,11 @@ function FeatureWaferMap({ feature, allDies, shapBeeswarm }) {
   }, [feature, allDies, shapBeeswarm])
 
   if (!feature) return null
+  if (!shapBeeswarm?.length) return (
+    <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>
+      {feature} — SHAP 데이터 로딩 중..
+    </div>
+  )
   if (!heatDies.length) return (
     <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>
       {feature} 데이터 없음
@@ -447,7 +452,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
       {/* 보고서 생성 버튼은 AI Agent 서버 비활성으로 인해 숨김 */}
 
       {/* 피처 웨이퍼 히트맵 (SHAP 막대 클릭 시 표시) */}
-      {selectedFeature && shapBeeswarm?.length > 0 && (
+      {selectedFeature && (
         <div className="dd-section-box">
           <FeatureWaferMap feature={selectedFeature} allDies={allDies} shapBeeswarm={shapBeeswarm} />
         </div>
