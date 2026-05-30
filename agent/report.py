@@ -177,8 +177,8 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
     xs = np.arange(n)
     ax1.bar(xs, lot_production, color="#6366f1",
             alpha=0.35, width=0.55, zorder=1, label="생산량")
-    ax1.set_ylabel("생산량(개)", fontsize=8, color="#94a3b8")
-    ax1.tick_params(axis="y", labelsize=8, colors="#94a3b8")
+    ax1.set_ylabel("생산량(개)", fontsize=11, color="#94a3b8")
+    ax1.tick_params(axis="y", labelsize=11, colors="#94a3b8")
 
     ax2 = ax1.twinx()
     ax2.plot(xs, ppm, color="#3b82f6", linewidth=1.5, marker="o", markersize=3,
@@ -187,13 +187,13 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
     if ppm:
         ax2.plot(xs[-1], ppm[-1], "o", color="#DC2626", markersize=7,
                  markeredgecolor="#ffffff", markeredgewidth=1.5, zorder=3)
-    ax2.set_ylabel("예측불량 ppm", fontsize=8, color="#4b5563")
-    ax2.tick_params(axis="y", labelsize=8, colors="#4b5563")
+    ax2.set_ylabel("예측불량 ppm", fontsize=11, color="#4b5563")
+    ax2.tick_params(axis="y", labelsize=11, colors="#4b5563")
     import matplotlib.ticker as _mticker
     ax2.yaxis.set_major_formatter(_mticker.FuncFormatter(lambda v,_: f"{v/1000:.0f}k"))
 
     ax1.set_xticks(xs)
-    ax1.set_xticklabels(ww_labels, fontsize=8, rotation=0, color="#4b5563")
+    ax1.set_xticklabels(ww_labels, fontsize=11, rotation=0, color="#4b5563")
     ax1.tick_params(axis="x", length=0)
     for sp in ax1.spines.values(): sp.set_visible(False)
     for sp in ax2.spines.values(): sp.set_visible(False)
@@ -201,7 +201,7 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1+lines2, labels1+labels2, fontsize=8, loc="upper left",
+    ax1.legend(lines1+lines2, labels1+labels2, fontsize=11, loc="upper left",
                framealpha=0, ncol=2)
 
     fig.tight_layout(pad=0.3)
@@ -239,15 +239,15 @@ def _chart_lot_defects_png(lot_defect, w_px=580, h_px=110) -> bytes:
 
     xs = np.arange(n)
     ax1.bar(xs, counts, color=colors_mpl, alpha=0.8, width=0.6, zorder=1, label="Defect count")
-    ax1.set_ylabel("units", fontsize=8, color="#4b5563")
-    ax1.tick_params(axis="y", labelsize=8, colors="#4b5563")
+    ax1.set_ylabel("units", fontsize=11, color="#4b5563")
+    ax1.tick_params(axis="y", labelsize=11, colors="#4b5563")
 
     ax2 = ax1.twinx()
     ax2.plot(xs, rates, color="#111827", linewidth=1.2, marker="o", markersize=2,
              zorder=2, label="Defect rate")
     ax2.set_ylim(0, 100)
-    ax2.set_ylabel("%", fontsize=8, color="#4b5563")
-    ax2.tick_params(axis="y", labelsize=8, colors="#4b5563")
+    ax2.set_ylabel("%", fontsize=11, color="#4b5563")
+    ax2.tick_params(axis="y", labelsize=11, colors="#4b5563")
 
     ax1.set_xticks(xs)
     ax1.set_xticklabels(labels, fontsize=7, rotation=30, ha="right", color="#4b5563")
@@ -258,7 +258,7 @@ def _chart_lot_defects_png(lot_defect, w_px=580, h_px=110) -> bytes:
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1+lines2, labels1+labels2, fontsize=8, loc="upper left",
+    ax1.legend(lines1+lines2, labels1+labels2, fontsize=11, loc="upper left",
                framealpha=0, ncol=2)
 
     fig.tight_layout(pad=0.3)
@@ -296,9 +296,9 @@ def _chart_scatter_png(feat_name, high_pts, med_pts, threshold, w_px=270, h_px=1
                 transform=ax.transAxes, fontsize=10, color="#9ca3af")
 
     ax.set_title(feat_name, fontsize=9, color="#374151", fontweight="bold", pad=3)
-    ax.set_xlabel("피처값", fontsize=8, color="#4b5563", labelpad=2)
-    ax.set_ylabel("reg_pred", fontsize=8, color="#4b5563", labelpad=2)
-    ax.tick_params(labelsize=8, colors="#4b5563", length=2)
+    ax.set_xlabel("피처값", fontsize=11, color="#4b5563", labelpad=2)
+    ax.set_ylabel("reg_pred", fontsize=11, color="#4b5563", labelpad=2)
+    ax.tick_params(labelsize=11, colors="#4b5563", length=2)
     for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
     ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
     if has_data:
@@ -379,8 +379,8 @@ def _chart_custom_png(sec: dict, w_px: int, h_px: int) -> bytes:
             ys = [p.get("y", 0) for p in pts]
             ax.scatter(xs, ys, s=10, alpha=0.6, color=ds.get("color", "#3B82F6"),
                        label=ds.get("label", ""))
-        if datasets: ax.legend(fontsize=8, loc="best")
-        ax.tick_params(labelsize=8, colors="#4b5563")
+        if datasets: ax.legend(fontsize=11, loc="best")
+        ax.tick_params(labelsize=11, colors="#4b5563")
         ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
         for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
     else:  # bar or line
@@ -415,13 +415,13 @@ def _chart_custom_png(sec: dict, w_px: int, h_px: int) -> bytes:
             ax.set_yticks(xs); ax.set_yticklabels(labels, fontsize=9)
             ax.invert_yaxis()
         else:
-            ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=8, rotation=20, ha="right")
-        ax.tick_params(labelsize=8, colors="#4b5563")
+            ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=11, rotation=20, ha="right")
+        ax.tick_params(labelsize=11, colors="#4b5563")
         ax.grid(axis="x" if horizontal else "y", color="#eef0f2", linewidth=0.5, zorder=0)
         ax.set_axisbelow(True)
         for sp in ax.spines.values(): sp.set_visible(False)
         if n_ds > 1 or any(ds.get("label") for ds in datasets):
-            ax.legend(fontsize=8, loc="upper right", framealpha=0.85, handlelength=1.2)
+            ax.legend(fontsize=11, loc="upper right", framealpha=0.85, handlelength=1.2)
 
     fig.tight_layout(pad=0.3)
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
@@ -460,7 +460,7 @@ def _chart_fi_bar_png(features, w_px=580, h_px=200) -> bytes:
         ax.set_xlim(0, max_v * 1.15)
         from matplotlib.ticker import FuncFormatter
         ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}%"))
-        ax.tick_params(axis="x", labelsize=9, colors="#6b7280")
+        ax.tick_params(axis="x", labelsize=12, colors="#6b7280")
         ax.tick_params(axis="y", length=0)
         for sp in ax.spines.values(): sp.set_visible(False)
         ax.grid(axis="x", color="#eef0f2", linewidth=0.5, zorder=0)
@@ -497,11 +497,11 @@ def _chart_fdc_line_png(labels, normal, danger, threshold, feature_name, w_px=30
             ax.axvline(x=float(threshold), color="#dc2626", linewidth=1.2, linestyle="--")
             ax.text(float(threshold), ax.get_ylim()[1]*0.95,
                     f" 임계 {float(threshold):.2f}",
-                    color="#dc2626", fontsize=8.5, fontweight="bold", va="top")
-        ax.set_xlabel("피처값", fontsize=8.5, color="#4b5563", labelpad=2)
-        ax.set_ylabel("비율 (%)", fontsize=8.5, color="#4b5563", labelpad=2)
-        ax.tick_params(labelsize=8, colors="#4b5563", length=2)
-        ax.legend(fontsize=8, framealpha=0.8, loc="upper right",
+                    color="#dc2626", fontsize=11.5, fontweight="bold", va="top")
+        ax.set_xlabel("피처값", fontsize=11.5, color="#4b5563", labelpad=2)
+        ax.set_ylabel("비율 (%)", fontsize=11.5, color="#4b5563", labelpad=2)
+        ax.tick_params(labelsize=11, colors="#4b5563", length=2)
+        ax.legend(fontsize=11, framealpha=0.8, loc="upper right",
                   handlelength=1.2, borderpad=0.3, labelspacing=0.2)
         for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
         ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
@@ -583,8 +583,8 @@ def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=pred_min, vmax=pred_max))
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, orientation="vertical", fraction=0.05, pad=0.02, aspect=18)
-    cbar.ax.tick_params(labelsize=7, colors="#6b7280")
-    cbar.set_label("정상 ↑ 위험", fontsize=8, color="#374151", labelpad=3)
+    cbar.ax.tick_params(labelsize=10, colors="#6b7280")
+    cbar.set_label("정상 ↑ 위험", fontsize=11, color="#374151", labelpad=3)
 
     fig.tight_layout(pad=0.2)
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
@@ -1568,7 +1568,7 @@ def build_html(report_data: dict) -> str:
             f"new Chart(ctx,{{type:{_json.dumps(ctype)},data:{{labels:{labels},"
             f"datasets:[{','.join(ds_js)}]}},"
             f"options:{{indexAxis:{horizontal}?'y':'x',responsive:true,maintainAspectRatio:false,"
-            f"plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:10,font:{{size:11}}}}}}}}"
+            f"plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:10,font:{{size:14}}}}}}}}"
             f"{scales_js}}}}});}})();"
         )
 
@@ -2052,7 +2052,7 @@ Chart.defaults.color       = '#202832';
   ]}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
     interaction:{{mode:'index',intersect:false}},
     plugins:{{
-      legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:10,weight:'700'}}}}}},
+      legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:13,weight:'700'}}}}}},
       tooltip:{{callbacks:{{title:function(items){{
         var i=items[0].dataIndex;
         return wwLabels[i]+' ('+dateLabels[i]+')';
@@ -2067,17 +2067,17 @@ Chart.defaults.color       = '#202832';
     }},
     scales:{{
       y1:{{type:'linear',position:'left',
-        title:{{display:true,text:'생산량(개)',font:{{size:9,weight:'700'}}}},
+        title:{{display:true,text:'생산량(개)',font:{{size:12,weight:'700'}}}},
         grid:{{color:'#eef0f2'}},
-        ticks:{{font:{{size:9,weight:'700'}},color:'#94a3b8',
+        ticks:{{font:{{size:12,weight:'700'}},color:'#94a3b8',
           callback:function(v){{return v>=1000?(v/1000).toFixed(0)+'k':v;}}}},
         max:y1Max}},
       y2:{{type:'linear',position:'right',
-        title:{{display:true,text:'불량 ppm',font:{{size:9,weight:'700'}}}},
+        title:{{display:true,text:'불량 ppm',font:{{size:12,weight:'700'}}}},
         grid:{{display:false}},
-        ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',
+        ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',
           callback:function(v){{return (v/1000).toFixed(0)+'k';}}}},min:0}},
-      x:{{grid:{{display:false}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',maxRotation:0}}}}
+      x:{{grid:{{display:false}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',maxRotation:0}}}}
     }}
   }}}});
 }})();
@@ -2099,11 +2099,11 @@ Chart.defaults.color       = '#202832';
       backgroundColor:counts.map(function(v,i){{return i===maxIdx?'#dc2626':'rgba(148,163,184,0.5)';}}) ,yAxisID:'y1',order:2}},
     {{label:'Defect rate',data:rates,type:'line',borderColor:'#111827',borderWidth:1.5,pointRadius:2,fill:false,tension:0.1,yAxisID:'y2',order:1}},
   ]}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
-    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:10,weight:'700'}}}}}}}},
+    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:13,weight:'700'}}}}}}}},
     scales:{{
-      y1:{{type:'linear',position:'left',title:{{display:true,text:'units',font:{{size:9,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563'}}}},
-      y2:{{type:'linear',position:'right',min:0,max:100,grid:{{display:false}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',callback:function(v){{return v+'%';}}}}}},
-      x:{{grid:{{display:false}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',maxRotation:30}}}}
+      y1:{{type:'linear',position:'left',title:{{display:true,text:'units',font:{{size:12,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563'}}}},
+      y2:{{type:'linear',position:'right',min:0,max:100,grid:{{display:false}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',callback:function(v){{return v+'%';}}}}}},
+      x:{{grid:{{display:false}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',maxRotation:30}}}}
     }}
   }}}});
 }})();
@@ -2120,10 +2120,10 @@ Chart.defaults.color       = '#202832';
     {{label:'grade4(정상)',data:normalPts,backgroundColor:'rgba(59,130,246,0.4)',pointRadius:2.5}},
   ];
   new Chart(ctx,{{type:'scatter',data:{{datasets:ds}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
-    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:7,font:{{size:10,weight:'700'}}}}}}}},
+    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:7,font:{{size:13,weight:'700'}}}}}}}},
     scales:{{
-      x:{{title:{{display:true,text:xLabel,font:{{size:9,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563'}}}},
-      y:{{title:{{display:true,text:yLabel,font:{{size:9,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563'}}}}
+      x:{{title:{{display:true,text:xLabel,font:{{size:12,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563'}}}},
+      y:{{title:{{display:true,text:yLabel,font:{{size:12,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563'}}}}
     }}
   }}}});
 }})();
@@ -2153,8 +2153,8 @@ Chart.defaults.color       = '#202832';
         responsive:true, maintainAspectRatio:false, animation:false,
         plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{label:function(c){{return '('+c.parsed.x.toFixed(3)+', '+c.parsed.y.toFixed(6)+')';}}}}}}  }},
         scales:{{
-          x:{{grid:{{color:'#eef0f2'}},ticks:{{font:{{size:8,weight:'700'}},color:'#6b7280',maxTicksLimit:6}}}},
-          y:{{title:{{display:true,text:'pred',font:{{size:8,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:8}},color:'#6b7280',maxTicksLimit:5}}}}
+          x:{{grid:{{color:'#eef0f2'}},ticks:{{font:{{size:11,weight:'700'}},color:'#6b7280',maxTicksLimit:6}}}},
+          y:{{title:{{display:true,text:'pred',font:{{size:11,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:11}},color:'#6b7280',maxTicksLimit:5}}}}
         }}
       }}
     }});
@@ -2197,14 +2197,14 @@ Chart.defaults.color       = '#202832';
         x: {{
           display: true,
           grid: {{color:'#eef0f2'}},
-          ticks: {{font:{{size:9,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
+          ticks: {{font:{{size:12,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
             callback: function(v){{ return v.toFixed(1)+'%'; }}
           }},
           max: maxVal * 1.15
         }},
         y: {{
           grid: {{display: false}},
-          ticks: {{font:{{size:10,weight:'700'}}, color:'#111827'}}
+          ticks: {{font:{{size:13,weight:'700'}}, color:'#111827'}}
         }}
       }}
     }}
@@ -2257,7 +2257,7 @@ Chart.defaults.color       = '#202832';
       responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {{
         legend: {{display: true, position: 'top',
-          labels: {{boxWidth:8, font:{{size:9,weight:'700'}}, padding:6}}}},
+          labels: {{boxWidth:8, font:{{size:12,weight:'700'}}, padding:6}}}},
         tooltip: {{callbacks: {{label: function(c){{
           return c.dataset.label+': '+c.parsed.y.toFixed(2)+'%';
         }}}}}}
@@ -2265,15 +2265,15 @@ Chart.defaults.color       = '#202832';
       scales: {{
         x: {{
           display: true,
-          title: {{display:true, text:'피처값', font:{{size:9,weight:'700'}}, color:'#6b7280'}},
+          title: {{display:true, text:'피처값', font:{{size:12,weight:'700'}}, color:'#6b7280'}},
           grid: {{color:'#eef0f2'}},
-          ticks: {{font:{{size:9,weight:'700'}}, color:'#6b7280', maxTicksLimit:6, autoSkip:true,
+          ticks: {{font:{{size:12,weight:'700'}}, color:'#6b7280', maxTicksLimit:6, autoSkip:true,
             callback: function(v, i){{ var n = labels[i]; return (typeof n === 'number') ? n.toFixed(1) : n; }}}}
         }},
         y: {{
-          title: {{display:true, text:'비율 (%)', font:{{size:9,weight:'700'}}, color:'#6b7280'}},
+          title: {{display:true, text:'비율 (%)', font:{{size:12,weight:'700'}}, color:'#6b7280'}},
           grid: {{color:'#eef0f2'}},
-          ticks: {{font:{{size:9,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
+          ticks: {{font:{{size:12,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
             callback: function(v){{ return v.toFixed(0)+'%'; }}}}
         }}
       }}
