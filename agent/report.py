@@ -177,8 +177,8 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
     xs = np.arange(n)
     ax1.bar(xs, lot_production, color="#6366f1",
             alpha=0.35, width=0.55, zorder=1, label="생산량")
-    ax1.set_ylabel("생산량(개)", fontsize=6, color="#94a3b8")
-    ax1.tick_params(axis="y", labelsize=6, colors="#94a3b8")
+    ax1.set_ylabel("생산량(개)", fontsize=8, color="#94a3b8")
+    ax1.tick_params(axis="y", labelsize=8, colors="#94a3b8")
 
     ax2 = ax1.twinx()
     ax2.plot(xs, ppm, color="#3b82f6", linewidth=1.5, marker="o", markersize=3,
@@ -187,13 +187,13 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
     if ppm:
         ax2.plot(xs[-1], ppm[-1], "o", color="#DC2626", markersize=7,
                  markeredgecolor="#ffffff", markeredgewidth=1.5, zorder=3)
-    ax2.set_ylabel("예측불량 ppm", fontsize=6, color="#4b5563")
-    ax2.tick_params(axis="y", labelsize=6, colors="#4b5563")
+    ax2.set_ylabel("예측불량 ppm", fontsize=8, color="#4b5563")
+    ax2.tick_params(axis="y", labelsize=8, colors="#4b5563")
     import matplotlib.ticker as _mticker
     ax2.yaxis.set_major_formatter(_mticker.FuncFormatter(lambda v,_: f"{v/1000:.0f}k"))
 
     ax1.set_xticks(xs)
-    ax1.set_xticklabels(ww_labels, fontsize=6, rotation=0, color="#4b5563")
+    ax1.set_xticklabels(ww_labels, fontsize=8, rotation=0, color="#4b5563")
     ax1.tick_params(axis="x", length=0)
     for sp in ax1.spines.values(): sp.set_visible(False)
     for sp in ax2.spines.values(): sp.set_visible(False)
@@ -201,7 +201,7 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1+lines2, labels1+labels2, fontsize=6, loc="upper left",
+    ax1.legend(lines1+lines2, labels1+labels2, fontsize=8, loc="upper left",
                framealpha=0, ncol=2)
 
     fig.tight_layout(pad=0.3)
@@ -239,18 +239,18 @@ def _chart_lot_defects_png(lot_defect, w_px=580, h_px=110) -> bytes:
 
     xs = np.arange(n)
     ax1.bar(xs, counts, color=colors_mpl, alpha=0.8, width=0.6, zorder=1, label="Defect count")
-    ax1.set_ylabel("units", fontsize=6, color="#4b5563")
-    ax1.tick_params(axis="y", labelsize=6, colors="#4b5563")
+    ax1.set_ylabel("units", fontsize=8, color="#4b5563")
+    ax1.tick_params(axis="y", labelsize=8, colors="#4b5563")
 
     ax2 = ax1.twinx()
     ax2.plot(xs, rates, color="#111827", linewidth=1.2, marker="o", markersize=2,
              zorder=2, label="Defect rate")
     ax2.set_ylim(0, 100)
-    ax2.set_ylabel("%", fontsize=6, color="#4b5563")
-    ax2.tick_params(axis="y", labelsize=6, colors="#4b5563")
+    ax2.set_ylabel("%", fontsize=8, color="#4b5563")
+    ax2.tick_params(axis="y", labelsize=8, colors="#4b5563")
 
     ax1.set_xticks(xs)
-    ax1.set_xticklabels(labels, fontsize=5, rotation=30, ha="right", color="#4b5563")
+    ax1.set_xticklabels(labels, fontsize=7, rotation=30, ha="right", color="#4b5563")
     ax1.tick_params(axis="x", length=0)
     for sp in ax1.spines.values(): sp.set_visible(False)
     for sp in ax2.spines.values(): sp.set_visible(False)
@@ -258,7 +258,7 @@ def _chart_lot_defects_png(lot_defect, w_px=580, h_px=110) -> bytes:
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1+lines2, labels1+labels2, fontsize=6, loc="upper left",
+    ax1.legend(lines1+lines2, labels1+labels2, fontsize=8, loc="upper left",
                framealpha=0, ncol=2)
 
     fig.tight_layout(pad=0.3)
@@ -293,16 +293,16 @@ def _chart_scatter_png(feat_name, high_pts, med_pts, threshold, w_px=270, h_px=1
 
     if not has_data:
         ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
-                transform=ax.transAxes, fontsize=8, color="#9ca3af")
+                transform=ax.transAxes, fontsize=10, color="#9ca3af")
 
-    ax.set_title(feat_name, fontsize=7, color="#374151", fontweight="bold", pad=3)
-    ax.set_xlabel("피처값", fontsize=6, color="#4b5563", labelpad=2)
-    ax.set_ylabel("reg_pred", fontsize=6, color="#4b5563", labelpad=2)
-    ax.tick_params(labelsize=6, colors="#4b5563", length=2)
+    ax.set_title(feat_name, fontsize=9, color="#374151", fontweight="bold", pad=3)
+    ax.set_xlabel("피처값", fontsize=8, color="#4b5563", labelpad=2)
+    ax.set_ylabel("reg_pred", fontsize=8, color="#4b5563", labelpad=2)
+    ax.tick_params(labelsize=8, colors="#4b5563", length=2)
     for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
     ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
     if has_data:
-        ax.legend(fontsize=5.5, framealpha=0.8, loc="upper right",
+        ax.legend(fontsize=7.5, framealpha=0.8, loc="upper right",
                   handlelength=1, borderpad=0.3, labelspacing=0.2)
 
     fig.tight_layout(pad=0.4)
@@ -379,8 +379,8 @@ def _chart_custom_png(sec: dict, w_px: int, h_px: int) -> bytes:
             ys = [p.get("y", 0) for p in pts]
             ax.scatter(xs, ys, s=10, alpha=0.6, color=ds.get("color", "#3B82F6"),
                        label=ds.get("label", ""))
-        if datasets: ax.legend(fontsize=6, loc="best")
-        ax.tick_params(labelsize=6, colors="#4b5563")
+        if datasets: ax.legend(fontsize=8, loc="best")
+        ax.tick_params(labelsize=8, colors="#4b5563")
         ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
         for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
     else:  # bar or line
@@ -412,16 +412,16 @@ def _chart_custom_png(sec: dict, w_px: int, h_px: int) -> bytes:
                         ax.bar(xs + (i - n_ds/2 + 0.5) * bar_w, data, width=bar_w,
                                color=color_arg, label=ds.get("label", ""))
         if horizontal:
-            ax.set_yticks(xs); ax.set_yticklabels(labels, fontsize=7)
+            ax.set_yticks(xs); ax.set_yticklabels(labels, fontsize=9)
             ax.invert_yaxis()
         else:
-            ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=6, rotation=20, ha="right")
-        ax.tick_params(labelsize=6, colors="#4b5563")
+            ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=8, rotation=20, ha="right")
+        ax.tick_params(labelsize=8, colors="#4b5563")
         ax.grid(axis="x" if horizontal else "y", color="#eef0f2", linewidth=0.5, zorder=0)
         ax.set_axisbelow(True)
         for sp in ax.spines.values(): sp.set_visible(False)
         if n_ds > 1 or any(ds.get("label") for ds in datasets):
-            ax.legend(fontsize=6, loc="upper right", framealpha=0.85, handlelength=1.2)
+            ax.legend(fontsize=8, loc="upper right", framealpha=0.85, handlelength=1.2)
 
     fig.tight_layout(pad=0.3)
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
@@ -449,18 +449,18 @@ def _chart_fi_bar_png(features, w_px=580, h_px=200) -> bytes:
 
     if not labels:
         ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
-                transform=ax.transAxes, fontsize=8, color="#9ca3af")
+                transform=ax.transAxes, fontsize=10, color="#9ca3af")
     else:
         ys = np.arange(len(labels))
         colors = ["#1e3a5f" if i == 0 else "#374151" for i in range(len(labels))]
         ax.barh(ys, values, color=colors, height=0.55)
         ax.set_yticks(ys)
-        ax.set_yticklabels(labels, fontsize=8, color="#111827", fontweight="bold")
+        ax.set_yticklabels(labels, fontsize=10, color="#111827", fontweight="bold")
         ax.invert_yaxis()
         ax.set_xlim(0, max_v * 1.15)
         from matplotlib.ticker import FuncFormatter
         ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}%"))
-        ax.tick_params(axis="x", labelsize=7, colors="#6b7280")
+        ax.tick_params(axis="x", labelsize=9, colors="#6b7280")
         ax.tick_params(axis="y", length=0)
         for sp in ax.spines.values(): sp.set_visible(False)
         ax.grid(axis="x", color="#eef0f2", linewidth=0.5, zorder=0)
@@ -486,7 +486,7 @@ def _chart_fdc_line_png(labels, normal, danger, threshold, feature_name, w_px=30
 
     if not labels:
         ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
-                transform=ax.transAxes, fontsize=8, color="#9ca3af")
+                transform=ax.transAxes, fontsize=10, color="#9ca3af")
     else:
         xs = np.array(labels, dtype=float)
         ax.fill_between(xs, normal, color="#3B82F6", alpha=0.12)
@@ -497,11 +497,11 @@ def _chart_fdc_line_png(labels, normal, danger, threshold, feature_name, w_px=30
             ax.axvline(x=float(threshold), color="#dc2626", linewidth=1.2, linestyle="--")
             ax.text(float(threshold), ax.get_ylim()[1]*0.95,
                     f" 임계 {float(threshold):.2f}",
-                    color="#dc2626", fontsize=6.5, fontweight="bold", va="top")
-        ax.set_xlabel("피처값", fontsize=6.5, color="#4b5563", labelpad=2)
-        ax.set_ylabel("비율 (%)", fontsize=6.5, color="#4b5563", labelpad=2)
-        ax.tick_params(labelsize=6, colors="#4b5563", length=2)
-        ax.legend(fontsize=6, framealpha=0.8, loc="upper right",
+                    color="#dc2626", fontsize=8.5, fontweight="bold", va="top")
+        ax.set_xlabel("피처값", fontsize=8.5, color="#4b5563", labelpad=2)
+        ax.set_ylabel("비율 (%)", fontsize=8.5, color="#4b5563", labelpad=2)
+        ax.tick_params(labelsize=8, colors="#4b5563", length=2)
+        ax.legend(fontsize=8, framealpha=0.8, loc="upper right",
                   handlelength=1.2, borderpad=0.3, labelspacing=0.2)
         for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
         ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
@@ -583,8 +583,8 @@ def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=pred_min, vmax=pred_max))
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, orientation="vertical", fraction=0.05, pad=0.02, aspect=18)
-    cbar.ax.tick_params(labelsize=5, colors="#6b7280")
-    cbar.set_label("정상 ↑ 위험", fontsize=6, color="#374151", labelpad=3)
+    cbar.ax.tick_params(labelsize=7, colors="#6b7280")
+    cbar.set_label("정상 ↑ 위험", fontsize=8, color="#374151", labelpad=3)
 
     fig.tight_layout(pad=0.2)
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
@@ -796,9 +796,9 @@ def build_pptx(report_data: dict) -> bytes:
 
     def bx(x, y, w, h, fill, line=None, lpt=0.5):
         return _box(slide, x, y, w, h, fill, line, lpt, dpi=DPI)
-    def tx(text, x, y, w, h, sz=9, bold=False, clr=(32,36,42), align="left", wrap=True):
+    def tx(text, x, y, w, h, sz=11, bold=False, clr=(32,36,42), align="left", wrap=True):
         return _txt(slide, text, x, y, w, h, sz, bold, clr, align, wrap, DPI)
-    def btx(text, x, y, w, h, fill, tclr=(255,255,255), sz=9, bold=False, align="left"):
+    def btx(text, x, y, w, h, fill, tclr=(255,255,255), sz=11, bold=False, align="left"):
         return _boxtxt(slide, text, x, y, w, h, fill, tclr, sz, bold, align, DPI)
     def img(png_bytes, x, y, w, h):
         return _png_shape(slide, png_bytes, x, y, w, h, DPI)
@@ -820,9 +820,9 @@ def build_pptx(report_data: dict) -> bytes:
     bx(0, 0, SW, SH, (255,255,255))
     bx(0, 0, SW, TOPBAR_H, (255,255,255))
     bx(0, TOPBAR_H-2, SW, 2, (30,58,138))
-    tx(f"발행일자: {today_str}", 18, 9, 220, 20, sz=10, bold=True, clr=(51,78,118))
+    tx(f"발행일자: {today_str}", 18, 9, 220, 20, sz=12, bold=True, clr=(51,78,118))
     tx(report_title, 0, 7, SW, 24, sz=14, bold=True, clr=(15,23,42), align="center")
-    btx("대외비", SW-88, 8, 72, 22, fill=(220,38,38), sz=10, bold=True, align="center")
+    btx("대외비", SW-88, 8, 72, 22, fill=(220,38,38), sz=12, bold=True, align="center")
 
     # ─── 요약 배너 ─────────────────────────────────────────────
     bx(0, TOPBAR_H, SW, SUM_H, (255,247,237))
@@ -838,13 +838,13 @@ def build_pptx(report_data: dict) -> bytes:
     SHDR_H = 30
     bx(LX, BY, LW, SHDR_H, (243,244,246), (107,114,128), 0.5)
     bx(LX, BY, 4, SHDR_H, (107,114,128))
-    tx(slabel("left_header","[ 모델링 결과 ]"), LX+12, BY+8, LW-24, 16, sz=10, bold=True, clr=(17,24,39))
+    tx(slabel("left_header","[ 모델링 결과 ]"), LX+12, BY+8, LW-24, 16, sz=12, bold=True, clr=(17,24,39))
 
     # 좌칼럼 내부 y 커서 (패딩 10px)
     cy = BY + SHDR_H + 10
 
     # ── 1. 모델 성능 KPI ──────────────────────────────────────
-    tx(f"1. {slabel('L1','모델 성능')}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
+    tx(f"1. {slabel('L1','모델 성능')}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
     cy += 18
 
     KPI_H = 68
@@ -859,9 +859,9 @@ def build_pptx(report_data: dict) -> bytes:
         kx = LX + 12 + i*(KPI_W+KPI_GAP)
         bx(kx, cy, KPI_W, KPI_H, (255,255,255), (156,163,175), 0.5)
         bx(kx, cy, 3, KPI_H, lclr)
-        tx(lbl,  kx+8, cy+6,  KPI_W-14, 14, sz=8, bold=True, clr=(75,85,99))
+        tx(lbl,  kx+8, cy+6,  KPI_W-14, 14, sz=10, bold=True, clr=(75,85,99))
         tx(val,  kx+8, cy+20, KPI_W-14, 26, sz=16, bold=True, clr=vclr)
-        tx(sub,  kx+8, cy+50, KPI_W-14, 14, sz=8, clr=(75,85,99))
+        tx(sub,  kx+8, cy+50, KPI_W-14, 14, sz=10, clr=(75,85,99))
     cy += KPI_H + 16
 
     # ── 2. Feature Importance Top 5 (L2_fi) / 3. 불량 트렌드 (L3_trend) ─
@@ -882,7 +882,7 @@ def build_pptx(report_data: dict) -> bytes:
     if show_l2:
         l2_replace = replace_map.get("L2_fi")
         l2_title = l2_replace.get("title") if l2_replace else slabel('L2','Feature Importance Top 5')
-        tx(f"2. {l2_title}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
+        tx(f"2. {l2_title}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
         cy += 18
         bx(LX+12, cy, LW-24, L2_H, (255,255,255), (156,163,175), 0.5)
         try:
@@ -892,13 +892,13 @@ def build_pptx(report_data: dict) -> bytes:
                 png = _chart_fi_bar_png(features, w_px=LW-24, h_px=L2_H)
             img(png, LX+12, cy, LW-24, L2_H)
         except Exception as _e:
-            tx(f"차트 오류: {_e}", LX+16, cy+L2_H//2, LW-32, 18, sz=7, clr=(220,80,80))
+            tx(f"차트 오류: {_e}", LX+16, cy+L2_H//2, LW-32, 18, sz=9, clr=(220,80,80))
         cy += L2_H + 8
 
     if show_l3:
         l3_replace = replace_map.get("L3_trend")
         l3_title = l3_replace.get("title") if l3_replace else slabel('L3','불량 트렌드')
-        tx(f"3. {l3_title}", LX+12, cy, LW-24, 16, sz=9, bold=True, clr=(17,24,39))
+        tx(f"3. {l3_title}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
         cy += 18
         bx(LX+12, cy, LW-24, L3_H, (255,255,255), (156,163,175), 0.5)
         try:
@@ -909,14 +909,14 @@ def build_pptx(report_data: dict) -> bytes:
                                         w_px=LW-24, h_px=L3_H, defect_ppm=lot_defect_ppm)
             img(png, LX+12, cy, LW-24, L3_H)
         except Exception as _e:
-            tx(f"차트 오류: {_e}", LX+16, cy+L3_H//2, LW-32, 18, sz=7, clr=(220,80,80))
+            tx(f"차트 오류: {_e}", LX+16, cy+L3_H//2, LW-32, 18, sz=9, clr=(220,80,80))
 
     # ─── 우칼럼 sbox ───────────────────────────────────────────
     RW = COL_W
     bx(RX, BY, RW, SBOX_H, (255,255,255), (107,114,128), 0.5)
     bx(RX, BY, RW, SHDR_H, (243,244,246), (107,114,128), 0.5)
     bx(RX, BY, 4, SHDR_H, (107,114,128))
-    tx(slabel("right_header","[ 불량 예측 현황 ]"), RX+12, BY+8, RW-24, 16, sz=10, bold=True, clr=(17,24,39))
+    tx(slabel("right_header","[ 불량 예측 현황 ]"), RX+12, BY+8, RW-24, 16, sz=12, bold=True, clr=(17,24,39))
 
     ry = BY + SHDR_H + 10
 
@@ -933,24 +933,24 @@ def build_pptx(report_data: dict) -> bytes:
         if r1_replace:
             # R1 자리를 custom 차트가 대체
             bx(RX+12, ry, INNER_R, UNIT_H, (255,255,255), (156,163,175), 0.5)
-            tx(r1_replace.get("title",""), RX+15, ry+5, INNER_R-8, 14, sz=8, bold=True, clr=(17,24,39))
+            tx(r1_replace.get("title",""), RX+15, ry+5, INNER_R-8, 14, sz=10, bold=True, clr=(17,24,39))
             try:
                 png = _chart_custom_png(r1_replace, w_px=INNER_R-6, h_px=UNIT_H-22)
                 img(png, RX+15, ry+22, INNER_R-6, UNIT_H-22)
             except Exception as _e:
-                tx(f"차트 오류: {_e}", RX+16, ry+UNIT_H//2, INNER_R-8, 18, sz=7, clr=(220,80,80))
+                tx(f"차트 오류: {_e}", RX+16, ry+UNIT_H//2, INNER_R-8, 18, sz=9, clr=(220,80,80))
         else:
             # 웨이퍼맵 박스
             bx(RX+12, ry, HALF_W, UNIT_H, (255,255,255), (156,163,175), 0.5)
-            tx("불량 위치 웨이퍼맵", RX+15, ry+6, HALF_W-8, 14, sz=8, bold=True, clr=(17,24,39))
+            tx("불량 위치 웨이퍼맵", RX+15, ry+6, HALF_W-8, 14, sz=10, bold=True, clr=(17,24,39))
             bx(RX+12, ry+22, HALF_W, 1, (209,213,219))
             try:
                 wmap_png = _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, unit_serial,
                                              w_px=HALF_W-10, h_px=UNIT_H-44)
                 img(wmap_png, RX+17, ry+24, HALF_W-10, UNIT_H-44)
             except Exception as _e:
-                tx(f"웨이퍼맵 오류: {_e}", RX+16, ry+UNIT_H//2, HALF_W-8, 18, sz=7, clr=(220,80,80))
-            tx(unit_serial, RX+12, ry+UNIT_H-16, HALF_W, 14, sz=9, bold=True, clr=(17,24,39), align="center")
+                tx(f"웨이퍼맵 오류: {_e}", RX+16, ry+UNIT_H//2, HALF_W-8, 18, sz=9, clr=(220,80,80))
+            tx(unit_serial, RX+12, ry+UNIT_H-16, HALF_W, 14, sz=11, bold=True, clr=(17,24,39), align="center")
 
             # 정보 테이블 (상단 4행 + 포지션 4행)
             INFO_X = RX + 12 + HALF_W + 7
@@ -977,23 +977,23 @@ def build_pptx(report_data: dict) -> bytes:
                 row_y = ry + ri * ROW_H
                 bg = (255,255,255) if ri%2==0 else (248,250,252)
                 bx(INFO_X, row_y, HALF_W, ROW_H, bg, (209,213,219), 0.3)
-                tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=8, bold=True, clr=(55,65,81))
+                tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=10, bold=True, clr=(55,65,81))
                 val_clr = (138,31,31) if is_hot else (17,24,39)
                 tx(str(val), INFO_X+LBL_W+6, row_y+4, HALF_W-LBL_W-10, ROW_H-8,
-                   sz=9, bold=is_hot, clr=val_clr)
+                   sz=11, bold=is_hot, clr=val_clr)
 
             ph_y = ry + 4*ROW_H
             bx(INFO_X, ph_y, HALF_W, POS_HDR_H, (243,244,246), (209,213,219), 0.3)
             tx("포지션별 예측 health값", INFO_X+6, ph_y+4, HALF_W-12, POS_HDR_H-8,
-               sz=8, bold=True, clr=(17,24,39))
+               sz=10, bold=True, clr=(17,24,39))
 
             for ri, (lbl, val) in enumerate(pos_rows):
                 row_y = ph_y + POS_HDR_H + ri * ROW_H
                 bg = (255,255,255) if ri%2==0 else (248,250,252)
                 bx(INFO_X, row_y, HALF_W, ROW_H, bg, (209,213,219), 0.3)
-                tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=8, bold=True, clr=(55,65,81))
+                tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=10, bold=True, clr=(55,65,81))
                 tx(val, INFO_X+LBL_W+6, row_y+4, HALF_W-LBL_W-10, ROW_H-8,
-                   sz=9, bold=False, clr=(138,31,31))
+                   sz=11, bold=False, clr=(138,31,31))
 
         ry += UNIT_H + 10
 
@@ -1021,14 +1021,14 @@ def build_pptx(report_data: dict) -> bytes:
         bx(AX, ry, R2_W, REMAIN_H, (255,254,248), (156,163,175), 0.5)
         bx(AX, ry, R2_W, HDR_H_PANEL, (243,244,246), (156,163,175), 0.5)
         r2_title = r2_replace.get("title") if r2_replace else f"Anomaly Feature Top {len(anomaly_stats)}"
-        tx(r2_title, AX+8, ry+5, R2_W-16, 16, sz=9, bold=True, clr=(17,24,39))
+        tx(r2_title, AX+8, ry+5, R2_W-16, 16, sz=11, bold=True, clr=(17,24,39))
 
         if r2_replace:
             try:
                 png = _chart_custom_png(r2_replace, w_px=R2_W-6, h_px=REMAIN_H-HDR_H_PANEL-4)
                 img(png, AX+3, ry+HDR_H_PANEL+2, R2_W-6, REMAIN_H-HDR_H_PANEL-4)
             except Exception as _e:
-                tx(f"차트 오류: {_e}", AX+6, ry+REMAIN_H//2, R2_W-12, 18, sz=7, clr=(220,80,80))
+                tx(f"차트 오류: {_e}", AX+6, ry+REMAIN_H//2, R2_W-12, 18, sz=9, clr=(220,80,80))
         else:
             n_anom  = max(len(anomaly_stats), 1)
             ACARD_H = max(34, (REMAIN_H - HDR_H_PANEL - 6) // n_anom)
@@ -1048,7 +1048,7 @@ def build_pptx(report_data: dict) -> bytes:
                 bx(AX+2, ay, R2_W-4, ACARD_H, bg, (229,231,235), 0.3)
 
                 NAME_H = 14
-                tx(fname, AX+7, ay+2, R2_W-14, NAME_H, sz=8, bold=True, clr=(17,24,39))
+                tx(fname, AX+7, ay+2, R2_W-14, NAME_H, sz=10, bold=True, clr=(17,24,39))
 
                 if g1m is not None and g4m is not None:
                     try:
@@ -1067,19 +1067,19 @@ def build_pptx(report_data: dict) -> bytes:
                 bar_bot = bar_top + BAR_H_A + 3
                 BAR_X = AX + 8 + LBL_W_A
 
-                tx("정상", AX+7, bar_top, LBL_W_A-1, BAR_H_A, sz=6, clr=(22,128,60))
+                tx("정상", AX+7, bar_top, LBL_W_A-1, BAR_H_A, sz=8, clr=(22,128,60))
                 bx(BAR_X, bar_top, BAR_W_A, BAR_H_A, (220,235,220))
                 bx(BAR_X, bar_top, max(4,int(BAR_W_A*g4_pct/100)), BAR_H_A, (22,128,60))
                 if g4m is not None:
                     tx(f"{float(g4m):.4g}", BAR_X+BAR_W_A+4, bar_top, 46, BAR_H_A,
-                       sz=6, bold=True, clr=(22,128,60), align="right")
+                       sz=8, bold=True, clr=(22,128,60), align="right")
 
-                tx("불량", AX+7, bar_bot, LBL_W_A-1, BAR_H_A, sz=6, clr=(185,28,28))
+                tx("불량", AX+7, bar_bot, LBL_W_A-1, BAR_H_A, sz=8, clr=(185,28,28))
                 bx(BAR_X, bar_bot, BAR_W_A, BAR_H_A, (240,218,218))
                 bx(BAR_X, bar_bot, max(4,int(BAR_W_A*g1_pct/100)), BAR_H_A, (185,28,28))
                 if g1m is not None:
                     tx(f"{float(g1m):.4g}", BAR_X+BAR_W_A+4, bar_bot, 46, BAR_H_A,
-                       sz=6, bold=True, clr=(185,28,28), align="right")
+                       sz=8, bold=True, clr=(185,28,28), align="right")
 
     # ── R3 피처 정상/불량 분포 비교 패널 ─────────────────────
     if show_r3:
@@ -1097,7 +1097,7 @@ def build_pptx(report_data: dict) -> bytes:
         bx(FIX, ry, R3_W, REMAIN_H, (255,255,255), (156,163,175), 0.5)
         bx(FIX, ry, R3_W, HDR_H_PANEL, (243,244,246), (156,163,175), 0.5)
         r3_title = r3_replace.get("title") if r3_replace else f"피처 정상/불량 분포 · {fdc_feature}"
-        tx(r3_title, FIX+8, ry+5, R3_W-16, 16, sz=9, bold=True, clr=(17,24,39))
+        tx(r3_title, FIX+8, ry+5, R3_W-16, 16, sz=11, bold=True, clr=(17,24,39))
 
         try:
             if r3_replace:
@@ -1107,7 +1107,7 @@ def build_pptx(report_data: dict) -> bytes:
                                            fdc_feature, w_px=R3_W-6, h_px=REMAIN_H-HDR_H_PANEL-4)
             img(png, FIX+3, ry+HDR_H_PANEL+2, R3_W-6, REMAIN_H-HDR_H_PANEL-4)
         except Exception as _e:
-            tx(f"차트 오류: {_e}", FIX+6, ry+REMAIN_H//2, R3_W-12, 18, sz=7, clr=(220,80,80))
+            tx(f"차트 오류: {_e}", FIX+6, ry+REMAIN_H//2, R3_W-12, 18, sz=9, clr=(220,80,80))
 
     # ─── 푸터 ──────────────────────────────────────────────────
     has_extra_page = bool(extra_sections) or bool(commentary_list)
@@ -1117,11 +1117,11 @@ def build_pptx(report_data: dict) -> bytes:
     bx(0, FTR_Y, SW, FTR_H, (241,245,249))
     bx(0, FTR_Y, SW, 1, (107,114,128))
     tx("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14,
-       sz=8, bold=True, clr=(17,24,39))
+       sz=10, bold=True, clr=(17,24,39))
     tx(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
-       sz=8, clr=(75,85,99), align="center")
+       sz=10, clr=(75,85,99), align="center")
     tx(f"Field Health Prediction Model v1.0  ·  Page 1 of {total_pages}", SW-270, FTR_Y+4, 258, 14,
-       sz=8, clr=(75,85,99), align="right")
+       sz=10, clr=(75,85,99), align="right")
 
     # ─── 2번째 슬라이드: 추가 차트 + 메모 (있을 때만) ───────────
     if has_extra_page:
@@ -1129,7 +1129,7 @@ def build_pptx(report_data: dict) -> bytes:
 
         def bx2(x, y, w, h, fill, line=None, lpt=0.5):
             return _box(slide2, x, y, w, h, fill, line, lpt, dpi=DPI)
-        def tx2(text, x, y, w, h, sz=9, bold=False, clr=(32,36,42), align="left", wrap=True):
+        def tx2(text, x, y, w, h, sz=11, bold=False, clr=(32,36,42), align="left", wrap=True):
             return _txt(slide2, text, x, y, w, h, sz, bold, clr, align, wrap, DPI)
         def img2(png_bytes, x, y, w, h):
             return _png_shape(slide2, png_bytes, x, y, w, h, DPI)
@@ -1138,7 +1138,7 @@ def build_pptx(report_data: dict) -> bytes:
         bx2(0, 0, SW, SH, (255,255,255))
         bx2(0, 0, SW, TOPBAR_H, (255,255,255))
         bx2(0, TOPBAR_H-2, SW, 2, (30,58,138))
-        tx2(f"발행일자: {today_str}", 18, 9, 220, 20, sz=10, bold=True, clr=(51,78,118))
+        tx2(f"발행일자: {today_str}", 18, 9, 220, 20, sz=12, bold=True, clr=(51,78,118))
         tx2(f"{report_title} (추가)", 0, 7, SW, 24, sz=14, bold=True, clr=(15,23,42), align="center")
 
         # 본문
@@ -1150,9 +1150,9 @@ def build_pptx(report_data: dict) -> bytes:
             note_h = 56
             bx2(20, cur_y, SW-40, note_h, (255,251,235), (253,224,71), 0.75)
             tx2(f"📝 {it.get('title','메모')}", 30, cur_y+6, SW-60, 18,
-                sz=10, bold=True, clr=(146,64,14))
+                sz=12, bold=True, clr=(146,64,14))
             tx2(_strip_html(it.get('content','')), 30, cur_y+26, SW-60, note_h-30,
-                sz=9, clr=(30,41,59))
+                sz=11, clr=(30,41,59))
             cur_y += note_h + 8
 
         # 추가 차트 — 2열 그리드, 각 셀 600×200
@@ -1168,21 +1168,21 @@ def build_pptx(report_data: dict) -> bytes:
                     break  # 페이지 초과 시 중단
                 bx2(cx2, cy2, COL_W2, CARD_H2, (255,255,255), (156,163,175), 0.5)
                 tx2(sec.get("title","섹션"), cx2+8, cy2+6, COL_W2-16, 16,
-                    sz=10, bold=True, clr=(17,24,39))
+                    sz=12, bold=True, clr=(17,24,39))
                 try:
                     png = _chart_custom_png(sec, w_px=COL_W2-12, h_px=CARD_H2-28)
                     img2(png, cx2+6, cy2+24, COL_W2-12, CARD_H2-28)
                 except Exception as _e:
-                    tx2(f"차트 오류: {_e}", cx2+10, cy2+CARD_H2//2, COL_W2-20, 18, sz=7, clr=(220,80,80))
+                    tx2(f"차트 오류: {_e}", cx2+10, cy2+CARD_H2//2, COL_W2-20, 18, sz=9, clr=(220,80,80))
 
         # 푸터
         bx2(0, FTR_Y, SW, FTR_H, (241,245,249))
         bx2(0, FTR_Y, SW, 1, (107,114,128))
-        tx2("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14, sz=8, bold=True, clr=(17,24,39))
+        tx2("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14, sz=10, bold=True, clr=(17,24,39))
         tx2(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
-            sz=8, clr=(75,85,99), align="center")
+            sz=10, clr=(75,85,99), align="center")
         tx2(f"Field Health Prediction Model v1.0  ·  Page 2 of {total_pages}", SW-270, FTR_Y+4, 258, 14,
-            sz=8, clr=(75,85,99), align="right")
+            sz=10, clr=(75,85,99), align="right")
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -1283,12 +1283,12 @@ def build_html(report_data: dict) -> str:
         bar_w = max(int(gain / max_gain * 100), 3)
         fi_ratio_rows += (
             f'<div class="fi-row">'
-            f'<div style="width:18px;font-size:10px;color:#6f756d;text-align:right;font-weight:800;flex-shrink:0">{i+1}</div>'
-            f'<div style="width:80px;font-size:11px;font-weight:800;color:#202832;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace;flex-shrink:0" title="{fname}">{fname}</div>'
+            f'<div style="width:18px;font-size:12px;color:#6f756d;text-align:right;font-weight:800;flex-shrink:0">{i+1}</div>'
+            f'<div style="width:80px;font-size:13px;font-weight:800;color:#202832;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace;flex-shrink:0" title="{fname}">{fname}</div>'
             f'<div style="flex:1;height:12px;background:#eee9df;border:1px solid #c9c0b1;overflow:hidden;min-width:0">'
             f'<div style="width:{bar_w}%;height:100%;background:#374151"></div>'
             f'</div>'
-            f'<div style="width:38px;font-size:10px;color:#374151;text-align:right;font-weight:900;flex-shrink:0">{pct}%</div>'
+            f'<div style="width:38px;font-size:12px;color:#374151;text-align:right;font-weight:900;flex-shrink:0">{pct}%</div>'
             f'</div>'
         )
 
@@ -1354,7 +1354,7 @@ def build_html(report_data: dict) -> str:
             try:
                 z_f = float(z_score)
                 z_color = "#8a1f1f" if z_f >= 3 else "#9a5b14" if z_f >= 2 else "#5d4936"
-                z_str = f'<span style="color:{z_color};font-size:9px;font-weight:900">{"▲" if higher else "▼"} z={z_f:.1f}</span>'
+                z_str = f'<span style="color:{z_color};font-size:11px;font-weight:900">{"▲" if higher else "▼"} z={z_f:.1f}</span>'
             except Exception:
                 z_str = ""
 
@@ -1374,7 +1374,7 @@ def build_html(report_data: dict) -> str:
             f'<div class="anom-row">'
             f'<div class="anom-lbl unit">불량</div>'
             f'<div class="anom-track"><div class="anom-fill danger" style="width:{g1_len}%"></div></div>'
-            f'<div class="anom-val" style="color:#b91c1c;font-weight:900;font-size:10px">{unit_val_str}</div>'
+            f'<div class="anom-val" style="color:#b91c1c;font-weight:900;font-size:12px">{unit_val_str}</div>'
             f'</div>'
             f'</div>'
         )
@@ -1404,18 +1404,18 @@ def build_html(report_data: dict) -> str:
         l = pos_low_ratio[i]  if i < len(pos_low_ratio)  else 0
         pos_rows += (
             f'<tr>'
-            f'<td style="font-size:11px;width:28px;padding:3px 5px;vertical-align:middle">{lbl}</td>'
+            f'<td style="font-size:13px;width:28px;padding:3px 5px;vertical-align:middle">{lbl}</td>'
             f'<td style="padding:3px 5px">'
             f'<div style="margin-bottom:2px">'
-            f'<div style="font-size:9px;color:#EF4444;margin-bottom:1px">{pos_feat1} 이상 {h}%</div>'
+            f'<div style="font-size:11px;color:#EF4444;margin-bottom:1px">{pos_feat1} 이상 {h}%</div>'
             f'<div style="height:6px;border-radius:2px;background:#EF4444;width:{min(int(h*4),100)}%"></div>'
             f'</div>'
             f'<div style="margin-bottom:2px">'
-            f'<div style="font-size:9px;color:#F59E0B;margin-bottom:1px">{pos_feat2} 이상 {m}%</div>'
+            f'<div style="font-size:11px;color:#F59E0B;margin-bottom:1px">{pos_feat2} 이상 {m}%</div>'
             f'<div style="height:6px;border-radius:2px;background:#F59E0B;width:{min(int(m*4),100)}%"></div>'
             f'</div>'
             f'<div>'
-            f'<div style="font-size:9px;color:#16A34A;margin-bottom:1px">정상 {l}%</div>'
+            f'<div style="font-size:11px;color:#16A34A;margin-bottom:1px">정상 {l}%</div>'
             f'<div style="height:6px;border-radius:2px;background:#16A34A;width:{min(int(l*4),100)}%"></div>'
             f'</div>'
             f'</td>'
@@ -1464,20 +1464,20 @@ def build_html(report_data: dict) -> str:
     for p in ["P1", "P2", "P3", "P4"]:
         ph = pos_health_map.get(p)
         if ph is not None:
-            val_display = f'<span style="font-family:Consolas,monospace;font-size:10px;font-weight:900;color:#8a1f1f">{ph:.6f}</span>'
+            val_display = f'<span style="font-family:Consolas,monospace;font-size:12px;font-weight:900;color:#8a1f1f">{ph:.6f}</span>'
         else:
             # fallback: feature 값 표시
             pdata = pos_feat_vals.get(p, {})
             if pdata and _pf_feats:
                 val_display = "  ".join(
-                    f'<span style="color:#4b5563;font-size:8px">{f}=</span>'
-                    f'<span style="font-family:Consolas,monospace;font-size:9px;font-weight:900;color:#1e3a8a">{pdata.get(f,"?")}</span>'
+                    f'<span style="color:#4b5563;font-size:10px">{f}=</span>'
+                    f'<span style="font-family:Consolas,monospace;font-size:11px;font-weight:900;color:#1e3a8a">{pdata.get(f,"?")}</span>'
                     for f in _pf_feats if f in pdata
                 )
             else:
                 val_display = '<span style="color:#9ca3af">-</span>'
         pos_health_rows += (
-            f'<div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center">'
+            f'<div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center">'
             f'<div class="unit-lbl">{p}</div>'
             f'<div class="unit-val">{val_display}</div>'
             f'</div>'
@@ -1568,7 +1568,7 @@ def build_html(report_data: dict) -> str:
             f"new Chart(ctx,{{type:{_json.dumps(ctype)},data:{{labels:{labels},"
             f"datasets:[{','.join(ds_js)}]}},"
             f"options:{{indexAxis:{horizontal}?'y':'x',responsive:true,maintainAspectRatio:false,"
-            f"plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:10,font:{{size:9}}}}}}}}"
+            f"plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:10,font:{{size:11}}}}}}}}"
             f"{scales_js}}}}});}})();"
         )
 
@@ -1637,8 +1637,8 @@ def build_html(report_data: dict) -> str:
     replace_chart_js = "\n".join(_render_replace_section_js(s, i) for i, s in _replace_secs)
     commentary_html = "\n".join(
         f'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:8px">'
-        f'<div style="font-size:11px;font-weight:700;color:#92400E;margin-bottom:4px">📝 {it.get("title","")}</div>'
-        f'<div style="font-size:11px;color:#1E293B">{it.get("content","")}</div></div>'
+        f'<div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:4px">📝 {it.get("title","")}</div>'
+        f'<div style="font-size:13px;color:#1E293B">{it.get("content","")}</div></div>'
         for it in commentary_list
     )
 
@@ -1765,12 +1765,12 @@ def build_html(report_data: dict) -> str:
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{width:1280px;height:720px;overflow:hidden;background:#e7e7e7}}
-body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;color:#20242a;font-size:11px}}
+body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;color:#20242a;font-size:13px}}
 .slide{{width:1280px;height:720px;background:#fff;border:1px solid #6b7280;box-shadow:0 10px 24px rgba(31,41,55,.12);display:flex;flex-direction:column;overflow:hidden}}
 .s-topbar{{display:grid;grid-template-columns:200px 1fr 200px;align-items:center;height:36px;padding:0 20px;border-bottom:2px solid #1e3a8a;flex-shrink:0}}
-.s-issue{{font-size:11px;font-weight:700;color:#334e76}}
+.s-issue{{font-size:13px;font-weight:700;color:#334e76}}
 .s-caption{{font-size:19px;font-weight:900;color:#0f172a;text-align:center}}
-.conf{{background:#dc2626;color:#fff;font-size:11px;font-weight:800;padding:4px 13px;border:1px solid #b91c1c}}
+.conf{{background:#dc2626;color:#fff;font-size:13px;font-weight:800;padding:4px 13px;border:1px solid #b91c1c}}
 .s-conf-wrap{{display:flex;justify-content:flex-end}}
 .s-summary{{background:#fff7ed;border-bottom:1px solid #fed7aa;padding:4px 16px;text-align:center;height:44px;box-sizing:border-box;flex-shrink:0}}
 .s-title{{font-size:18px;font-weight:900;color:#111827;line-height:1.2}}
@@ -1778,7 +1778,7 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 .s-body{{padding:6px 10px 4px;height:614px;box-sizing:border-box;overflow:hidden;flex-shrink:0}}
 .cols{{display:grid;grid-template-columns:1fr 1fr;gap:10px;height:100%}}
 .sbox{{border:1px solid #6b7280;background:#fff;display:flex;flex-direction:column;overflow:hidden;height:604px}}
-.shdr{{background:#f3f4f6;color:#111827;border-bottom:1px solid #6b7280;padding:4px 11px;font-size:11px;font-weight:900;position:relative;height:28px;box-sizing:border-box;flex-shrink:0}}
+.shdr{{background:#f3f4f6;color:#111827;border-bottom:1px solid #6b7280;padding:4px 11px;font-size:13px;font-weight:900;position:relative;height:28px;box-sizing:border-box;flex-shrink:0}}
 .shdr::before{{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#6b7280}}
 .sbdy{{padding:5px 9px;height:576px;box-sizing:border-box;overflow:hidden}}
 .sbdy.left-sbdy{{display:flex;flex-direction:column}}
@@ -1787,49 +1787,49 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 .kpi-card{{background:#fff;border:1px solid #9ca3af;padding:5px 8px 4px 12px;position:relative;overflow:hidden}}
 .kpi-card::before{{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}}
 .kpi-card.navy::before{{background:#1e3a8a}}.kpi-card.dark::before{{background:#374151}}.kpi-card.amber::before{{background:#b45309}}
-.kpi-lbl{{font-size:10px;color:#4b5563;font-weight:800;margin-bottom:1px}}
+.kpi-lbl{{font-size:12px;color:#4b5563;font-weight:800;margin-bottom:1px}}
 .kpi-val{{font-size:18px;font-weight:900;line-height:1.1}}
 .kpi-val.navy{{color:#1e3a8a}}.kpi-val.dark{{color:#374151}}.kpi-val.amber{{color:#b45309}}
-.kpi-sub{{font-size:10px;color:#4b5563;font-weight:700;margin-top:1px}}
-.inum{{font-size:11px;font-weight:900;color:#111827;margin:4px 0 2px;height:18px;box-sizing:border-box;flex-shrink:0}}
+.kpi-sub{{font-size:12px;color:#4b5563;font-weight:700;margin-top:1px}}
+.inum{{font-size:13px;font-weight:900;color:#111827;margin:4px 0 2px;height:18px;box-sizing:border-box;flex-shrink:0}}
 .cbox{{border:1px solid #9ca3af;background:#fff;margin-bottom:5px;flex-shrink:0}}
 .cbox-body{{padding:3px 5px;position:relative}}
 .unit-main{{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:5px;flex-shrink:0;align-items:stretch}}
 .wafer-box{{border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column;align-items:center;padding:5px;gap:2px;height:100%}}
-.wafer-box-title{{font-size:10px;font-weight:900;color:#111827;align-self:stretch;border-bottom:1px solid #d1d5db;padding-bottom:3px;margin-bottom:1px}}
+.wafer-box-title{{font-size:12px;font-weight:900;color:#111827;align-self:stretch;border-bottom:1px solid #d1d5db;padding-bottom:3px;margin-bottom:1px}}
 .unit-tbl{{border:1px solid #9ca3af;overflow:hidden;background:#fff}}
 .unit-row{{display:grid;grid-template-columns:72px 1fr;border-bottom:1px solid #d1d5db}}
 .unit-row:last-child{{border-bottom:none}}
 .unit-row:nth-child(even){{background:#f8fafc}}
-.unit-lbl{{padding:4px 6px;font-size:11px;font-weight:900;color:#111827}}
+.unit-lbl{{padding:4px 6px;font-size:13px;font-weight:900;color:#111827}}
 .unit-val{{padding:4px 6px;font-size:12px;font-weight:900;font-family:Consolas,monospace;color:#111827}}
 .unit-val.hot{{color:#8a1f1f;font-size:13px}}
 .anom-panel{{border:1px solid #9ca3af;background:#fffef8;display:flex;flex-direction:column;overflow:hidden}}
-.anom-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:11px;font-weight:900;flex-shrink:0}}
+.anom-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:13px;font-weight:900;flex-shrink:0}}
 .anom-list{{padding:2px;display:flex;flex-direction:column;gap:1px;flex:1;overflow:hidden}}
 .anom-card{{border:1px solid #d1d5db;background:#fff;padding:2px 6px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}}
 .anom-card:nth-child(even){{background:#f8fafc}}
 .anom-top{{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:1px;flex-shrink:0}}
 .anom-name{{color:#111827;font:900 11px/1.2 Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .anom-row{{display:flex;align-items:center;gap:3px;flex:1;min-height:0}}
-.anom-lbl{{width:28px;flex-shrink:0;font-size:9px;font-weight:900;color:#60676f}}
+.anom-lbl{{width:28px;flex-shrink:0;font-size:11px;font-weight:900;color:#60676f}}
 .anom-lbl.unit{{color:#111827}}
 .anom-track{{position:relative;flex:1;height:7px;background:#e8ecef;border-radius:1px}}
 .anom-fill{{position:absolute;left:0;top:0;bottom:0;border-radius:1px}}
 .anom-fill.normal{{background:#16803c}}.anom-fill.danger{{background:#b91c1c}}
 .anom-val{{width:48px;flex-shrink:0;font:10px/1.1 Consolas,monospace;text-align:right;font-weight:900}}
 .fi-panel{{border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column;height:100%}}
-.fi-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:11px;font-weight:900;flex-shrink:0}}
+.fi-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:13px;font-weight:900;flex-shrink:0}}
 .fi-list{{padding:2px 4px;flex:1;display:flex;flex-direction:column}}
 .fi-row{{display:flex;align-items:center;gap:6px;padding:0 3px;border-bottom:1px solid #e5e7eb;flex:1;min-height:0}}
 .fi-row:last-child{{border-bottom:none}}
 .fi-row:nth-child(even){{background:#f8fafc}}
 .pos-panel{{border:1px solid #9ca3af;background:#fff;flex:1;display:flex;flex-direction:column}}
-.pos-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 6px;font-size:11px;font-weight:900;flex-shrink:0}}
-.s-footer{{border-top:2px solid #4b5563;padding:3px 14px;display:flex;justify-content:space-between;font-size:10px;color:#4b5563;flex-shrink:0}}
+.pos-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 6px;font-size:13px;font-weight:900;flex-shrink:0}}
+.s-footer{{border-top:2px solid #4b5563;padding:3px 14px;display:flex;justify-content:space-between;font-size:12px;color:#4b5563;flex-shrink:0}}
 .footer-brand{{font-weight:900;color:#111827}}
 [data-dummy="1"]{{outline:2px solid #f59e0b!important;outline-offset:1px}}
-[data-dummy="1"]::after{{content:'DUMMY';position:absolute;top:2px;left:4px;font-size:8px;font-weight:900;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:1px 4px;z-index:100;pointer-events:none;letter-spacing:0.05em}}
+[data-dummy="1"]::after{{content:'DUMMY';position:absolute;top:2px;left:4px;font-size:10px;font-weight:900;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:1px 4px;z-index:100;pointer-events:none;letter-spacing:0.05em}}
 /* 차트 편집 모드: 모드 ON일 때만 적용 */
 body.ia-edit-mode .ia-target{{cursor:pointer;transition:outline .12s}}
 body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outline-offset:1px}}
@@ -1837,13 +1837,13 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 #ia-drag-overlay{{display:none;position:fixed;border:1.5px dashed #3b82f6;background:rgba(59,130,246,.07);pointer-events:none;z-index:99999}}
 #ia-selection-box{{display:none;position:fixed;border:2px solid #3b82f6;background:rgba(59,130,246,.06);pointer-events:none;z-index:99998;border-radius:4px}}
 #ia-action-menu{{display:none;position:fixed;z-index:999999;background:#fff;border:1px solid #9ca3af;box-shadow:0 4px 16px rgba(0,0,0,.15);min-width:140px;overflow:hidden;border-radius:6px}}
-#ia-action-menu .ctx-item{{padding:7px 14px;font-size:11px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:6px;font-weight:700}}
+#ia-action-menu .ctx-item{{padding:7px 14px;font-size:13px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:6px;font-weight:700}}
 #ia-action-menu .ctx-item:hover{{background:#eff6ff;color:#3b82f6}}
 #ia-action-menu .ctx-sep{{height:1px;background:#e2e8f0;margin:2px 0}}
 #ia-chart-menu{{display:none;position:fixed;z-index:1000000;background:#fff;border:1px solid #9ca3af;box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:210px;overflow:hidden;border-radius:6px}}
-#ia-chart-menu .chart-item{{padding:7px 14px;font-size:11px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:7px}}
+#ia-chart-menu .chart-item{{padding:7px 14px;font-size:13px;cursor:pointer;color:#1e293b;display:flex;align-items:center;gap:7px}}
 #ia-chart-menu .chart-item:hover{{background:#eff6ff;color:#3b82f6}}
-#ia-chart-menu .chart-hdr{{padding:5px 14px;font-size:10px;font-weight:700;color:#6b7280;background:#f9fafb;border-bottom:1px solid #e5e7eb}}
+#ia-chart-menu .chart-hdr{{padding:5px 14px;font-size:12px;font-weight:700;color:#6b7280;background:#f9fafb;border-bottom:1px solid #e5e7eb}}
 </style>
 </head>
 <body>
@@ -1870,11 +1870,11 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
       <div class="inum">1. {slabel("L1","모델 성능")}</div>
       <div class="ia-target" data-sid="L1_kpi" data-section="모델 성능" style="position:relative;margin-bottom:5px;flex-shrink:0">
         <div style="display:grid;grid-template-columns:1fr 1px 1fr;border:1px solid #9ca3af;background:#fff;height:28px;align-items:center;margin-bottom:4px">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:10px;font-weight:700;color:#374151">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:12px;font-weight:700;color:#374151">
             <span>생산 일자</span><span style="font-family:Consolas,monospace;font-weight:900;color:#111827">{_prod_date}</span>
           </div>
           <div style="background:#d1d5db;height:100%"></div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:10px;font-weight:700;color:#374151">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:12px;font-weight:700;color:#374151">
             <span>예측 일자</span><span style="font-family:Consolas,monospace;font-weight:900;color:#111827">{_insp_date}</span>
           </div>
         </div>
@@ -1882,17 +1882,14 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
           <div class="kpi-card navy">
             <div class="kpi-lbl">RMSE</div>
             <div class="kpi-val navy">{val_rmse}</div>
-            <div class="kpi-sub">{model_nm}</div>
           </div>
           <div class="kpi-card dark">
             <div class="kpi-lbl">분석 유닛</div>
             <div class="kpi-val dark">{scan_total}개</div>
-            <div class="kpi-sub">전체</div>
           </div>
           <div class="kpi-card amber">
             <div class="kpi-lbl">평균 예측 health</div>
             <div class="kpi-val amber">{_ppm_str} ppm</div>
-            <div class="kpi-sub">전체 평균</div>
           </div>
         </div>
       </div>
@@ -1924,19 +1921,19 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
           <div style="display:flex;align-items:center;justify-content:center;flex:1;gap:6px;width:100%">
             {wafer_svg}
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:#6b7280;height:{wmap_h}px;padding:4px 2px">
-              <span style="font-size:8px;font-weight:700;color:#dc2626">위험</span>
+              <span style="font-size:10px;font-weight:700;color:#dc2626">위험</span>
               <span style="display:inline-block;width:8px;flex:1;background:linear-gradient(to bottom,#dc2626,#fb923c,#fef08a,#a5d7dc,#dbeafe,#f3f4f6);border-radius:2px;margin:3px 0"></span>
-              <span style="font-size:8px;font-weight:700;color:#16803c">정상</span>
+              <span style="font-size:10px;font-weight:700;color:#16803c">정상</span>
             </div>
           </div>
-          <div style="font-size:9px;color:#4b5563;text-align:center;width:100%;font-family:Consolas,monospace;font-weight:900;margin-top:2px">{dummy_unit["serial"]}</div>
+          <div style="font-size:11px;color:#4b5563;text-align:center;width:100%;font-family:Consolas,monospace;font-weight:900;margin-top:2px">{dummy_unit["serial"]}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
           <div class="unit-tbl">
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">ufs_serial</div><div class="unit-val">{dummy_unit["serial"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">LOT_ID</div><div class="unit-val">{dummy_unit["lot"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">WAFER_ID</div><div class="unit-val">{dummy_unit["wafer"]}</div></div>
-            <div class="unit-row" style="grid-template-columns:80px 1fr;height:32px;align-items:center"><div class="unit-lbl">예측 health</div><div class="unit-val hot">{dummy_unit["pred_health"]} <span style="font-size:9px;color:#6b7280">(평균대비 +51% 열화)</span></div></div>
+            <div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center"><div class="unit-lbl">ufs_serial</div><div class="unit-val">{dummy_unit["serial"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center"><div class="unit-lbl">LOT_ID</div><div class="unit-val">{dummy_unit["lot"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center"><div class="unit-lbl">WAFER_ID</div><div class="unit-val">{dummy_unit["wafer"]}</div></div>
+            <div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center"><div class="unit-lbl">예측 health</div><div class="unit-val hot">{dummy_unit["pred_health"]} <span style="font-size:9px;color:#6b7280">(평균대비 +51% 열화)</span></div></div>
           </div>
           <div class="pos-panel" style="position:relative"{_dummy_attr(_is_dummy_r1b)}>
             <div class="pos-hdr">포지션별 예측 health값</div>
@@ -1955,10 +1952,10 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
           <div style="flex:1;position:relative;padding:4px">
             <canvas id="c-feat-dist" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas>
           </div>
-          <div style="display:flex;gap:8px;font-size:8px;color:#4b5563;padding:3px 6px;flex-shrink:0">
+          <div style="display:flex;gap:8px;font-size:10px;color:#4b5563;padding:3px 6px;flex-shrink:0">
             <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#3B82F6;margin-right:2px"></i>정상 (G1+G2)</span>
             <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#EF4444;margin-right:2px"></i>위험 (G3+G4)</span>
-            <span style="margin-left:auto;font-family:Consolas,monospace;font-size:8px">X=피처값 · Y=비율%</span>
+            <span style="margin-left:auto;font-family:Consolas,monospace;font-size:10px">X=피처값 · Y=비율%</span>
           </div>
         </div>
       </div>
@@ -2055,7 +2052,7 @@ Chart.defaults.color       = '#202832';
   ]}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
     interaction:{{mode:'index',intersect:false}},
     plugins:{{
-      legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:8,weight:'700'}}}}}},
+      legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:10,weight:'700'}}}}}},
       tooltip:{{callbacks:{{title:function(items){{
         var i=items[0].dataIndex;
         return wwLabels[i]+' ('+dateLabels[i]+')';
@@ -2070,17 +2067,17 @@ Chart.defaults.color       = '#202832';
     }},
     scales:{{
       y1:{{type:'linear',position:'left',
-        title:{{display:true,text:'생산량(개)',font:{{size:7,weight:'700'}}}},
+        title:{{display:true,text:'생산량(개)',font:{{size:9,weight:'700'}}}},
         grid:{{color:'#eef0f2'}},
-        ticks:{{font:{{size:7,weight:'700'}},color:'#94a3b8',
+        ticks:{{font:{{size:9,weight:'700'}},color:'#94a3b8',
           callback:function(v){{return v>=1000?(v/1000).toFixed(0)+'k':v;}}}},
         max:y1Max}},
       y2:{{type:'linear',position:'right',
-        title:{{display:true,text:'불량 ppm',font:{{size:7,weight:'700'}}}},
+        title:{{display:true,text:'불량 ppm',font:{{size:9,weight:'700'}}}},
         grid:{{display:false}},
-        ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563',
+        ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',
           callback:function(v){{return (v/1000).toFixed(0)+'k';}}}},min:0}},
-      x:{{grid:{{display:false}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563',maxRotation:0}}}}
+      x:{{grid:{{display:false}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',maxRotation:0}}}}
     }}
   }}}});
 }})();
@@ -2102,11 +2099,11 @@ Chart.defaults.color       = '#202832';
       backgroundColor:counts.map(function(v,i){{return i===maxIdx?'#dc2626':'rgba(148,163,184,0.5)';}}) ,yAxisID:'y1',order:2}},
     {{label:'Defect rate',data:rates,type:'line',borderColor:'#111827',borderWidth:1.5,pointRadius:2,fill:false,tension:0.1,yAxisID:'y2',order:1}},
   ]}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
-    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:8,weight:'700'}}}}}}}},
+    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:10,weight:'700'}}}}}}}},
     scales:{{
-      y1:{{type:'linear',position:'left',title:{{display:true,text:'units',font:{{size:7,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563'}}}},
-      y2:{{type:'linear',position:'right',min:0,max:100,grid:{{display:false}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563',callback:function(v){{return v+'%';}}}}}},
-      x:{{grid:{{display:false}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563',maxRotation:30}}}}
+      y1:{{type:'linear',position:'left',title:{{display:true,text:'units',font:{{size:9,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563'}}}},
+      y2:{{type:'linear',position:'right',min:0,max:100,grid:{{display:false}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',callback:function(v){{return v+'%';}}}}}},
+      x:{{grid:{{display:false}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',maxRotation:30}}}}
     }}
   }}}});
 }})();
@@ -2123,10 +2120,10 @@ Chart.defaults.color       = '#202832';
     {{label:'grade4(정상)',data:normalPts,backgroundColor:'rgba(59,130,246,0.4)',pointRadius:2.5}},
   ];
   new Chart(ctx,{{type:'scatter',data:{{datasets:ds}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
-    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:7,font:{{size:8,weight:'700'}}}}}}}},
+    plugins:{{legend:{{display:true,position:'top',labels:{{boxWidth:7,font:{{size:10,weight:'700'}}}}}}}},
     scales:{{
-      x:{{title:{{display:true,text:xLabel,font:{{size:7,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563'}}}},
-      y:{{title:{{display:true,text:yLabel,font:{{size:7,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:7,weight:'700'}},color:'#4b5563'}}}}
+      x:{{title:{{display:true,text:xLabel,font:{{size:9,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563'}}}},
+      y:{{title:{{display:true,text:yLabel,font:{{size:9,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563'}}}}
     }}
   }}}});
 }})();
@@ -2146,7 +2143,7 @@ Chart.defaults.color       = '#202832';
         var xs=chart.scales.x, ys=chart.scales.y, xp=xs.getPixelForValue(threshold), c2=chart.ctx;
         c2.save(); c2.beginPath(); c2.moveTo(xp,ys.top); c2.lineTo(xp,ys.bottom);
         c2.strokeStyle='#dc2626'; c2.lineWidth=1.5; c2.setLineDash([4,3]); c2.stroke();
-        c2.setLineDash([]); c2.font='bold 7px sans-serif'; c2.fillStyle='#dc2626';
+        c2.setLineDash([]); c2.font='bold 9px sans-serif'; c2.fillStyle='#dc2626';
         c2.textAlign='left'; c2.fillText('임계',xp+2,ys.top+10); c2.restore();
       }}
     }};
@@ -2156,8 +2153,8 @@ Chart.defaults.color       = '#202832';
         responsive:true, maintainAspectRatio:false, animation:false,
         plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{label:function(c){{return '('+c.parsed.x.toFixed(3)+', '+c.parsed.y.toFixed(6)+')';}}}}}}  }},
         scales:{{
-          x:{{grid:{{color:'#eef0f2'}},ticks:{{font:{{size:6,weight:'700'}},color:'#6b7280',maxTicksLimit:6}}}},
-          y:{{title:{{display:true,text:'pred',font:{{size:6,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:6}},color:'#6b7280',maxTicksLimit:5}}}}
+          x:{{grid:{{color:'#eef0f2'}},ticks:{{font:{{size:8,weight:'700'}},color:'#6b7280',maxTicksLimit:6}}}},
+          y:{{title:{{display:true,text:'pred',font:{{size:8,weight:'700'}}}},grid:{{color:'#eef0f2'}},ticks:{{font:{{size:8}},color:'#6b7280',maxTicksLimit:5}}}}
         }}
       }}
     }});
@@ -2200,14 +2197,14 @@ Chart.defaults.color       = '#202832';
         x: {{
           display: true,
           grid: {{color:'#eef0f2'}},
-          ticks: {{font:{{size:7,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
+          ticks: {{font:{{size:9,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
             callback: function(v){{ return v.toFixed(1)+'%'; }}
           }},
           max: maxVal * 1.15
         }},
         y: {{
           grid: {{display: false}},
-          ticks: {{font:{{size:8,weight:'700'}}, color:'#111827'}}
+          ticks: {{font:{{size:10,weight:'700'}}, color:'#111827'}}
         }}
       }}
     }}
@@ -2240,7 +2237,7 @@ Chart.defaults.color       = '#202832';
       var c2 = chart.ctx;
       c2.save(); c2.beginPath(); c2.moveTo(xp, yScale.top); c2.lineTo(xp, yScale.bottom);
       c2.strokeStyle='#dc2626'; c2.lineWidth=2; c2.setLineDash([4,3]); c2.stroke();
-      c2.setLineDash([]); c2.font='bold 8px sans-serif'; c2.fillStyle='#dc2626';
+      c2.setLineDash([]); c2.font='bold 10px sans-serif'; c2.fillStyle='#dc2626';
       c2.textAlign='left'; c2.fillText('임계 '+Number(threshold).toFixed(2), xp+3, yScale.top+11);
       c2.restore();
     }}
@@ -2260,7 +2257,7 @@ Chart.defaults.color       = '#202832';
       responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {{
         legend: {{display: true, position: 'top',
-          labels: {{boxWidth:8, font:{{size:7,weight:'700'}}, padding:6}}}},
+          labels: {{boxWidth:8, font:{{size:9,weight:'700'}}, padding:6}}}},
         tooltip: {{callbacks: {{label: function(c){{
           return c.dataset.label+': '+c.parsed.y.toFixed(2)+'%';
         }}}}}}
@@ -2268,15 +2265,15 @@ Chart.defaults.color       = '#202832';
       scales: {{
         x: {{
           display: true,
-          title: {{display:true, text:'피처값', font:{{size:7,weight:'700'}}, color:'#6b7280'}},
+          title: {{display:true, text:'피처값', font:{{size:9,weight:'700'}}, color:'#6b7280'}},
           grid: {{color:'#eef0f2'}},
-          ticks: {{font:{{size:7,weight:'700'}}, color:'#6b7280', maxTicksLimit:6, autoSkip:true,
+          ticks: {{font:{{size:9,weight:'700'}}, color:'#6b7280', maxTicksLimit:6, autoSkip:true,
             callback: function(v, i){{ var n = labels[i]; return (typeof n === 'number') ? n.toFixed(1) : n; }}}}
         }},
         y: {{
-          title: {{display:true, text:'비율 (%)', font:{{size:7,weight:'700'}}, color:'#6b7280'}},
+          title: {{display:true, text:'비율 (%)', font:{{size:9,weight:'700'}}, color:'#6b7280'}},
           grid: {{color:'#eef0f2'}},
-          ticks: {{font:{{size:7,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
+          ticks: {{font:{{size:9,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
             callback: function(v){{ return v.toFixed(0)+'%'; }}}}
         }}
       }}
