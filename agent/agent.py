@@ -14,7 +14,7 @@ from tools import (infer_period, scan_data, analyze_features, get_importance,
                    get_lot_trend_with_split, get_wafer_die_data, get_recent_lot_trend,
                    get_pred_ppm_trend, get_weekly_grade_trend, get_weekly_yield_trend,
                    get_anomaly_feature_stats, get_val_rmse, get_feat_vs_health_scatter,
-                   get_lot_grade_stack, get_pred_health_hist)
+                   get_lot_grade_stack, get_pred_health_hist, get_feature_dist_compare)
 from report import build_html
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -273,6 +273,13 @@ def _build_report_data(tool_cache: dict) -> dict:
     except Exception:
         pass
 
+    # R3: 피처 정상/위험 분포 비교 히스토그램 (ProcessFactor 차트)
+    feat_dist_compare = {}
+    try:
+        feat_dist_compare = get_feature_dist_compare()
+    except Exception:
+        pass
+
     try:
         _val_rmse = get_val_rmse()
     except Exception:
@@ -301,6 +308,7 @@ def _build_report_data(tool_cache: dict) -> dict:
         "anomaly_stats":     anomaly_stats[:5],       # 표시용: top5만
         "anomaly_stats_all": list(anomaly_stats),     # 원본 전체 보존 (늘리기 복원용)
         "feat_vs_health":    feat_vs_health,
+        "feat_dist_compare": feat_dist_compare,
         "actions":          [],
     }
 
@@ -1023,6 +1031,24 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
                 "datasets": [
                     {"label": "위험 (G3+G4)", "data": fvh.get("high_pts",   [])[:150], "color": "#EF4444"},
                     {"label": "정상 (G1+G2)", "data": fvh.get("normal_pts", [])[:150], "color": "#22C55E"},
+                ]}
+
+    elif chart_type == "feat_scatter_lot":
+        # 이상 피처 분포 (LOT 순서) — pts: {x:피처값, y:reg_pred, lot:run_id}
+        try:
+            fs = get_feature_scatter_data()
+        except Exception:
+            fs = {}
+        f1 = fs.get("feat1", {}); fname = f1.get("name", "Feature")
+        high = f1.get("pts_high", []); med = f1.get("pts_med", [])
+        # x=LOT, y=피처값
+        high_data = [{"x": p.get("lot"), "y": p.get("x")} for p in high if p.get("lot") is not None]
+        med_data  = [{"x": p.get("lot"), "y": p.get("x")} for p in med  if p.get("lot") is not None]
+        return {"title": f"이상 피처 분포 · {fname} (LOT 순서)", "chart_type": "scatter", "position": position,
+                "labels": [], "height": 150,
+                "datasets": [
+                    {"label": "위험(G1) 피처값", "data": high_data, "color": "#EF4444"},
+                    {"label": "정상(G4) 피처값", "data": med_data,  "color": "#3B82F6"},
                 ]}
 
     return None

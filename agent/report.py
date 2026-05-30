@@ -267,7 +267,7 @@ def _chart_lot_defects_png(lot_defect, w_px=580, h_px=110) -> bytes:
 
 
 def _chart_scatter_png(feat_name, high_pts, med_pts, threshold, w_px=270, h_px=155) -> bytes:
-    """L4 피처 scatter: grade4(매우위험/빨강) / grade1(정상/초록) + 임계선."""
+    """L4 피처 scatter: grade1(빨강) / grade4(파랑) + 임계선."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -283,10 +283,10 @@ def _chart_scatter_png(feat_name, high_pts, med_pts, threshold, w_px=270, h_px=1
 
     if med_pts:
         xs = [p["x"] for p in med_pts]; ys = [p["y"] for p in med_pts]
-        ax.scatter(xs, ys, s=8, color="#22c55e", alpha=0.45, label="grade1(정상)", zorder=2)
+        ax.scatter(xs, ys, s=8, color="#3b82f6", alpha=0.45, label="grade4(정상)", zorder=2)
     if high_pts:
         xs = [p["x"] for p in high_pts]; ys = [p["y"] for p in high_pts]
-        ax.scatter(xs, ys, s=10, color="#ef4444", alpha=0.7, label="grade4(매우위험)", zorder=3)
+        ax.scatter(xs, ys, s=10, color="#dc2626", alpha=0.7, label="grade1(불량)", zorder=3)
     if threshold is not None:
         ax.axvline(x=threshold, color="#dc2626", linewidth=1.2, linestyle="--", zorder=4,
                    label=f"임계값 {threshold:.4g}")
@@ -716,8 +716,8 @@ def build_pptx(report_data: dict) -> bytes:
 
     bx(LX+12, cy, INNER_W, SC_TOTAL_H, (255,255,255), (156,163,175), 0.5)
     # 범례 (상단 16px)
-    tx("● grade4(매우위험)", LX+16, cy+5, 95, 13, sz=7, clr=(239,68,68))
-    tx("● grade1(정상)",    LX+114, cy+5, 95, 13, sz=7, clr=(34,197,94))
+    tx("● grade1(불량)", LX+16, cy+5, 95, 13, sz=7, clr=(220,38,38))
+    tx("● grade4(정상)", LX+114, cy+5, 95, 13, sz=7, clr=(59,130,246))
     tx("X축:피처값  Y축:pred", LX+12+INNER_W-122, cy+5, 120, 13, sz=7, clr=(156,163,175), align="right")
 
     SC1_X  = LX + 12
@@ -1475,6 +1475,14 @@ def build_html(report_data: dict) -> str:
     _j_feat_scatter_high = _json.dumps(fs1_high)
     _j_feat_scatter_med  = _json.dumps(fs1_med)
 
+    # R3: 피처 정상/위험 분포 비교 히스토그램
+    fdc = report_data.get("feat_dist_compare", {})
+    j_fdc_feature   = _json.dumps(fdc.get("feature", ""))
+    j_fdc_labels    = _json.dumps(fdc.get("labels", []))
+    j_fdc_normal    = _json.dumps(fdc.get("normal", []))
+    j_fdc_danger    = _json.dumps(fdc.get("danger", []))
+    j_fdc_threshold = _json.dumps(fdc.get("threshold"))
+
     # PPM 계산 (KPI용) — 전체 unit 평균 reg_pred를 ppm으로 환산 (grade1 비율 아님)
     try:
         from tools import get_mean_pred_ppm
@@ -1675,15 +1683,15 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
           <div class="anom-hdr">Anomaly Feature Top {len(anomaly_stats) if anomaly_stats else 5} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px">출처: ZIT_only</span></div>
           <div class="anom-list">{anomaly_rows}</div>
         </div>
-        <div class="fi-panel ia-target" data-sid="R3_scatter" data-section="이상 피처 분포" style="position:relative;display:flex;flex-direction:column">
-          <div class="fi-hdr">이상 피처 분포 · {fs1_name if fs1_name != "Feat1" else (features[0].get("feature","") if features else "")} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px">출처: ZIT_only</span></div>
+        <div class="fi-panel ia-target" data-sid="R3_scatter" data-section="피처 정상/불량 분포" style="position:relative;display:flex;flex-direction:column">
+          <div class="fi-hdr">피처 정상/불량 분포 · {fdc.get("feature","") or (features[0].get("feature","") if features else "")} <span style="font-size:8px;font-weight:700;color:#6b7280;background:#f3f4f6;border:1px solid #d1d5db;padding:1px 5px;border-radius:3px;margin-left:4px">출처: ZIT_only</span></div>
           <div style="flex:1;position:relative;padding:4px">
-            <canvas id="c-feat-scatter" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas>
+            <canvas id="c-feat-dist" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas>
           </div>
           <div style="display:flex;gap:8px;font-size:8px;color:#4b5563;padding:3px 6px;flex-shrink:0">
-            <span><i style="display:inline-block;width:7px;height:7px;border-radius:50%;background:rgba(59,130,246,0.5);margin-right:2px"></i>전체 unit</span>
-            <span><i style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#dc2626;margin-right:2px"></i>이상 unit</span>
-            <span style="margin-left:auto;font-family:Consolas,monospace;font-size:8px">n={len(fs1_high) + len(fs1_med)}</span>
+            <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#3B82F6;margin-right:2px"></i>정상 (G1+G2)</span>
+            <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#EF4444;margin-right:2px"></i>위험 (G3+G4)</span>
+            <span style="margin-left:auto;font-family:Consolas,monospace;font-size:8px">X=피처값 · Y=비율%</span>
           </div>
         </div>
       </div>
@@ -1716,6 +1724,7 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
   <div class="chart-item" data-chart="weekly_grade_trend">주차별 Grade 비율 트렌드</div>
   <div class="chart-item" data-chart="lot_grade_stack">LOT별 Grade 구성 스택 바</div>
   <div class="chart-item" data-chart="health_hist">예측 Health 분포</div>
+  <div class="chart-item" data-chart="feat_scatter_lot">이상 피처 분포 (LOT 순서)</div>
 </div>
 
 <div class="s-footer">
@@ -1860,8 +1869,8 @@ Chart.defaults.color       = '#202832';
   function drawFeatScatter(canvasId, highPts, medPts, threshold) {{
     var el = document.getElementById(canvasId); if(!el) return;
     var ds = [
-      {{label:'grade4(매우위험)', data:highPts, backgroundColor:'rgba(239,68,68,0.65)',  pointRadius:2.5, pointHoverRadius:4}},
-      {{label:'grade1(정상)',    data:medPts,  backgroundColor:'rgba(34,197,94,0.4)',   pointRadius:2,   pointHoverRadius:3}},
+      {{label:'grade1(불량)', data:highPts, backgroundColor:'rgba(220,38,38,0.65)', pointRadius:2.5, pointHoverRadius:4}},
+      {{label:'grade4(정상)', data:medPts,  backgroundColor:'rgba(59,130,246,0.4)',  pointRadius:2,   pointHoverRadius:3}},
     ];
     var thresholdPlugin = {{
       id:'thr-'+canvasId,
@@ -1938,61 +1947,70 @@ Chart.defaults.color       = '#202832';
   }});
 }})();
 
-// R3: 이상 피처 분포 scatter — x=ufs_serial 순서, y=피처값(정규화)
-// 원본 pts_high/pts_med: {{x:피처값, y:reg_pred}} 형태
-// → x축: 전체 합쳐서 인덱스 부여, y축: 원본 x(피처값) 사용, 0~1 정규화
+// R3: 피처 정상/불량 분포 비교 (ProcessFactor 차트) — X=피처값 bin, Y=비율%
 (function(){{
-  var ctx = document.getElementById('c-feat-scatter'); if(!ctx) return;
-  var rawHigh = {_j_feat_scatter_high};
-  var rawMed  = {_j_feat_scatter_med};
-  if(!rawHigh.length && !rawMed.length){{
-    rawHigh=[{{x:0.82,y:0.91}},{{x:0.78,y:0.85}},{{x:0.91,y:0.87}}];
-    rawMed=[{{x:0.55,y:0.5}},{{x:0.43,y:0.6}},{{x:0.61,y:0.4}},{{x:0.38,y:0.55}}];
+  var ctx = document.getElementById('c-feat-dist'); if(!ctx) return;
+  var labels    = {j_fdc_labels};
+  var normal    = {j_fdc_normal};
+  var danger    = {j_fdc_danger};
+  var threshold = {j_fdc_threshold};
+  if(!labels.length){{
+    labels=[-3,-2,-1,0,1,2,3]; normal=[1,5,15,30,25,15,9]; danger=[10,25,30,18,10,5,2];
   }}
-  // y축 = 피처값(원본 x 컬럼), 0~1 정규화
-  var allFeatVals = rawHigh.map(function(p){{return p.x;}}).concat(rawMed.map(function(p){{return p.x;}}));
-  var minV = Math.min.apply(null,allFeatVals), maxV = Math.max.apply(null,allFeatVals);
-  var rng = maxV - minV || 1;
-  function normY(v){{ return Math.round((v-minV)/rng*1000)/1000; }}
-  // x축 = 전체 unit을 합산한 뒤 인덱스 순서 (med 먼저, high 뒤에)
-  var offset = rawMed.length;
-  var medPts  = rawMed.map(function(p,i){{  return {{x:i,          y:normY(p.x)}}; }});
-  var highPts = rawHigh.map(function(p,i){{ return {{x:offset+i,   y:normY(p.x)}}; }});
+  var thresholdPlugin = {{
+    id:'thr-feat-dist',
+    afterDraw: function(chart) {{
+      if(threshold===null||threshold===undefined) return;
+      var xScale=chart.scales.x, yScale=chart.scales.y;
+      // labels(bin 중심값) 중 threshold에 가장 가까운 인덱스 찾기
+      var idx = -1, minDiff = Infinity;
+      for(var i=0;i<labels.length;i++){{
+        var diff = Math.abs(labels[i] - threshold);
+        if(diff < minDiff){{ minDiff = diff; idx = i; }}
+      }}
+      if(idx < 0) return;
+      var xp = xScale.getPixelForValue(idx);
+      var c2 = chart.ctx;
+      c2.save(); c2.beginPath(); c2.moveTo(xp, yScale.top); c2.lineTo(xp, yScale.bottom);
+      c2.strokeStyle='#dc2626'; c2.lineWidth=2; c2.setLineDash([4,3]); c2.stroke();
+      c2.setLineDash([]); c2.font='bold 8px sans-serif'; c2.fillStyle='#dc2626';
+      c2.textAlign='left'; c2.fillText('임계 '+Number(threshold).toFixed(2), xp+3, yScale.top+11);
+      c2.restore();
+    }}
+  }};
   new Chart(ctx, {{
-    type: 'scatter',
+    type: 'line', plugins:[thresholdPlugin],
     data: {{
+      labels: labels,
       datasets: [
-        {{label:'전체 unit', data:medPts,  backgroundColor:'rgba(99,130,190,0.45)', pointRadius:2.5, pointHoverRadius:4}},
-        {{label:'이상 unit', data:highPts, backgroundColor:'rgba(220,38,38,0.85)',  pointRadius:4,   pointHoverRadius:6,
-          pointStyle:'crossRot', borderColor:'rgba(220,38,38,0.85)', borderWidth:2}},
+        {{label:'정상 (G1+G2)', data:normal, borderColor:'#3B82F6', backgroundColor:'rgba(59,130,246,0.12)',
+          borderWidth:2, tension:0.35, pointRadius:0, fill:true}},
+        {{label:'위험 (G3+G4)', data:danger, borderColor:'#EF4444', backgroundColor:'rgba(239,68,68,0.12)',
+          borderWidth:2, tension:0.35, pointRadius:0, fill:true}},
       ]
     }},
     options: {{
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
+      responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {{
-        legend: {{
-          display: true, position: 'top',
-          labels: {{boxWidth:8, font:{{size:7,weight:'700'}}, padding:6}}
-        }},
+        legend: {{display: true, position: 'top',
+          labels: {{boxWidth:8, font:{{size:7,weight:'700'}}, padding:6}}}},
         tooltip: {{callbacks: {{label: function(c){{
-          return c.dataset.label+': '+c.parsed.y.toFixed(3);
+          return c.dataset.label+': '+c.parsed.y.toFixed(2)+'%';
         }}}}}}
       }},
       scales: {{
         x: {{
           display: true,
-          title: {{display:true, text:'ufs_serial 순서', font:{{size:7,weight:'700'}}, color:'#6b7280'}},
-          grid: {{display:false}},
-          ticks: {{font:{{size:7,weight:'700'}}, color:'#6b7280', maxTicksLimit:6}}
+          title: {{display:true, text:'피처값', font:{{size:7,weight:'700'}}, color:'#6b7280'}},
+          grid: {{color:'#eef0f2'}},
+          ticks: {{font:{{size:7,weight:'700'}}, color:'#6b7280', maxTicksLimit:6, autoSkip:true,
+            callback: function(v, i){{ var n = labels[i]; return (typeof n === 'number') ? n.toFixed(1) : n; }}}}
         }},
         y: {{
-          min: 0, max: 1,
+          title: {{display:true, text:'비율 (%)', font:{{size:7,weight:'700'}}, color:'#6b7280'}},
           grid: {{color:'#eef0f2'}},
-          ticks: {{font:{{size:7,weight:'700'}}, color:'#6b7280', maxTicksLimit:6,
-            callback: function(v){{ return v.toFixed(1); }}
-          }}
+          ticks: {{font:{{size:7,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
+            callback: function(v){{ return v.toFixed(0)+'%'; }}}}
         }}
       }}
     }}

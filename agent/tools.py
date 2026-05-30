@@ -708,7 +708,8 @@ def get_lot_trend_data(top_n: int = 20) -> dict:
 # ── 배너용 전주 대비 ppm delta ────────────────────────────────
 def get_ppm_delta() -> dict:
     """
-    최신 5 LOT vs 이전 5 LOT HIGH ppm 변화량 계산 (train/val/test 전체 기준).
+    최신 5 LOT vs 이전 5 LOT 예측 ppm(reg_pred 평균) 변화량.
+    대시보드 트렌드 차트와 동일하게 reg_pred 평균을 ppm 단위로 사용.
     반환: {prev_ppm, curr_ppm, delta, top_features: [feat1, feat2]}
     """
     units = _load("dashboard_units.csv")
@@ -721,8 +722,8 @@ def get_ppm_delta() -> dict:
     prev = val[val["run_id"].isin(prev_lots)]
     curr = val[val["run_id"].isin(curr_lots)]
 
-    prev_ppm = round(float((prev["risk"] == "HIGH").mean()) * 1_000_000, 1)
-    curr_ppm = round(float((curr["risk"] == "HIGH").mean()) * 1_000_000, 1)
+    prev_ppm = round(float(prev["reg_pred"].mean()) * 1_000_000, 1)
+    curr_ppm = round(float(curr["reg_pred"].mean()) * 1_000_000, 1)
     delta    = round(curr_ppm - prev_ppm, 1)
 
     # top-2 피처명 (lgbm_rank 기준)
@@ -767,20 +768,22 @@ def get_feature_scatter_data(feat1: str = None, feat2: str = None,
             result[f"feat{i+1}"] = {"name": feat, "pts_high": [], "pts_med": [], "threshold": None}
             continue
 
-        df = val[["ufs_serial", col, "grade", "reg_pred"]].dropna(subset=[col])
-        grade4_df = df[df["grade"] == "grade4"]  # 매우위험 (HIGH)
-        grade1_df = df[df["grade"] == "grade1"]  # 정상 (normal)
-        threshold = round(float(grade4_df[col].quantile(0.05)), 4) if not grade4_df.empty else None
+        df = val[["ufs_serial", "run_id", col, "grade", "reg_pred"]].dropna(subset=[col])
+        grade1_df = df[df["grade"] == "grade1"]
+        grade4_df = df[df["grade"] == "grade4"]
+        threshold = round(float(grade1_df[col].quantile(0.05)), 4) if not grade1_df.empty else None
 
         def _sample(sdf, n, c=col):
             sdf = sdf.sample(min(n, len(sdf)), random_state=42)
-            return [{"x": round(float(r[c]), 4), "y": round(float(r["reg_pred"]), 6)}
+            return [{"x": round(float(r[c]), 4),
+                     "y": round(float(r["reg_pred"]), 6),
+                     "lot": int(r["run_id"])}
                     for _, r in sdf.iterrows()]
 
         result[f"feat{i+1}"] = {
             "name":      feat,
-            "pts_high":  _sample(grade4_df, max_pts),  # 매우위험(grade4) → 빨강
-            "pts_med":   _sample(grade1_df, max_pts),  # 정상(grade1) → 초록
+            "pts_high":  _sample(grade1_df, max_pts),
+            "pts_med":   _sample(grade4_df, max_pts),
             "threshold": threshold,
         }
 
@@ -841,50 +844,129 @@ def get_weekly_grade_trend() -> dict:
     }
 
 
-# ── 주차별 불량 트렌드 (trend_data.csv 기반, 대시보드 Overview.jsx와 동일 소스) ──
+# ── 주차별 불량 트렌드 (대시보드 Overview.jsx trendResult와 동일 로직) ──
 def get_weekly_yield_trend(recent_weeks: int = 7) -> dict:
     """
     trend_data.csv(date, y_pred, y_true, production)를 주차 단위로 집계.
-    대시보드 Overview.jsx의 trendResult와 동일한 소스 데이터.
-    반환: {labels, production, pred_yield, defect_ppm}
+    대시보드 Overview.jsx의 trendResult와 동일한 가공 적용:
+      - 생산량: 마지막 주 = dashboard_units 전체 unit 수, 나머지 = 평균 0.85×totalUnits로 스케일
+      - ppm: 마지막 주 = 실제 reg_pred 평균 ppm, 과거 주 = 2,100 ppm 기준 스케일 후 [2000,2200] clamp
+    반환: {labels, production, pred_yield, defect_ppm, true_ppm}
     """
-    trend = _load("trend_data.csv")
-    trend = trend.copy()
+    trend = _load("trend_data.csv").copy()
     trend["date"] = pd.to_datetime(trend["date"], errors="coerce")
     trend = trend.dropna(subset=["date"])
 
     # 주 시작(월요일) 계산
-    trend["week_start"] = trend["date"].apply(
-        lambda d: d - timedelta(days=d.weekday())
-    )
+    trend["week_start"] = trend["date"].apply(lambda d: d - timedelta(days=d.weekday()))
 
     def fmt(d):
         return f"{d.month:02d}/{d.day:02d}"
 
-    agg = (
+    # 전체 주차 raw 집계 (Overview.jsx와 동일하게 모든 주차 계산 후 tail)
+    weeks = (
         trend.groupby("week_start")
         .apply(lambda g: pd.Series({
-            "production": int(g["production"].sum()),
-            "pred_ppm":   float(g["y_pred"].mean()),
-            "true_ppm":   float(g["y_true"].mean()),
+            "prod_sum":    float(g["production"].sum()),
+            "days":        int(g["date"].nunique()),
+            "pred_ppm":    float(g["y_pred"].mean()) if g["y_pred"].notna().any() else None,
+            "true_ppm":    float(g["y_true"].mean()) if g["y_true"].notna().any() else None,
         }), include_groups=False)
         .reset_index()
         .sort_values("week_start")
-        .tail(recent_weeks)
+        .reset_index(drop=True)
     )
+    n = len(weeks)
+    if n == 0:
+        return {"labels": [], "production": [], "pred_yield": [], "defect_ppm": [], "true_ppm": []}
 
-    agg["week_end"]   = agg["week_start"] + timedelta(days=6)
-    agg["week_label"] = agg.apply(
-        lambda r: f"{fmt(r['week_start'])}~{fmt(r['week_end'])}", axis=1
-    )
-    # pred_yield: 100 - (pred_ppm / 10000) (ppm → %)
-    agg["pred_yield"] = (100 - agg["pred_ppm"] / 10000).round(2)
+    # 생산량 raw: prod / days * 7
+    prod_raw = [
+        round(weeks.loc[i, "prod_sum"] / weeks.loc[i, "days"] * 7) if weeks.loc[i, "days"] > 0 else 0
+        for i in range(n)
+    ]
+
+    # totalUnits = dashboard_units.csv row 수
+    try:
+        units = _load("dashboard_units.csv")
+        total_units = len(units)
+        actual_last_ppm = float(units["reg_pred"].mean()) * 1e6
+    except Exception:
+        total_units = prod_raw[-1] or 1
+        actual_last_ppm = weeks.loc[n - 1, "pred_ppm"] or 0
+
+    # 생산량 스케일: 마지막 주 = totalUnits, 나머지 = scaleFactor 적용
+    if n > 1:
+        raw_avg = sum(prod_raw[:-1]) / (n - 1)
+    else:
+        raw_avg = prod_raw[0] or 1
+    target_avg = total_units * 0.85
+    scale_factor = target_avg / (raw_avg or 1)
+    prod_final = [
+        total_units if i == n - 1 else round(prod_raw[i] * scale_factor)
+        for i in range(n)
+    ]
+
+    # null 선형 보간 helper
+    def _interp(arr):
+        out = list(arr)
+        for i in range(len(out)):
+            if out[i] is not None:
+                continue
+            li = i - 1
+            while li >= 0 and arr[li] is None: li -= 1
+            ri = i + 1
+            while ri < len(arr) and arr[ri] is None: ri += 1
+            if li >= 0 and ri < len(arr):
+                out[i] = arr[li] + (arr[ri] - arr[li]) * (i - li) / (ri - li)
+            elif li >= 0:
+                out[i] = arr[li]
+            elif ri < len(arr):
+                out[i] = arr[ri]
+        return out
+
+    pred_raw = [weeks.loc[i, "pred_ppm"] if pd.notna(weeks.loc[i, "pred_ppm"]) else None for i in range(n)]
+    true_raw = [weeks.loc[i, "true_ppm"] if pd.notna(weeks.loc[i, "true_ppm"]) else None for i in range(n)]
+
+    # pastScale: 과거 주(마지막 제외) raw 평균이 2,100 ppm이 되도록
+    TARGET_PAST_PPM = 2100
+    past_vals = [v for v in pred_raw[:-1] if v is not None]
+    raw_past_mean = (sum(past_vals) / len(past_vals)) if past_vals else 1
+    past_scale = (TARGET_PAST_PPM / raw_past_mean) if raw_past_mean else 1
+
+    pred_filled = _interp(pred_raw)
+    true_filled = _interp(true_raw)
+
+    def _clamp_past(v, is_last):
+        if v is None: return None
+        if is_last: return round(actual_last_ppm)
+        return max(2000, min(2200, round(v * past_scale)))
+
+    pred_final = [_clamp_past(pred_filled[i], i == n - 1) for i in range(n)]
+    true_final = [
+        max(2000, min(2200, round(v * past_scale))) if v is not None else None
+        for v in true_filled
+    ]
+
+    labels = [
+        f"{fmt(weeks.loc[i,'week_start'])}~{fmt(weeks.loc[i,'week_start'] + timedelta(days=6))}"
+        for i in range(n)
+    ]
+
+    # 최근 recent_weeks 만 슬라이스
+    sl = slice(max(0, n - recent_weeks), n)
+    labels_out  = labels[sl]
+    prod_out    = prod_final[sl]
+    pred_out    = pred_final[sl]
+    true_out    = true_final[sl]
+    pred_yield  = [round(100 - p / 10000, 2) if p is not None else None for p in pred_out]
 
     return {
-        "labels":     agg["week_label"].tolist(),
-        "production": [int(v) for v in agg["production"]],
-        "pred_yield": [round(float(v), 2) for v in agg["pred_yield"]],
-        "defect_ppm": [round(float(v), 1) for v in agg["pred_ppm"]],
+        "labels":     labels_out,
+        "production": [int(v) for v in prod_out],
+        "pred_yield": pred_yield,
+        "defect_ppm": [int(v) if v is not None else 0 for v in pred_out],
+        "true_ppm":   [int(v) if v is not None else 0 for v in true_out],
     }
 
 
@@ -1142,6 +1224,52 @@ def get_lot_grade_stack(top_n: int = 20) -> dict:
         "g2": [int(v) for v in grp["grade2"]],
         "g3": [int(v) for v in grp["grade3"]],
         "g4": [int(v) for v in grp["grade4"]],
+    }
+
+
+def get_feature_dist_compare(feature: str = None, bins: int = 40) -> dict:
+    """
+    선택 피처의 정상(grade1+2) vs 위험(grade3+4) unit 값 분포 비교 히스토그램.
+    ProcessFactor.jsx의 distOption과 동일 로직.
+    반환: {feature, labels:[bin 중앙값,...], normal:[%,...], danger:[%,...], threshold}
+    """
+    import numpy as _np
+    fd = _load("feature_dist.csv")
+    units = _load("dashboard_units.csv")[["ufs_serial", "grade"]]
+
+    if not feature:
+        try:
+            fi = _load("feature_importance.csv")
+            feature = fi.sort_values("lgbm_rank").iloc[0]["feature"]
+        except Exception:
+            feature = "X592"
+
+    if feature not in fd.columns:
+        return {"feature": feature, "labels": [], "normal": [], "danger": [], "threshold": None}
+
+    merged = fd[["ufs_serial", feature]].merge(units, on="ufs_serial", how="inner").dropna(subset=[feature])
+    normal_vals = merged.loc[merged["grade"].isin(["grade1", "grade2"]), feature].values
+    danger_vals = merged.loc[merged["grade"].isin(["grade3", "grade4"]), feature].values
+
+    all_vals = list(normal_vals) + list(danger_vals)
+    if not all_vals:
+        return {"feature": feature, "labels": [], "normal": [], "danger": [], "threshold": None}
+
+    edges = _np.linspace(min(all_vals), max(all_vals), bins + 1)
+    counts_n, _ = _np.histogram(normal_vals, bins=edges)
+    counts_d, _ = _np.histogram(danger_vals, bins=edges)
+
+    labels  = [round(float((edges[i] + edges[i+1]) / 2), 4) for i in range(bins)]
+    normal  = [round(float(c) / len(normal_vals) * 100, 2) if len(normal_vals) else 0 for c in counts_n]
+    danger  = [round(float(c) / len(danger_vals) * 100, 2) if len(danger_vals) else 0 for c in counts_d]
+    threshold = round(float(_np.quantile(danger_vals, 0.05)), 4) if len(danger_vals) else None
+
+    return {
+        "feature":   feature,
+        "labels":    labels,
+        "normal":    normal,
+        "danger":    danger,
+        "threshold": threshold,
     }
 
 
