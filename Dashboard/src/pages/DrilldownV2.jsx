@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 계층별 정밀 분석 — 1팀 Drilldown 구조 포팅 (CSV 기반)
  *
  * 좌측  : Lot 트리 (lot → wafer 리스트, 위험률/번호 정렬)
@@ -195,8 +195,7 @@ pred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`}</title>
 }
 
 // ── SHAP 바 (shap_beeswarm.csv 기반 unit별 실제 SHAP, fallback: shap_bar.csv 전체 평균) ─
-function ShapBar({ shapData, shapBeeswarm, ufsSerial }) {
-  // 1) 해당 unit의 SHAP이 shap_beeswarm에 있으면 그걸 사용 (unit별 실제 SHAP)
+function ShapBar({ shapData, shapBeeswarm, ufsSerial, selectedFeature, onSelectFeature }) {
   const unitShap = useMemo(() => {
     if (!shapBeeswarm?.length || !ufsSerial) return null
     const rows = shapBeeswarm.filter(r => r.ufs_serial === ufsSerial)
@@ -208,7 +207,6 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial }) {
     })).sort((a, b) => b.magnitude - a.magnitude).slice(0, 10)
   }, [shapBeeswarm, ufsSerial])
 
-  // 2) fallback: shap_bar.csv (모델 전체 평균)
   const allBars = unitShap ?? (
     shapData?.length
       ? shapData.slice(0, 20).map(f => ({
@@ -218,7 +216,6 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial }) {
         })).sort((a, b) => b.magnitude - a.magnitude)
       : []
   )
-  // X0~X1086 피처만 표시
   const bars = allBars.filter(b => /^X\d+$/.test(b.feature)).slice(0, 10)
 
   if (!bars.length) return null
@@ -228,9 +225,20 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial }) {
       {bars.map(b => {
         const w = Math.round(b.magnitude / maxMag * 100)
         const clr = b.val >= 0 ? '#ef4444' : '#3b82f6'
+        const isSelected = selectedFeature === b.feature
         return (
-          <div key={b.feature} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-            <span style={{ width: 60, textAlign: 'right', fontFamily: 'monospace', color: '#374151', flexShrink: 0 }}>{b.feature}</span>
+          <div
+            key={b.feature}
+            onClick={() => onSelectFeature?.(isSelected ? null : b.feature)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
+              cursor: onSelectFeature ? 'pointer' : undefined,
+              background: isSelected ? '#eff6ff' : 'transparent',
+              borderRadius: 4, padding: '1px 2px',
+              outline: isSelected ? '1.5px solid #3b82f6' : 'none',
+            }}
+          >
+            <span style={{ width: 60, textAlign: 'right', fontFamily: 'monospace', color: isSelected ? '#1d4ed8' : '#374151', flexShrink: 0, fontWeight: isSelected ? 700 : 400 }}>{b.feature}</span>
             <div style={{ flex: 1, background: '#f1f5f9', height: 10, borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ width: `${w}%`, height: '100%', background: clr, borderRadius: 2 }} />
             </div>
@@ -238,12 +246,99 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial }) {
           </div>
         )
       })}
+      {onSelectFeature && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>막대 클릭 → 웨이퍼 히트맵</div>}
+    </div>
+  )
+}
+
+// ── 피처 웨이퍼 히트맵 ────────────────────────────────
+const FEAT_HEATMAP_STOPS = [
+  [0.0, [219, 234, 254]],
+  [0.5, [250, 250, 200]],
+  [1.0, [220, 38,  38]],
+]
+
+function FeatureWaferMap({ feature, allDies, shapBeeswarm }) {
+  const heatDies = useMemo(() => {
+    if (!feature || !allDies?.length || !shapBeeswarm?.length) return []
+    const serials = new Set(allDies.map(d => d.ufs_serial))
+    const featMap = {}
+    shapBeeswarm.forEach(r => {
+      if (r.feature === feature && serials.has(r.ufs_serial)) {
+        featMap[r.ufs_serial] = parseFloat(r.feat_norm)
+      }
+    })
+    return allDies.map(d => ({
+      die_x: parseInt(d.die_x),
+      die_y: parseInt(d.die_y),
+      val: featMap[d.ufs_serial] ?? null,
+    })).filter(d => d.val !== null && isFinite(d.val))
+  }, [feature, allDies, shapBeeswarm])
+
+  if (!feature) return null
+  if (!heatDies.length) return (
+    <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>
+      {feature} 데이터 없음
+    </div>
+  )
+
+  const D = 800, PAD = 12
+  const VB_W = D + PAD * 2, VB_H = D + PAD * 2
+  const cx = PAD + D / 2, cy = PAD + D / 2, radius = D / 2
+  const refXMin = GLOBAL_DIE_X_MIN, refXMax = GLOBAL_DIE_X_MAX
+  const refYMin = GLOBAL_DIE_Y_MIN, refYMax = GLOBAL_DIE_Y_MAX
+  const refXRange = refXMax - refXMin + 1, refYRange = refYMax - refYMin + 1
+  const centerX = (refXMin + refXMax) / 2, centerY = (refYMin + refYMax) / 2
+  const SCALE = 0.9
+  const cellW = (D / refXRange) * SCALE, cellH = (D / refYRange) * SCALE
+
+  const dieMap = new Map()
+  heatDies.forEach(d => dieMap.set(`${d.die_x},${d.die_y}`, d.val))
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', marginBottom: 4 }}>
+        {feature} 웨이퍼 히트맵
+        <span style={{ fontWeight: 400, color: '#64748b', marginLeft: 4 }}>feat_norm 기준</span>
+      </div>
+      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', maxWidth: 220, display: 'block', margin: '0 auto' }}>
+        <defs>
+          <clipPath id="featWaferCircle">
+            <circle cx={cx} cy={cy} r={radius} />
+          </clipPath>
+        </defs>
+        <circle cx={cx} cy={cy} r={radius} fill="#f8fafc" stroke="#cbd5e1" strokeWidth={1.5} />
+        <g clipPath="url(#featWaferCircle)">
+          {ALL_DIE_POSITIONS.map(([dx, dy]) => {
+            const val = dieMap.get(`${dx},${dy}`)
+            if (val == null) return null
+            const x = cx + (dx - centerX) * cellW - cellW / 2
+            const y = cy + (dy - centerY) * cellH - cellH / 2
+            const fill = interp(FEAT_HEATMAP_STOPS, val)
+            return (
+              <rect key={`${dx}-${dy}`} x={x} y={y} width={cellW} height={cellH}
+                fill={fill} stroke="rgba(15,23,42,0.08)" strokeWidth={0.4}>
+                <title>{`(${dx},${dy})  ${feature}=${val.toFixed(3)}`}</title>
+              </rect>
+            )
+          })}
+        </g>
+        <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#94a3b8" strokeWidth={1.5} />
+        <rect x={cx - 18} y={cy + radius - 6} width={36} height={8} fill="#fff" stroke="#94a3b8" strokeWidth={1} />
+      </svg>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 10, color: '#64748b' }}>
+        <span>낮음</span>
+        <div style={{ flex: 1, height: 7, borderRadius: 3, background: 'linear-gradient(to right, #dbeafe, #fafac8, #dc2626)' }} />
+        <span>높음</span>
+      </div>
     </div>
   )
 }
 
 // ── Unit 진단 패널 (1팀 우측 패널 포팅) ──────────────
 function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm, unitData }) {
+  const [selectedFeature, setSelectedFeature] = useState(null)
   const dies = useMemo(() =>
     ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
     [ufsSerial, allDies]
@@ -307,7 +402,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
       {/* 주요 기여 변수 (unit별 SHAP - shap_beeswarm.csv 기반) */}
       <div className="dd-section" style={{ padding: '6px 4px 4px' }}>
         <div className="dd-section-title">주요 기여 변수 Top 10 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>unit별 SHAP</span><span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginLeft: 6 }}>(ppm)</span></div>
-        <ShapBar shapData={shapData} shapBeeswarm={shapBeeswarm} ufsSerial={ufsSerial} />
+        <ShapBar shapData={shapData} shapBeeswarm={shapBeeswarm} ufsSerial={ufsSerial} selectedFeature={selectedFeature} onSelectFeature={setSelectedFeature} />
       </div>
 
       {/* 이상도 점수 (IsolationForest — dashboard_units.csv anomaly_score) */}
@@ -350,6 +445,13 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
       )}
 
       {/* 보고서 생성 버튼은 AI Agent 서버 비활성으로 인해 숨김 */}
+
+      {/* 피처 웨이퍼 히트맵 (SHAP 막대 클릭 시 표시) */}
+      {selectedFeature && shapBeeswarm?.length > 0 && (
+        <div className="dd-section-box">
+          <FeatureWaferMap feature={selectedFeature} allDies={allDies} shapBeeswarm={shapBeeswarm} />
+        </div>
+      )}
     </div>
   )
 }
