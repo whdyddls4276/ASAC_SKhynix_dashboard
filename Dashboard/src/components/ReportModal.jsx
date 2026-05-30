@@ -262,7 +262,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
     if (loading) return
     setLoading(true)
     const labels = { remove: '섹션 삭제 중...', change_chart: '차트 변경 중...' }
-    addMsg('user', labels[cmd.action] || '처리 중...')
+    addMsg('ai', labels[cmd.action] || '처리 중...')
 
     const prompt = `__direct__:${JSON.stringify(cmd)}`
     try {
@@ -664,10 +664,10 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
             )}
           </div>
 
-          {/* 우: AI 수정 어시스턴트 */}
+          {/* 우: AI 수정 에이전트 */}
           <div className="rm-chat">
             <div className="rm-chat-header">
-              <span>🤖 AI 수정 어시스턴트</span>
+              <span>🤖 AI 수정 에이전트</span>
             </div>
 
             <div className="rm-chat-messages">

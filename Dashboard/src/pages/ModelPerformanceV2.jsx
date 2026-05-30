@@ -42,11 +42,10 @@ export default function ModelPerformanceV2() {
 
   const [selFeat, setSelFeat] = useState(null)
 
-  // ── 예측 신뢰도 계산 (val/test 만 사용 — train은 학습 데이터라 제외) ──
+  // ── 예측 신뢰도 계산 (train/val/test 전체 사용) ──
   const reliability = useMemo(() => {
     if (!unitsRaw.length) return null
     const eval_units = unitsRaw.filter(u => {
-      if (u.split === 'train') return false
       const h = parseFloat(u.health)
       const p = parseFloat(u.reg_pred)
       return isFinite(h) && isFinite(p)

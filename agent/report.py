@@ -267,7 +267,7 @@ def _chart_lot_defects_png(lot_defect, w_px=580, h_px=110) -> bytes:
 
 
 def _chart_scatter_png(feat_name, high_pts, med_pts, threshold, w_px=270, h_px=155) -> bytes:
-    """L4 피처 scatter: grade1(빨강) / grade4(파랑) + 임계선."""
+    """L4 피처 scatter: grade4(매우위험/빨강) / grade1(정상/초록) + 임계선."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -283,10 +283,10 @@ def _chart_scatter_png(feat_name, high_pts, med_pts, threshold, w_px=270, h_px=1
 
     if med_pts:
         xs = [p["x"] for p in med_pts]; ys = [p["y"] for p in med_pts]
-        ax.scatter(xs, ys, s=8, color="#3b82f6", alpha=0.45, label="grade4(정상)", zorder=2)
+        ax.scatter(xs, ys, s=8, color="#22c55e", alpha=0.45, label="grade1(정상)", zorder=2)
     if high_pts:
         xs = [p["x"] for p in high_pts]; ys = [p["y"] for p in high_pts]
-        ax.scatter(xs, ys, s=10, color="#dc2626", alpha=0.7, label="grade1(불량)", zorder=3)
+        ax.scatter(xs, ys, s=10, color="#ef4444", alpha=0.7, label="grade4(매우위험)", zorder=3)
     if threshold is not None:
         ax.axvline(x=threshold, color="#dc2626", linewidth=1.2, linestyle="--", zorder=4,
                    label=f"임계값 {threshold:.4g}")
@@ -310,56 +310,83 @@ def _chart_scatter_png(feat_name, high_pts, med_pts, threshold, w_px=270, h_px=1
     plt.close(fig); buf.seek(0); return buf.read()
 
 
+def _pred_color(pred_ppm, pred_min, pred_max, threshold):
+    """DrilldownV2.jsx predColor 와 동일한 연속 그라디언트 색상 반환."""
+    NORMAL_STOPS = [(0.0, (243,244,246)), (0.5, (219,234,254)), (1.0, (165,215,220))]
+    RISK_STOPS   = [(0.0, (254,240,138)), (0.75,(251,146, 60)), (1.0, (220, 38, 38))]
+
+    def interp(stops, t):
+        t = max(0.0, min(1.0, t))
+        for i in range(1, len(stops)):
+            t1, c1 = stops[i]; t0, c0 = stops[i-1]
+            if t <= t1:
+                k = (t - t0) / (t1 - t0 or 1)
+                return tuple(int(c0[j] + (c1[j]-c0[j])*k) for j in range(3))
+        return stops[-1][1]
+
+    if pred_ppm <= threshold:
+        span = max(1e-9, threshold - pred_min)
+        r, g, b = interp(NORMAL_STOPS, (pred_ppm - pred_min) / span)
+    else:
+        span = max(1e-9, pred_max - threshold)
+        r, g, b = interp(RISK_STOPS, (pred_ppm - threshold) / span)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220) -> bytes:
-    """웨이퍼맵: 직사각형 die, grade 색상, 원형 clip."""
+    """웨이퍼맵: 직사각형 die, pred 연속 그라디언트 색상, 원형 clip (DrilldownV2 동일)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import matplotlib.patches as mpatches
-    from matplotlib.patches import Circle, Rectangle, FancyBboxPatch
-    from matplotlib.collections import PatchCollection
+    from matplotlib.patches import Circle, Rectangle
+    from matplotlib.colors import LinearSegmentedColormap
     import numpy as np
 
     _try_set_font()
 
-    GRADE_COLOR = {
-        "grade1": "#dc2626",
-        "grade2": "#f97316",
-        "grade3": "#f97316",
-        "grade4": "#7dd3fc",
-    }
+    # die-level pred 기준 색상 스케일 — wafer_scale.json 글로벌 기준 (DrilldownV2 동일)
+    preds = [d.get("pred") if d.get("pred") is not None else (d.get("pred_ppm", 0) or 0) / 1e6
+             for d in wd_dies]
+    try:
+        import json as _jmod, os as _omod
+        _sp = _omod.path.normpath(_omod.path.join(_omod.path.dirname(__file__), "..", "data", "processed", "wafer_scale.json"))
+        with open(_sp) as _f:
+            _ws = _jmod.load(_f)
+        pred_min  = float(_ws.get("pred_min", 0))
+        pred_max  = float(_ws.get("pred_max", 0.006))
+        threshold = float(_ws.get("threshold", 0.003))
+    except Exception:
+        pred_min = min(preds) if preds else 0
+        pred_max = max(preds) if preds else 1
+        sorted_p = sorted(preds)
+        threshold = sorted_p[int(len(sorted_p) * 0.75)] if sorted_p else (pred_max * 0.5)
 
     dpi = 96
     fig, ax = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
-    x_min, x_max = wd_x_range if wd_x_range else (12, 66)
-    y_min, y_max = wd_y_range if wd_y_range else (11, 32)
-    cx = (x_min + x_max) / 2; cy = (y_min + y_max) / 2
-    r = max(x_max - x_min, y_max - y_min) / 2 * 1.08
+    # DrilldownV2와 동일한 글로벌 좌표 기준 (웨이퍼마다 격자 고정)
+    x_min, x_max = 12, 66
+    y_min, y_max = 11, 32
+    cx = (x_min + x_max) / 2; cy = (y_min + y_max) / 2  # centerX=39, centerY=21.5
+    r = max(x_max - x_min, y_max - y_min) / 2 * 1.05
 
     wafer_circle = Circle((cx, cy), r, fill=True, facecolor="#F8FAFC",
                            edgecolor="#94A3B8", linewidth=1.5)
     ax.add_patch(wafer_circle)
 
-    # die 크기: 고유 좌표값들의 최소 간격으로 계산 (꽉 차게)
-    if wd_dies:
-        xs_uniq = sorted(set(d["x"] for d in wd_dies))
-        ys_uniq = sorted(set(d["y"] for d in wd_dies))
-        x_gaps = [xs_uniq[i+1]-xs_uniq[i] for i in range(len(xs_uniq)-1)] if len(xs_uniq)>1 else [1]
-        y_gaps = [ys_uniq[i+1]-ys_uniq[i] for i in range(len(ys_uniq)-1)] if len(ys_uniq)>1 else [1]
-        step_x = min(x_gaps) if x_gaps else 1
-        step_y = min(y_gaps) if y_gaps else 1
-        die_w = step_x * 0.92
-        die_h = step_y * 0.92
-    else:
-        die_w, die_h = 0.8, 0.8
+    # die 크기: DrilldownV2 cellW/H 비율 (SCALE=0.9)
+    ref_x_range = x_max - x_min + 1  # 55
+    ref_y_range = y_max - y_min + 1  # 22
+    die_w = (x_max - x_min) / ref_x_range * 0.9
+    die_h = (y_max - y_min) / ref_y_range * 0.9
 
     for die in wd_dies:
         dx, dy = die["x"], die["y"]
-        grade = die.get("grade", "grade4")
-        clr = GRADE_COLOR.get(grade, "#7dd3fc")
+        die_pred = die.get("pred") if die.get("pred") is not None else (die.get("pred_ppm", 0) or 0) / 1e6
+        clr = _pred_color(die_pred, pred_min, pred_max, threshold)
         is_target = die.get("is_target", False)
         rect = Rectangle((dx - die_w/2, dy - die_h/2), die_w, die_h,
                           facecolor=clr,
@@ -372,14 +399,14 @@ def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220
     ax.set_aspect("equal")
     ax.axis("off")
 
-    # 범례
-    legend_patches = [
-        mpatches.Patch(color="#7dd3fc", label="정상"),
-        mpatches.Patch(color="#f97316", label="경미위험"),
-        mpatches.Patch(color="#dc2626", label="대표불량"),
-    ]
-    ax.legend(handles=legend_patches, fontsize=5, loc="lower center",
-              ncol=3, framealpha=0, bbox_to_anchor=(0.5, -0.02))
+    # 색상바 범례 (정상→위험 그라디언트)
+    grad_colors = ["#f3f4f6", "#dbeafe", "#a5d7dc", "#fef08a", "#fb923c", "#dc2626"]
+    cmap = LinearSegmentedColormap.from_list("wafer", grad_colors)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=pred_min, vmax=pred_max))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, orientation="horizontal", fraction=0.04, pad=0.02, aspect=30)
+    cbar.ax.tick_params(labelsize=5)
+    cbar.set_label("pred ppm", fontsize=5)
 
     fig.tight_layout(pad=0.2)
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
@@ -689,8 +716,8 @@ def build_pptx(report_data: dict) -> bytes:
 
     bx(LX+12, cy, INNER_W, SC_TOTAL_H, (255,255,255), (156,163,175), 0.5)
     # 범례 (상단 16px)
-    tx("● grade1(불량)", LX+16, cy+5, 95, 13, sz=7, clr=(220,38,38))
-    tx("● grade4(정상)", LX+114, cy+5, 95, 13, sz=7, clr=(59,130,246))
+    tx("● grade4(매우위험)", LX+16, cy+5, 95, 13, sz=7, clr=(239,68,68))
+    tx("● grade1(정상)",    LX+114, cy+5, 95, 13, sz=7, clr=(34,197,94))
     tx("X축:피처값  Y축:pred", LX+12+INNER_W-122, cy+5, 120, 13, sz=7, clr=(156,163,175), align="right")
 
     SC1_X  = LX + 12
@@ -1357,45 +1384,58 @@ def build_html(report_data: dict) -> str:
     wd_y_range  = wafer_die.get("y_range", [11, 32])
     wd_serial   = wafer_die.get("serial", dummy_unit["serial"])
 
-    # ── 웨이퍼맵 HTML (grade 색상, 직사각형 die, 대시보드 WaferMap 스타일)
+    # ── 웨이퍼맵 HTML (pred 연속 그라디언트 색상, DrilldownV2 동일)
     wmap_w, wmap_h = 210, 210
     cx, cy_c = wmap_w / 2, wmap_h / 2
     pad = 14
     r_svg = min(cx, cy_c) - pad
 
-    # grade별 색상 (대시보드 동일)
-    _grade_color = {
-        "grade1": "#dc2626",
-        "grade2": "#f97316",
-        "grade3": "#f97316",
-        "grade4": "#7dd3fc",
-    }
+    # die-level pred 기반 색상 스케일 — DrilldownV2와 동일하게 wafer_scale.json 글로벌 기준 사용
+    _preds = [d.get("pred") if d.get("pred") is not None else (d.get("pred_ppm", 0) or 0) / 1e6
+              for d in wd_dies]
+    # wafer_scale.json: 전체 wafer_map.csv 기반 글로벌 스케일 (DrilldownV2의 globalScale과 동일)
+    try:
+        import json as _json_mod, os as _os_mod
+        _scale_path = _os_mod.path.join(_os_mod.path.dirname(__file__), "..", "data", "processed", "wafer_scale.json")
+        with open(_os_mod.path.normpath(_scale_path)) as _sf:
+            _ws = _json_mod.load(_sf)
+        _pred_min  = float(_ws.get("pred_min", 0))
+        _pred_max  = float(_ws.get("pred_max", 0.006))
+        _threshold = float(_ws.get("threshold", 0.003))
+    except Exception:
+        # fallback: 현재 wafer 기준
+        _pred_min = min(_preds) if _preds else 0
+        _pred_max = max(_preds) if _preds else 1
+        _sorted_p = sorted(_preds)
+        _threshold = _sorted_p[int(len(_sorted_p) * 0.75)] if _sorted_p else (_pred_max * 0.5)
 
-    # 해당 웨이퍼 die 범위 → 꽉 차도록 스케일
-    _wx_min, _wx_max = wd_x_range
-    _wy_min, _wy_max = wd_y_range
-    _mx = (_wx_min + _wx_max) / 2
-    _my = (_wy_min + _wy_max) / 2
-    _x_span = max(_wx_max - _wx_min, 1)
-    _y_span = max(_wy_max - _wy_min, 1)
+    # DrilldownV2와 동일한 글로벌 좌표 기준 사용 (웨이퍼마다 격자 고정)
+    _GLOBAL_X_MIN, _GLOBAL_X_MAX = 12, 66   # GLOBAL_DIE_X_MIN/MAX
+    _GLOBAL_Y_MIN, _GLOBAL_Y_MAX = 11, 32   # GLOBAL_DIE_Y_MIN/MAX
+    _ref_x_range = _GLOBAL_X_MAX - _GLOBAL_X_MIN + 1  # 55
+    _ref_y_range = _GLOBAL_Y_MAX - _GLOBAL_Y_MIN + 1  # 22
+    _mx = (_GLOBAL_X_MIN + _GLOBAL_X_MAX) / 2         # centerX = 39
+    _my = (_GLOBAL_Y_MIN + _GLOBAL_Y_MAX) / 2         # centerY = 21.5
 
-    # x/y 독립 스케일 (웨이퍼맵 특성상 x/y 비율이 다름 → 원에 꽉 차게)
-    _sx = r_svg * 1.8 / _x_span
-    _sy = r_svg * 1.8 / _y_span
+    # DrilldownV2: cellW = (D / refXRange) * SCALE, D=800, SCALE=0.9
+    # 보고서: r_svg 기준으로 동일 비율 적용
+    _SCALE = 0.9
+    _sx = (r_svg * 2 / _ref_x_range) * _SCALE
+    _sy = (r_svg * 2 / _ref_y_range) * _SCALE
 
     def _wsvgx(x): return cx + (x - _mx) * _sx
-    def _wsvgy(y): return cy_c - (y - _my) * _sy  # y 반전 (SVG 위=0)
+    def _wsvgy(y): return cy_c + (y - _my) * _sy
 
-    # die 크기: 대시보드 symbolSize [8, 20] 비율(가로:세로 = 2:5)
-    _die_w = max(3, _sx * 0.75)
-    _die_h = max(7, _sy * 0.75)
+    # die 크기: DrilldownV2와 동일 (cellW × cellH)
+    _die_w = _sx
+    _die_h = _sy
 
     die_svgs = ""
     for die in wd_dies:
         px = _wsvgx(die["x"]); py = _wsvgy(die["y"])
-        grade = die.get("grade", "grade4")
+        die_pred = die.get("pred") if die.get("pred") is not None else (die.get("pred_ppm", 0) or 0) / 1e6
         is_target = die.get("is_target", False)
-        clr = _grade_color.get(grade, "#7dd3fc")
+        clr = _pred_color(die_pred, _pred_min, _pred_max, _threshold)
         stroke = "#7f1d1d" if is_target else "none"
         sw = "1.5" if is_target else "0"
         die_svgs += (
@@ -1611,9 +1651,8 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
           <div class="wafer-box-title">불량 위치 웨이퍼맵</div>
           <div style="display:flex;align-items:center;justify-content:center;flex:1">{wafer_svg}</div>
           <div style="font-size:8px;color:#4b5563;display:flex;gap:7px;align-items:center;width:100%;justify-content:center;margin-top:1px">
-            <span style="display:inline-block;width:8px;height:8px;background:#7dd3fc;border:1px solid #38bdf8"></span>정상
-            <span style="display:inline-block;width:8px;height:8px;background:#f97316"></span>경미 위험
-            <span style="display:inline-block;width:8px;height:8px;background:#dc2626"></span>대표 불량
+            <span style="display:inline-block;width:60px;height:7px;background:linear-gradient(to right,#f3f4f6,#dbeafe,#a5d7dc,#fef08a,#fb923c,#dc2626);border-radius:2px"></span>
+            <span style="font-size:7px;color:#6b7280">정상 → 위험</span>
             <span style="font-family:Consolas,monospace;font-weight:900;margin-left:4px">{dummy_unit["serial"]}</span>
           </div>
         </div>
@@ -1677,7 +1716,6 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
   <div class="chart-item" data-chart="weekly_grade_trend">주차별 Grade 비율 트렌드</div>
   <div class="chart-item" data-chart="lot_grade_stack">LOT별 Grade 구성 스택 바</div>
   <div class="chart-item" data-chart="health_hist">예측 Health 분포</div>
-  <div class="chart-item" data-chart="feat_vs_health">피처 vs Health 분산도</div>
 </div>
 
 <div class="s-footer">
@@ -1822,8 +1860,8 @@ Chart.defaults.color       = '#202832';
   function drawFeatScatter(canvasId, highPts, medPts, threshold) {{
     var el = document.getElementById(canvasId); if(!el) return;
     var ds = [
-      {{label:'grade1(불량)', data:highPts, backgroundColor:'rgba(220,38,38,0.65)', pointRadius:2.5, pointHoverRadius:4}},
-      {{label:'grade4(정상)', data:medPts,  backgroundColor:'rgba(59,130,246,0.4)',  pointRadius:2,   pointHoverRadius:3}},
+      {{label:'grade4(매우위험)', data:highPts, backgroundColor:'rgba(239,68,68,0.65)',  pointRadius:2.5, pointHoverRadius:4}},
+      {{label:'grade1(정상)',    data:medPts,  backgroundColor:'rgba(34,197,94,0.4)',   pointRadius:2,   pointHoverRadius:3}},
     ];
     var thresholdPlugin = {{
       id:'thr-'+canvasId,

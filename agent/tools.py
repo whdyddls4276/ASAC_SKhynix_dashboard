@@ -293,19 +293,21 @@ def get_importance(top_n: int = 10) -> dict:
 # ── Anomaly Feature: importance 상위 피처의 grade4(위험) vs grade1(정상) 분포 비교 ──
 def get_anomaly_feature_stats(top_n: int = 5) -> list:
     """
-    importance 상위 피처에 대해 grade4(매우위험) vs grade1(정상) 분포 비교.
+    importance 상위 피처에 대해 danger_grade vs normal_grade 분포 비교.
+    - 항상 POOL_SIZE(60)개 후보를 전부 계산하여 반환 (top_n은 호출측에서 슬라이싱).
+    - die 샘플이 적은 danger 그룹도 1개 이상이면 허용 (grade4=1unit=4die 대응).
+    - xs는 unit 레벨로 집계(mean)하여 사용 → danger 그룹 1unit도 유효.
     반환: [{"feature": "X592", "danger": 72, "normal": 28, "ratio": 2.52}, ...]
-    xs는 usecols로 필요한 컬럼만 로드하여 캐시 — 캐시 키 "xs_anomaly_60" 고정.
     """
     fi    = _load("feature_importance.csv")
     units = _load("dashboard_units.csv")
 
-    # 후보 피처 목록 — 캐시 통일을 위해 항상 60개 기준 로드
+    # 후보 피처 목록 — 항상 POOL_SIZE 기준으로 고정
     POOL_SIZE = 60
     candidate_n = min(len(fi), POOL_SIZE)
     candidate_feats = fi.sort_values("lgbm_rank").head(candidate_n)["feature"].tolist()
 
-    # xs: 필요한 컬럼만 usecols로 로드 (속도·메모리 최적화), 캐시 키 고정
+    # xs: 필요한 컬럼만 usecols로 로드, 캐시 키 고정
     xs_cache_key = f"xs_anomaly_{POOL_SIZE}"
     if xs_cache_key not in _cache:
         xs_path = None
@@ -327,40 +329,46 @@ def get_anomaly_feature_stats(top_n: int = 5) -> list:
             return []
 
     xs = _cache[xs_cache_key]
+
+    # xs에 실제 존재하는 피처만 사용 (die_x, die_y 등 xs에 없는 피처 제외)
+    valid_candidate_feats = [f for f in candidate_feats if f in xs.columns]
+
+    # unit 레벨로 집계 (die→unit mean) — danger 그룹이 소수 unit이어도 유효
+    unit_agg = xs.groupby("ufs_serial")[valid_candidate_feats].mean().reset_index()
+    candidate_feats = valid_candidate_feats  # 이후 루프에서 유효 피처만 순회
+
     val_units = units[["ufs_serial", "grade"]]
-    merged    = xs.merge(val_units, on="ufs_serial", how="inner")
+    merged    = unit_agg.merge(val_units, on="ufs_serial", how="inner")
 
     # 데이터에 실제 존재하는 grade 중 최고·최저 번호를 자동 감지
-    # → grade4 있으면 grade4, 없으면 grade3 등 현재 최고 위험 grade 사용
     existing = merged["grade"].unique().tolist()
     grade_nums = sorted([int(g.replace("grade", "")) for g in existing if g.startswith("grade")])
     if len(grade_nums) < 2:
         return []
-    danger_grade = f"grade{grade_nums[-1]}"  # 숫자 최대 = 가장 위험
-    normal_grade = f"grade{grade_nums[0]}"   # 숫자 최소 = 정상
+    danger_grade = f"grade{grade_nums[-1]}"
+    normal_grade = f"grade{grade_nums[0]}"
 
     g_danger = merged[merged["grade"] == danger_grade]
     g_normal = merged[merged["grade"] == normal_grade]
 
-    if len(g_danger) < 5 or len(g_normal) < 5:
+    # normal 그룹은 5개 이상 필요, danger 그룹은 1개 이상이면 허용
+    if len(g_danger) < 1 or len(g_normal) < 5:
         return []
 
+    # 후보 전체를 계산하여 풀 구성 (top_n 제한 없음 — 호출측에서 슬라이싱)
     result = []
     for feat in candidate_feats:
-        if len(result) >= top_n:
-            break
         if feat not in merged.columns:
             continue
         h = g_danger[feat].dropna()
         l = g_normal[feat].dropna()
-        if len(h) < 5 or len(l) < 5:
+        if len(h) < 1 or len(l) < 5:
             continue
 
         h_mean = float(h.mean())
         l_mean = float(l.mean())
         l_std  = float(l.std()) if len(l) > 1 else 0.0
         ratio  = round(h_mean / l_mean, 3) if l_mean != 0 else None
-
         z_score = round(abs(h_mean - l_mean) / l_std, 2) if l_std > 0 else None
 
         dev = abs(ratio - 1.0) if ratio else 0.0
@@ -369,8 +377,8 @@ def get_anomaly_feature_stats(top_n: int = 5) -> list:
 
         result.append({
             "feature":     feat,
-            "grade1_mean": round(h_mean, 4),   # grade4(위험) 평균
-            "grade4_mean": round(l_mean, 4),   # grade1(정상) 평균
+            "grade1_mean": round(h_mean, 4),
+            "grade4_mean": round(l_mean, 4),
             "ratio":       ratio,
             "z_score":     z_score,
             "danger":      danger,
@@ -402,7 +410,7 @@ def get_pred_actual_data(max_pts: int = 300) -> list:
 # ── 포지션별 WT 피처 이상 비율 ───────────────────────────────
 def get_position_defect_rate() -> dict:
     """
-    val split의 position(1~4)별 top2 피처 이상 비율.
+    전체(train+val+test) position(1~4)별 top2 피처 이상 비율.
     dashboard_units.csv의 pos{p}_{feat} 컬럼 사용 (xs 원본 불필요).
     이상 기준: HIGH 그룹의 하위 10% 미만.
     """
@@ -760,9 +768,9 @@ def get_feature_scatter_data(feat1: str = None, feat2: str = None,
             continue
 
         df = val[["ufs_serial", col, "grade", "reg_pred"]].dropna(subset=[col])
-        grade1_df = df[df["grade"] == "grade1"]
-        grade4_df = df[df["grade"] == "grade4"]
-        threshold = round(float(grade1_df[col].quantile(0.05)), 4) if not grade1_df.empty else None
+        grade4_df = df[df["grade"] == "grade4"]  # 매우위험 (HIGH)
+        grade1_df = df[df["grade"] == "grade1"]  # 정상 (normal)
+        threshold = round(float(grade4_df[col].quantile(0.05)), 4) if not grade4_df.empty else None
 
         def _sample(sdf, n, c=col):
             sdf = sdf.sample(min(n, len(sdf)), random_state=42)
@@ -771,8 +779,8 @@ def get_feature_scatter_data(feat1: str = None, feat2: str = None,
 
         result[f"feat{i+1}"] = {
             "name":      feat,
-            "pts_high":  _sample(grade1_df, max_pts),
-            "pts_med":   _sample(grade4_df, max_pts),
+            "pts_high":  _sample(grade4_df, max_pts),  # 매우위험(grade4) → 빨강
+            "pts_med":   _sample(grade1_df, max_pts),  # 정상(grade1) → 초록
             "threshold": threshold,
         }
 
@@ -815,84 +823,68 @@ def get_lot_trend_with_split(top_n: int = 30) -> dict:
 # ── 주차별 Grade 트렌드 (대시보드 grade_trend.csv 기반) ──────
 def get_weekly_grade_trend() -> dict:
     """
-    대시보드 grade_trend.csv에서 주차별 grade1~4 비율 반환.
-    grade1=최고위험, grade4=정상.
+    grade_trend.csv에서 주차별 grade 비율 반환.
+    CSV 컬럼 명칭이 대시보드 기준과 반전되어 있으므로 매핑을 교정해서 반환:
+      CSV grade4(다수=정상) → g1(정상 G1, #22C55E)
+      CSV grade3            → g2(조심 G2, #EAB308)
+      CSV grade2            → g3(위험 G3, #F59E0B)
+      CSV grade1(소수=위험) → g4(매우위험 G4, #EF4444)
     반환: {labels:['MM/DD~MM/DD',...], g1:[...], g2:[...], g3:[...], g4:[...]}
     """
     df = _load_dashboard("grade_trend.csv")
     return {
         "labels": df["week"].tolist(),
-        "g1":     [round(float(v), 1) for v in df["grade1"]],
-        "g2":     [round(float(v), 1) for v in df["grade2"]],
-        "g3":     [round(float(v), 1) for v in df["grade3"]],
-        "g4":     [round(float(v), 1) for v in df["grade4"]],
+        "g1":     [round(float(v), 1) for v in df["grade4"]],
+        "g2":     [round(float(v), 1) for v in df["grade3"]],
+        "g3":     [round(float(v), 1) for v in df["grade2"]],
+        "g4":     [round(float(v), 1) for v in df["grade1"]],
     }
 
 
-# ── 주차별 불량 트렌드 (dashboard_units.csv, 대시보드 WeeklyProd 동일 기준) ──
+# ── 주차별 불량 트렌드 (trend_data.csv 기반, 대시보드 Overview.jsx와 동일 소스) ──
 def get_weekly_yield_trend(recent_weeks: int = 7) -> dict:
     """
-    dashboard_units.csv를 주차(월~일) 단위로 집계. 대시보드 WeeklyProd와 동일한 기준.
+    trend_data.csv(date, y_pred, y_true, production)를 주차 단위로 집계.
+    대시보드 Overview.jsx의 trendResult와 동일한 소스 데이터.
     반환: {labels, production, pred_yield, defect_ppm}
-      - labels:      ['MM/DD~MM/DD', ...]  (최근 recent_weeks 주)
-      - production:  [주차별 생산량, ...]
-      - pred_yield:  [100 - defect_rate%, ...]  (보고서 차트 호환용)
-      - defect_ppm:  [주차별 불량 ppm, ...]
     """
-    units = _load("dashboard_units.csv")
-    filtered = units[units["split"].isin(["train", "val"])].copy()
+    trend = _load("trend_data.csv")
+    trend = trend.copy()
+    trend["date"] = pd.to_datetime(trend["date"], errors="coerce")
+    trend = trend.dropna(subset=["date"])
 
-    # lotToDate: WeeklyProd.jsx의 lotToDate와 동일한 로직
-    def lot_to_date(n):
-        n = round(float(n))
-        if n >= 201:
-            base = datetime(2026, 5, 28)
-            offset = int((n - 201) // 9)
-        elif n >= 101:
-            base = datetime(2026, 4, 11)
-            offset = int(n - 101)
-        elif n <= 28:
-            base = datetime(2026, 3, 27)
-            offset = round((n - 1) * (45 / 27))
-        elif n <= 56:
-            base = datetime(2026, 5, 12)
-            offset = int(n - 29)
-        else:
-            base = datetime(2026, 6, 11)
-            offset = int(n - 57)
-        return base + timedelta(days=int(offset))
-
-    filtered["date"] = filtered["run_id"].apply(lot_to_date)
-    filtered["week_start"] = filtered["date"].apply(lambda d: d - timedelta(days=d.weekday()))
-
-    # defect threshold: train 기준 상위 29.2% (WeeklyProd와 동일)
-    train_preds = filtered[filtered["split"] == "train"]["reg_pred"].sort_values().values
-    n = len(train_preds)
-    defect_thresh = float(train_preds[int(n * 0.708)])
+    # 주 시작(월요일) 계산
+    trend["week_start"] = trend["date"].apply(
+        lambda d: d - timedelta(days=d.weekday())
+    )
 
     def fmt(d):
         return f"{d.month:02d}/{d.day:02d}"
 
     agg = (
-        filtered.groupby("week_start")
+        trend.groupby("week_start")
         .apply(lambda g: pd.Series({
-            "production": len(g),
-            "defect":     int((g["reg_pred"] >= defect_thresh).sum()),
+            "production": int(g["production"].sum()),
+            "pred_ppm":   float(g["y_pred"].mean()),
+            "true_ppm":   float(g["y_true"].mean()),
         }), include_groups=False)
         .reset_index()
+        .sort_values("week_start")
+        .tail(recent_weeks)
     )
-    agg["week_end"]    = agg["week_start"] + timedelta(days=6)
-    agg["week_label"]  = agg.apply(lambda r: f"{fmt(r['week_start'])}~{fmt(r['week_end'])}", axis=1)
-    agg["defect_rate"] = agg["defect"] / agg["production"] * 100
-    agg["defect_ppm"]  = (agg["defect_rate"] * 10000).round(1)
-    agg["pred_yield"]  = (100 - agg["defect_rate"]).round(2)
-    agg = agg.sort_values("week_start").tail(recent_weeks)
+
+    agg["week_end"]   = agg["week_start"] + timedelta(days=6)
+    agg["week_label"] = agg.apply(
+        lambda r: f"{fmt(r['week_start'])}~{fmt(r['week_end'])}", axis=1
+    )
+    # pred_yield: 100 - (pred_ppm / 10000) (ppm → %)
+    agg["pred_yield"] = (100 - agg["pred_ppm"] / 10000).round(2)
 
     return {
         "labels":     agg["week_label"].tolist(),
         "production": [int(v) for v in agg["production"]],
         "pred_yield": [round(float(v), 2) for v in agg["pred_yield"]],
-        "defect_ppm": [round(float(v), 1) for v in agg["defect_ppm"]],
+        "defect_ppm": [round(float(v), 1) for v in agg["pred_ppm"]],
     }
 
 
@@ -932,7 +924,7 @@ def get_recent_lot_trend(recent_n: int = 35) -> dict:
 # ── R3: LOT별 예측 ppm 트렌드 (HIGH/MED 그룹 평균 reg_pred) ──
 def get_pred_ppm_trend(recent_n: int = 20) -> dict:
     """
-    val split 최신 N개 LOT의 HIGH/MED 그룹 평균 예측 ppm 트렌드.
+    전체(train+val+test) 최신 N개 LOT의 HIGH/MED 그룹 평균 예측 ppm 트렌드.
     반환: {labels, high_ppm, med_ppm}
     """
     units = _load("dashboard_units.csv")
@@ -962,101 +954,131 @@ def get_pred_ppm_trend(recent_n: int = 20) -> dict:
     }
 
 
-# ── 피처값 vs 예측 health scatter (L4 대체) ──────────────────
-def get_feat_vs_health_scatter(top_n: int = 1, max_pts: int = 300) -> dict:
+# ── 이상 점수 vs 예측 health scatter (grade별 색상) ─────────
+def get_feat_vs_health_scatter(max_pts: int = 200) -> dict:
     """
-    상위 feature의 pos1 값(x축) vs reg_pred(y축) scatter.
-    grade1(불량)=빨강, grade4(정상)=파랑으로 분리.
+    X=anomaly_score, Y=reg_pred*1e6(ppm) scatter.
+    grade1(정상)=초록, grade4(매우위험)=빨강으로 분리.
+    dashboard_units.csv의 anomaly_score/reg_pred/grade 컬럼 사용.
     반환: {feature, high_pts:[{x,y},...], normal_pts:[{x,y},...]}
     """
     units = _load("dashboard_units.csv")
-    fi    = _load("feature_importance.csv")
+    sub = units[["grade", "reg_pred", "anomaly_score"]].dropna()
 
-    top_feat = fi.sort_values("lgbm_rank").iloc[0]["feature"] if not fi.empty else ""
-    feat_col = f"pos1_{top_feat}"
-
-    if feat_col not in units.columns or not top_feat:
-        return {"feature": top_feat, "high_pts": [], "normal_pts": []}
-
-    sub = units[["grade", "reg_pred", feat_col]].dropna()
-    # x 정규화 (0~1)
-    x_min, x_max = sub[feat_col].min(), sub[feat_col].max()
-    span = max(x_max - x_min, 1e-9)
-    sub = sub.copy()
-    sub["x_norm"] = (sub[feat_col] - x_min) / span
-
-    high   = sub[sub["grade"] == "grade1"].head(max_pts)
-    normal = sub[sub["grade"] == "grade4"].head(max_pts)
+    danger = sub[sub["grade"].isin(["grade3", "grade4"])].sample(min(max_pts, len(sub[sub["grade"].isin(["grade3","grade4"])])), random_state=42)
+    normal = sub[sub["grade"].isin(["grade1", "grade2"])].sample(min(max_pts, len(sub[sub["grade"].isin(["grade1","grade2"])])), random_state=42)
 
     def _pts(df):
-        return [{"x": round(float(r["x_norm"]), 4), "y": round(float(r["reg_pred"]), 6)}
+        return [{"x": round(float(r["anomaly_score"]), 4),
+                 "y": round(float(r["reg_pred"]) * 1e6, 2)}
                 for _, r in df.iterrows()]
 
     return {
-        "feature":    top_feat,
-        "high_pts":   _pts(high),
-        "normal_pts": _pts(normal),
-        "x_label":    top_feat,
-        "y_label":    "reg_pred (health)",
+        "feature":    "anomaly_score",
+        "high_pts":   _pts(danger),   # 위험 등급 (grade3+4)
+        "normal_pts": _pts(normal),   # 정상 등급 (grade1+2)
+        "x_label":    "anomaly_score",
+        "y_label":    "예측 health (ppm)",
     }
 
 
 # ── 대표 Unit 웨이퍼맵 die 좌표 + ppm ────────────────────────
 def get_wafer_die_data(serial: str = None) -> dict:
     """
-    serial 지정 시 해당 unit의 wafer, 미지정 시 reg_pred 최고 unit의 wafer를 반환.
-    unit당 pos1~pos4 각각 die 1개씩 → 총 unit수×4개 점.
-    dies: [{x,y,serial,grade,pred_ppm,risk,is_target},...]
+    serial 지정 시 해당 unit의 wafer, 미지정 시 val 기준 pred 평균 최고 wafer를 반환.
+    wafer_map.csv에서 직접 전체 die 반환 (split 무관, 대시보드 WaferMap과 동일 데이터).
+    dies: [{x,y,serial,grade,pred_ppm,pred,risk,is_target},...]
     """
-    units = _load("dashboard_units.csv")
+    # wafer_map.csv 직접 로드 (train+val+test 전체)
+    wm_cache_key = "wafer_map_coords"
+    if wm_cache_key not in _cache:
+        wm_path = os.path.join(DATA_DIR, "wafer_map.csv")
+        if not os.path.exists(wm_path):
+            for fb in _FALLBACK_DIRS:
+                c = os.path.join(fb, "wafer_map.csv")
+                if os.path.exists(c):
+                    wm_path = c
+                    break
+        _cache[wm_cache_key] = pd.read_csv(
+            wm_path,
+            usecols=["ufs_serial", "run_id", "wafer_no", "die_x", "die_y", "pred", "split"],
+        )
+    wm = _cache[wm_cache_key]
 
-    val = units.sort_values("reg_pred", ascending=False)
+    # grade/risk 보조 정보 (dashboard_units.csv, 없으면 skip)
+    try:
+        units = _load("dashboard_units.csv")
+        unit_info = units[["ufs_serial", "grade", "reg_pred", "risk"]].copy()
+        unit_info_idx = unit_info.set_index("ufs_serial")
+    except Exception:
+        unit_info_idx = pd.DataFrame()
+
+    top_serial = None
+
     if serial:
-        target = units[units["ufs_serial"] == serial]
-        if not target.empty:
+        # 지정 serial의 wafer
+        rows = wm[wm["ufs_serial"] == serial]
+        if not rows.empty:
             top_serial = serial
-            top_run    = target.iloc[0]["run_id"]
-            top_wafer  = target.iloc[0]["wafer_no"]
+            top_run   = rows.iloc[0]["run_id"]
+            top_wafer = rows.iloc[0]["wafer_no"]
         else:
-            top_row = val.iloc[0]
-            top_serial = str(top_row["ufs_serial"])
-            top_run    = top_row["run_id"]
-            top_wafer  = top_row["wafer_no"]
-    else:
-        top_row = val.iloc[0]
-        top_serial = str(top_row["ufs_serial"])
-        top_run    = top_row["run_id"]
-        top_wafer  = top_row["wafer_no"]
+            serial = None  # fallback
 
-    # 같은 wafer의 전체 unit
-    same_wafer = val[(val["run_id"] == top_run) & (val["wafer_no"] == top_wafer)]
+    if not serial:
+        # grade4 unit이 있는 wafer 선택 (train/val/test 전체 기준)
+        # grade4 unit → run_id/wafer_no → 가장 grade4 unit 수가 많은 wafer
+        grade4_units = unit_info_idx[unit_info_idx["grade"] == "grade4"] if not unit_info_idx.empty else pd.DataFrame()
+        if not grade4_units.empty:
+            g4_serials = set(grade4_units.index.astype(str))
+            g4_wm = wm[wm["ufs_serial"].astype(str).isin(g4_serials)]
+            if not g4_wm.empty:
+                wafer_g4_cnt = g4_wm.groupby(["run_id", "wafer_no"]).size()
+                top_run, top_wafer = wafer_g4_cnt.idxmax()
+            else:
+                # fallback: grade4 serial 기준 dashboard_units에서 직접 찾기
+                g4_row = grade4_units.iloc[0]
+                top_run   = int(units.loc[units["ufs_serial"] == grade4_units.index[0], "run_id"].iloc[0])
+                top_wafer = int(units.loc[units["ufs_serial"] == grade4_units.index[0], "wafer_no"].iloc[0])
+        else:
+            # grade4 없으면 pred 평균 최고 wafer (전체 기준)
+            wafer_stats = wm.groupby(["run_id", "wafer_no"])["pred"].mean()
+            top_run, top_wafer = wafer_stats.idxmax()
+
+    # 해당 wafer의 전체 die (split 무관)
+    same_wm = wm[(wm["run_id"] == top_run) & (wm["wafer_no"] == top_wafer)]
 
     dies = []
     x_vals, y_vals = [], []
-    pos_cols = [(f"pos{p}_x", f"pos{p}_y") for p in range(1, 5)]
 
-    for _, row in same_wafer.iterrows():
-        serial  = str(row["ufs_serial"])
-        grade   = str(row.get("grade", "grade4"))
-        pred_ppm = round(float(row["reg_pred"]) * 1_000_000, 1)
-        risk    = str(row.get("risk", ""))
-        is_tgt  = serial == top_serial
+    for _, row in same_wm.iterrows():
+        s = str(row["ufs_serial"])
+        x, y = int(row["die_x"]), int(row["die_y"])
+        die_pred = float(row["pred"]) if pd.notna(row["pred"]) else 0.0
+        is_tgt = (s == top_serial)
 
-        for xc, yc in pos_cols:
-            if xc not in row.index or pd.isna(row[xc]):
-                continue
-            x, y = int(row[xc]), int(row[yc])
-            dies.append({
-                "x": x, "y": y,
-                "serial":    serial,
-                "grade":     grade,
-                "pred_ppm":  pred_ppm,
-                "risk":      risk,
-                "is_target": is_tgt,
-            })
-            x_vals.append(x); y_vals.append(y)
+        # grade/risk: dashboard_units에 있으면 사용, 없으면 기본값
+        if not unit_info_idx.empty and s in unit_info_idx.index:
+            ui = unit_info_idx.loc[s]
+            grade    = str(ui.get("grade", "grade1"))
+            pred_ppm = round(float(ui["reg_pred"]) * 1_000_000, 1)
+            risk     = str(ui.get("risk", ""))
+        else:
+            grade    = "grade1"
+            pred_ppm = round(die_pred * 1_000_000, 1)
+            risk     = ""
 
-    # 해당 웨이퍼 die들의 실제 범위 (전체 데이터셋 기준이면 너무 넓어 die가 작아짐)
+        dies.append({
+            "x": x, "y": y,
+            "serial":    s,
+            "grade":     grade,
+            "pred_ppm":  pred_ppm,
+            "pred":      die_pred,
+            "risk":      risk,
+            "is_target": is_tgt,
+        })
+        x_vals.append(x); y_vals.append(y)
+
     if x_vals:
         x_min, x_max = min(x_vals), max(x_vals)
         y_min, y_max = min(y_vals), max(y_vals)
@@ -1065,7 +1087,7 @@ def get_wafer_die_data(serial: str = None) -> dict:
         y_min, y_max = 0, 100
 
     return {
-        "serial":  top_serial,
+        "serial":  top_serial or "",
         "dies":    dies,
         "x_range": [x_min, x_max],
         "y_range": [y_min, y_max],

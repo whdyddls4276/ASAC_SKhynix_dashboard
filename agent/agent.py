@@ -252,10 +252,10 @@ def _build_report_data(tool_cache: dict) -> dict:
     except Exception:
         pass
 
-    # 어노멀리 피처 실데이터 (grade1 vs grade4, importance 상위 N개 — 전체 보존용)
+    # 어노멀리 피처 풀 전체 계산 (POOL_SIZE=60 후보 모두 — top_n은 슬라이싱으로 처리)
     anomaly_stats = []
     try:
-        anomaly_stats = get_anomaly_feature_stats(top_n=20)
+        anomaly_stats = get_anomaly_feature_stats()  # top_n 무시, 전체 반환
     except Exception:
         pass
 
@@ -947,31 +947,31 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
                              {"label": "MED",  "data": med,  "color": "#F59E0B"}]}
 
     elif chart_type == "pred_actual":
-        fs = d.get("feat_scatter", {})
-        feat1 = fs.get("feat1", {}); feat2 = fs.get("feat2", {})
-        pts1 = feat1.get("points", [])[:30]
-        pts2 = feat2.get("points", [])[:30]
-        labels = [str(i + 1) for i in range(max(len(pts1), len(pts2)))]
-        ds = []
-        if pts1:
-            ds.append({"label": feat1.get("name", "Feat1"),
-                       "data": [p.get("health", 0) for p in pts1], "color": "#3B82F6"})
-        if pts2:
-            ds.append({"label": feat2.get("name", "Feat2"),
-                       "data": [p.get("health", 0) for p in pts2], "color": "#EF4444"})
-        return {"title": "예측 vs 실측", "chart_type": "line", "position": position,
-                "labels": labels, "horizontal": False, "height": 150, "datasets": ds}
+        try:
+            pts = get_pred_actual_data(max_pts=100)
+        except Exception:
+            pts = []
+        pts_sorted = sorted(pts, key=lambda p: p["x"])
+        labels      = [str(i + 1) for i in range(len(pts_sorted))]
+        pred_vals   = [round(p["x"] * 1e6, 2) for p in pts_sorted]
+        actual_vals = [round(p["y"] * 1e6, 2) for p in pts_sorted]
+        return {"title": "예측 vs 실측 health (ppm)", "chart_type": "line", "position": position,
+                "labels": labels, "horizontal": False, "height": 150,
+                "datasets": [
+                    {"label": "예측 health",  "data": pred_vals,   "color": "#3B82F6"},
+                    {"label": "실측 health",  "data": actual_vals, "color": "#EF4444"},
+                ]}
 
     elif chart_type == "grade_dist":
         scan = d.get("scan", {})
         return {"title": "Grade 분포", "chart_type": "doughnut", "position": position,
-                "labels": ["grade4(정상)", "grade3", "grade2", "grade1(위험)"],
+                "labels": ["정상 (G1)", "조심 (G2)", "위험 (G3)", "매우위험 (G4)"],
                 "height": 150,
                 "datasets": [{"label": "unit 수",
-                               "data": [scan.get("grade4_count", 0), scan.get("grade3_count", 0),
-                                        scan.get("grade2_count", 0), scan.get("grade1_count", 0)],
-                               "color": "#7dd3fc",
-                               "colors": ["#7dd3fc", "#fb923c", "#f97316", "#dc2626"]}]}
+                               "data": [scan.get("grade1_count", 0), scan.get("grade2_count", 0),
+                                        scan.get("grade3_count", 0), scan.get("grade4_count", 0)],
+                               "color": "#22C55E",
+                               "colors": ["#22C55E", "#EAB308", "#F59E0B", "#EF4444"]}]}
 
     elif chart_type == "weekly_grade_trend":
         try:
@@ -981,10 +981,10 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
         return {"title": "주차별 Grade 비율", "chart_type": "line", "position": position,
                 "labels": wgt.get("labels", []), "height": 150, "stacked": True,
                 "datasets": [
-                    {"label": "grade4(정상)", "data": wgt.get("g4", []), "color": "#7dd3fc"},
-                    {"label": "grade3",       "data": wgt.get("g3", []), "color": "#fb923c"},
-                    {"label": "grade2",       "data": wgt.get("g2", []), "color": "#f97316"},
-                    {"label": "grade1(위험)", "data": wgt.get("g1", []), "color": "#dc2626"},
+                    {"label": "정상 (G1)",    "data": wgt.get("g1", []), "color": "#22C55E"},
+                    {"label": "조심 (G2)",    "data": wgt.get("g2", []), "color": "#EAB308"},
+                    {"label": "위험 (G3)",    "data": wgt.get("g3", []), "color": "#F59E0B"},
+                    {"label": "매우위험 (G4)","data": wgt.get("g4", []), "color": "#EF4444"},
                 ]}
 
     elif chart_type == "lot_grade_stack":
@@ -995,10 +995,10 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
         return {"title": "LOT별 Grade 구성", "chart_type": "bar", "position": position,
                 "labels": lgs.get("labels", []), "height": 150, "stacked": True,
                 "datasets": [
-                    {"label": "grade4(정상)", "data": lgs.get("g4", []), "color": "#7dd3fc"},
-                    {"label": "grade3",       "data": lgs.get("g3", []), "color": "#fb923c"},
-                    {"label": "grade2",       "data": lgs.get("g2", []), "color": "#f97316"},
-                    {"label": "grade1(위험)", "data": lgs.get("g1", []), "color": "#dc2626"},
+                    {"label": "정상 (G1)",    "data": lgs.get("g1", []), "color": "#22C55E"},
+                    {"label": "조심 (G2)",    "data": lgs.get("g2", []), "color": "#EAB308"},
+                    {"label": "위험 (G3)",    "data": lgs.get("g3", []), "color": "#F59E0B"},
+                    {"label": "매우위험 (G4)","data": lgs.get("g4", []), "color": "#EF4444"},
                 ]}
 
     elif chart_type == "health_hist":
@@ -1018,12 +1018,11 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
             fvh = get_feat_vs_health_scatter()
         except Exception:
             fvh = {}
-        feat_name = fvh.get("feature", "Feature")
-        return {"title": f"{feat_name} vs Health", "chart_type": "scatter", "position": position,
+        return {"title": "이상 점수 vs 예측 Health", "chart_type": "scatter", "position": position,
                 "labels": [], "height": 150,
                 "datasets": [
-                    {"label": "grade1(위험)", "data": fvh.get("high_pts",   [])[:100], "color": "#EF4444"},
-                    {"label": "grade4(정상)", "data": fvh.get("normal_pts", [])[:100], "color": "#93C5FD"},
+                    {"label": "위험 (G3+G4)", "data": fvh.get("high_pts",   [])[:150], "color": "#EF4444"},
+                    {"label": "정상 (G1+G2)", "data": fvh.get("normal_pts", [])[:150], "color": "#22C55E"},
                 ]}
 
     return None
@@ -1057,18 +1056,16 @@ def _handle_command(cmd: dict, d: dict):
                 return False, f"현재 최대 {len(pool)}개까지만 가능합니다"
             d.setdefault("importance", {})["features"] = pool[:n]
         elif section == "anomaly":
-            source = d.get("anomaly_stats_all") or d.get("anomaly_stats", [])
-            if n > len(source):
-                # 풀이 부족하면 재조회
+            source = d.get("anomaly_stats_all") or []
+            if not source:
+                # 풀 없으면 전체 계산 후 저장
                 try:
-                    fresh = get_anomaly_feature_stats(top_n=max(n, 20))
-                    if fresh:  # 빈 결과면 기존 소스 유지
-                        d["anomaly_stats_all"] = fresh
-                        source = fresh
+                    source = get_anomaly_feature_stats()
+                    d["anomaly_stats_all"] = source
                 except Exception:
-                    pass
+                    source = []
             if n > len(source):
-                return False, f"현재 최대 {len(source)}개까지만 가능합니다"
+                return False, f"현재 최대 {len(source)}개까지 가능합니다 (풀 크기 {len(source)}개)"
             d["anomaly_stats"] = source[:n]
         elif section == "trend_weeks":
             d["weekly_yield_trend"] = get_weekly_yield_trend(recent_weeks=n)
@@ -1305,6 +1302,8 @@ def _try_direct_action(message: str, d: dict):
             return {"action": "change_scatter", "feat2": feats[0], "response": f"이상 피처 분포 feat2를 {feats[0]}로 변경했습니다."}, None
         if len(feats) >= 2:
             return {"action": "change_scatter", "feat1": feats[0], "feat2": feats[1], "response": f"이상 피처 분포를 {feats[0]}, {feats[1]}로 변경했습니다."}, None
+        # 피처 1개 + 위치 미지정 → feat1 기본값으로 변경
+        return {"action": "change_scatter", "feat1": feats[0], "response": f"이상 피처 분포 차트를 {feats[0]} 기준으로 변경했습니다."}, None
 
     # ── filter_anomaly 감지 (특정 피처명 언급)
     if feats and is_anomaly:
@@ -1382,13 +1381,12 @@ async def run_report_editor(user_message: str, history: list,
         if not d.get("pred_ppm_trend"):
             try: d["pred_ppm_trend"] = get_pred_ppm_trend(recent_n=20)
             except Exception: d["pred_ppm_trend"] = {}
-        if not d.get("anomaly_stats"):
-            try: d["anomaly_stats"] = get_anomaly_feature_stats(top_n=20)[:5]
-            except Exception: d["anomaly_stats"] = []
-        # anomaly_stats_all: 원본 전체 리스트 보존 (top20 풀)
         if not d.get("anomaly_stats_all"):
-            try: d["anomaly_stats_all"] = get_anomaly_feature_stats(top_n=20)
-            except Exception: d["anomaly_stats_all"] = list(d.get("anomaly_stats", []))
+            try: d["anomaly_stats_all"] = get_anomaly_feature_stats()  # 전체 풀
+            except Exception: d["anomaly_stats_all"] = []
+        if not d.get("anomaly_stats"):
+            n_init = len(d.get("anomaly_stats_all", []))
+            d["anomaly_stats"] = d["anomaly_stats_all"][:min(5, n_init)]
         # importance_all: Feature Importance 전체 풀 (top20)
         if not d.get("importance_all"):
             try: d["importance_all"] = get_importance(top_n=20).get("features", [])
