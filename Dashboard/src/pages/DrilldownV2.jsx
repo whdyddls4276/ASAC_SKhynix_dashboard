@@ -298,6 +298,7 @@ function FeatureWaferMap({ feature, featNormData }) {
 
   return (
     <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2 }}>die {heatDies.length}개 | feat_norm [{Math.min(...heatDies.map(d=>d.val)).toFixed(2)}, {Math.max(...heatDies.map(d=>d.val)).toFixed(2)}]</div>
       <div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', marginBottom: 4 }}>
         {feature} 웨이퍼 히트맵
         <span style={{ fontWeight: 400, color: '#64748b', marginLeft: 4 }}>feat_norm 기준</span>
