@@ -172,7 +172,9 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   const currentHtmlRef    = useRef(currentHtml)
   const currentReportRef  = useRef(currentReportData)
   const undoStackRef      = useRef([])
+  const redoStackRef      = useRef([])
   const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
   const [blobUrl, setBlobUrl] = useState(null)
 
   // ref를 항상 최신 state로 동기화
@@ -456,6 +458,20 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
     iw?.postMessage({ type: 'SET_EDIT_MODE',       value: false }, '*')
   }
 
+  function handleReset() {
+    if (!window.confirm('수정한 모든 내용을 폐기하고 원본 보고서로 되돌립니다. 계속할까요?')) return
+    // 원본 props로 복원
+    setCurrentHtml(html)
+    setCurrentReportData(reportData ? JSON.parse(JSON.stringify(reportData)) : {})
+    // undo/redo 스택 초기화
+    undoStackRef.current = []
+    redoStackRef.current = []
+    setCanUndo(false)
+    setCanRedo(false)
+    // 선택/편집 모드 해제
+    clearSelect()
+  }
+
   // 스크롤 bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -467,14 +483,37 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
       report_data: currentReportRef.current ? { ...currentReportRef.current } : null,
     })
     setCanUndo(true)
+    // 새 작업이 들어오면 redo 스택은 비움 (분기 후 새 branch)
+    redoStackRef.current = []
+    setCanRedo(false)
   }
 
   function handleUndo() {
     if (!undoStackRef.current.length) return
+    // 현재 상태를 redo 스택에 푸시
+    redoStackRef.current.push({
+      html: currentHtmlRef.current,
+      report_data: currentReportRef.current ? { ...currentReportRef.current } : null,
+    })
+    setCanRedo(true)
     const prev = undoStackRef.current.pop()
     setCurrentHtml(prev.html)
     if (prev.report_data) setCurrentReportData(prev.report_data)
     setCanUndo(undoStackRef.current.length > 0)
+  }
+
+  function handleRedo() {
+    if (!redoStackRef.current.length) return
+    // 현재 상태를 undo 스택에 푸시
+    undoStackRef.current.push({
+      html: currentHtmlRef.current,
+      report_data: currentReportRef.current ? { ...currentReportRef.current } : null,
+    })
+    setCanUndo(true)
+    const next = redoStackRef.current.pop()
+    setCurrentHtml(next.html)
+    if (next.report_data) setCurrentReportData(next.report_data)
+    setCanRedo(redoStackRef.current.length > 0)
   }
 
   function addMsg(role, text) {
@@ -621,7 +660,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
             >
               📝 텍스트 편집
             </button>
-            <button className="rm-tool-btn" onClick={clearSelect} title="선택 초기화">
+            <button className="rm-tool-btn" onClick={handleReset} title="모든 수정사항 폐기하고 원본 보고서로 복원">
               🔄 초기화
             </button>
             <button
@@ -631,6 +670,14 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
               title="이전 보고서로 되돌리기"
             >
               ↩ 되돌리기
+            </button>
+            <button
+              className={`rm-tool-btn redo ${canRedo ? '' : 'disabled'}`}
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="앞으로 가기 (되돌린 작업 재실행)"
+            >
+              ↪ 앞으로
             </button>
             <button className="rm-tool-btn ppt" onClick={downloadPptx}>
               📊 PPT
