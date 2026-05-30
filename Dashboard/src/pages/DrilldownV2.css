@@ -1024,6 +1024,299 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
 }
+
+/* Lot 통합 패턴 카드 */
+.dd-lot-pattern {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  align-items: center;
+}
+.dd-lot-pattern-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dd-lot-pattern-label {
+  font-size: 12px;
+  color: var(--text2);
+  font-weight: 600;
+}
+.dd-lot-pattern-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: 800;
+}
+.dd-lot-pattern-desc {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+.dd-lot-pattern-stats {
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 4px;
+}
+.dd-lot-pattern-map {
+  width: 220px;
+  height: 140px;
+}
+
+/* 패턴 탐색기: 좌(그리드) + 우(미리보기) */
+.dd-pattern-explorer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+.dd-pattern-preview {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 260px);
+  overflow: hidden;
+}
+.dd-pattern-preview-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text2);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 12px;
+}
+.dd-pattern-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.dd-pattern-preview-map {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dd-pattern-preview-map > * {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 48vh;
+  aspect-ratio: 1 / 1;
+}
+
+/* 패턴별 Lot 통합맵 그리드 */
+.dd-pattern-map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.dd-pattern-mini {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.dd-pattern-mini:hover {
+  border-color: #94A3B8;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+.dd-pattern-mini.active {
+  border-color: #1E3A5F;
+  border-width: 2px;
+  padding: 11px;
+}
+.dd-pattern-mini-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.dd-pattern-mini-risk {
+  font-size: 12px;
+  color: #EF4444;
+  font-weight: 700;
+}
+.dd-pattern-mini-map {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: transparent;
+  border-radius: 4px;
+}
+
+/* 미니맵 확대 라이트박스 */
+.dd-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: dd-fade-in 0.15s ease-out;
+}
+@keyframes dd-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.dd-zoom-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+  width: min(720px, 92vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+.dd-zoom-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  color: #64748B;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.dd-zoom-close:hover {
+  background: #F1F5F9;
+  color: #1E293B;
+}
+.dd-zoom-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-right: 32px;
+}
+.dd-zoom-lot {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1E293B;
+}
+.dd-zoom-pat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.dd-zoom-desc {
+  font-size: 12px;
+  color: var(--text2);
+  margin-top: 4px;
+}
+.dd-zoom-stats {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--text2);
+  text-align: right;
+}
+.dd-zoom-stats b {
+  color: var(--text);
+  font-weight: 700;
+}
+.dd-zoom-map {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dd-zoom-map > * {
+  width: 100%;
+  height: 100%;
+  max-height: 60vh;
+}
+.dd-zoom-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.dd-zoom-btn {
+  padding: 8px 14px;
+  background: #1E3A5F;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dd-zoom-btn:hover {
+  background: #2C4E7C;
+}
+
+/* 패턴별 Lot 목록 칩 */
+.dd-pattern-lot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.dd-pattern-lot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.dd-pattern-lot-chip:hover {
+  background: #F1F5F9;
+  border-color: #94A3B8;
+}
+.dd-pattern-lot-chip.active {
+  background: #1E3A5F;
+  border-color: #1E3A5F;
+  color: #fff;
+}
+.dd-pattern-lot-chip-risk {
+  font-size: 11px;
+  color: #EF4444;
+  font-weight: 700;
+}
+.dd-pattern-lot-chip.active .dd-pattern-lot-chip-risk {
+  color: #FCA5A5;
+}
 .dd-pattern-card {
   background: var(--surface);
   border: 2px solid var(--border);

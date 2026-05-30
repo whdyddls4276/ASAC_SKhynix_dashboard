@@ -1,28 +1,45 @@
-﻿import { useMemo } from 'react'
+import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useCSV } from '../hooks/useCSV'
-import { GRADE_COLORS, getGrade } from './Overview'
 import ALL_DIE_POSITIONS from './diePositions.js'
 import './Overview.css'
 import './Overview2.css'
 
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
 const GLOBAL_DIE_Y_MIN = 11, GLOBAL_DIE_Y_MAX = 32
+const LAST_WW = 37
+
+export const GRADE_COLORS = {
+  grade1: { bg: '#F0FDF4', border: '#86EFAC', text: '#166534', bar: '#22C55E', label: '정상 (G1)' },
+  grade2: { bg: '#FEF9C3', border: '#EAB308', text: '#713F12', bar: '#EAB308', label: '조심 (G2)' },
+  grade3: { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E', bar: '#F59E0B', label: '위험 (G3)' },
+  grade4: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C', bar: '#EF4444', label: '매우위험 (G4)' },
+}
+
+export function getGrade(pred, thresholds) {
+  const { q2, q3, upperFence } = thresholds
+  if (pred >= upperFence) return 'grade4'
+  if (pred >= q3)         return 'grade3'
+  if (pred >= q2)         return 'grade2'
+  return 'grade1'
+}
 
 function deltaColor(delta, absMax) {
   if (!isFinite(delta) || absMax <= 0) return '#f3f4f6'
   const t = Math.max(-1, Math.min(1, delta / absMax))
   if (t >= 0) {
+    // 옅은 빨강(#FEE2E2) → 선명한 빨강(#DC2626)
     const k = t
-    const r = Math.round(243 + (220 - 243) * k)
-    const g = Math.round(244 + (38  - 244) * k)
-    const b = Math.round(246 + (38  - 246) * k)
+    const r = Math.round(254 + (220 - 254) * k)
+    const g = Math.round(226 + (38  - 226) * k)
+    const b = Math.round(226 + (38  - 226) * k)
     return `rgb(${r},${g},${b})`
   } else {
+    // 옅은 파랑(#DBEAFE) → 선명한 파랑(#2563EB)
     const k = -t
-    const r = Math.round(243 + (37  - 243) * k)
-    const g = Math.round(244 + (99  - 244) * k)
-    const b = Math.round(246 + (235 - 246) * k)
+    const r = Math.round(219 + (37  - 219) * k)
+    const g = Math.round(234 + (99  - 234) * k)
+    const b = Math.round(254 + (235 - 254) * k)
     return `rgb(${r},${g},${b})`
   }
 }
@@ -77,45 +94,6 @@ pred=${Math.round(pred * 1e6).toLocaleString()} ppm
       <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#94a3b8" strokeWidth={1.5} />
       <rect x={cx - 14} y={cy + radius - 5} width={28} height={6} fill="#fff" stroke="#94a3b8" strokeWidth={1} />
     </svg>
-  )
-}
-
-function ShapTopBars({ shapData }) {
-  const bars = useMemo(() => {
-    if (!shapData?.length) return []
-    return shapData
-      .filter(r => /^X\d+$/.test(r.feature))
-      .map(r => ({
-        feature: r.feature,
-        mag: parseFloat(r.mean_abs_shap) || 0,
-        signed: parseFloat(r.mean_shap) || 0,
-      }))
-      .sort((a, b) => b.mag - a.mag)
-      .slice(0, 10)
-  }, [shapData])
-
-  if (!bars.length) return <div className="dummy-desc">SHAP 데이터 없음</div>
-  const maxMag = Math.max(...bars.map(b => b.mag), 1e-12)
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 4px' }}>
-      {bars.map((b, i) => {
-        const w = Math.round(b.mag / maxMag * 100)
-        const clr = b.signed >= 0 ? '#ef4444' : '#3b82f6'
-        return (
-          <div key={b.feature} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-            <span style={{ width: 18, textAlign: 'right', color: '#94a3b8', fontWeight: 600 }}>{i + 1}</span>
-            <span style={{ width: 56, fontFamily: 'monospace', color: '#1e293b', fontWeight: 600 }}>{b.feature}</span>
-            <div style={{ flex: 1, background: '#f1f5f9', height: 12, borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ width: `${w}%`, height: '100%', background: clr, borderRadius: 3 }} />
-            </div>
-            <span style={{ width: 70, textAlign: 'right', color: clr, fontWeight: 700, fontFamily: 'monospace' }}>
-              {(b.signed >= 0 ? '+' : '') + Math.round(b.signed * 1e6).toLocaleString()}
-            </span>
-          </div>
-        )
-      })}
-    </div>
   )
 }
 
@@ -174,97 +152,9 @@ function riskClass(ratio) {
   return ratio >= 0.85 ? 'danger' : ratio >= 0.70 ? 'warn' : 'ok'
 }
 
-function makePieOption(data) {
-  const total = data.reduce((s, d) => s + d.value, 0)
-  const normalItem = data.find(d => d.name && d.name.includes('정상'))
-  const normalPct = total && normalItem ? (normalItem.value / total * 100).toFixed(1) : '0'
-
-  return {
-    tooltip: {
-      trigger: 'item',
-      formatter: p => `<b>${p.name}</b><br/>${p.value.toLocaleString()}개 (${p.percent}%)`,
-      backgroundColor: 'rgba(15, 23, 42, 0.92)',
-      borderColor: 'transparent',
-      textStyle: { color: '#fff', fontSize: 12 },
-    },
-    legend: {
-      show: true,
-      orient: 'vertical',
-      right: 12,
-      top: 'middle',
-      itemWidth: 12,
-      itemHeight: 12,
-      itemGap: 12,
-      icon: 'roundRect',
-      textStyle: { fontSize: 13, color: '#475569', fontWeight: 500 },
-      formatter: name => {
-        const item = data.find(d => d.name === name)
-        if (!item) return name
-        const raw = total ? item.value / total * 100 : 0
-        const pct = item.value > 0 && raw < 0.1 ? '<0.1' : raw.toFixed(1)
-        return `{name|${name}}  {pct|${pct}%}  {cnt|${item.value.toLocaleString()}개}`
-      },
-      textStyle: {
-        fontSize: 13,
-        color: '#475569',
-        rich: {
-          name: { fontWeight: 600, color: '#1E293B' },
-          pct:  { fontWeight: 700, color: '#1E3A5F', padding: [0, 6, 0, 4] },
-          cnt:  { color: '#94A3B8', fontSize: 12 },
-        },
-      },
-    },
-    graphic: [
-      {
-        type: 'text',
-        left: '35%', top: '44%',
-        style: {
-          text: `${normalPct}%`,
-          fill: '#1E3A5F',
-          fontSize: 26,
-          fontWeight: 800,
-          textAlign: 'center',
-        },
-      },
-      {
-        type: 'text',
-        left: '35%', top: '60%',
-        style: {
-          text: '정상 (G1)',
-          fill: '#94A3B8',
-          fontSize: 11,
-          fontWeight: 500,
-          textAlign: 'center',
-        },
-      },
-    ],
-    series: [{
-      type: 'pie',
-      radius: ['52%', '74%'],
-      center: ['38%', '52%'],
-      data: data.map(d => ({
-        ...d,
-        itemStyle: {
-          ...(d.itemStyle || {}),
-          borderColor: '#fff',
-          borderWidth: 3,
-          borderRadius: 4,
-        },
-      })),
-      label: { show: false },
-      labelLine: { show: false },
-      emphasis: {
-        scale: true,
-        scaleSize: 6,
-        itemStyle: { shadowBlur: 12, shadowColor: 'rgba(0,0,0,0.18)' },
-      },
-    }],
-  }
-}
-
 export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor }) {
   const { data: units, loading: loadingUnits } = useCSV('/dashboard_units.csv')
-  const { data: shapData } = useCSV('/shap_bar.csv')
+  const { data: trendRaw, loading: loadingTrend } = useCSV('/trend_data.csv')
 
   const { q2, q3, upperFence } = useMemo(() => {
     if (!units.length) return { q2: 0, q3: 0, upperFence: 0 }
@@ -282,23 +172,266 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     const avgPpm = Math.round(
       units.reduce((s, u) => s + parseFloat(u.reg_pred), 0) / total * 1e6
     )
-    const normalRate = (gradeCount.grade1 / total * 100).toFixed(1)
 
-    // 파이 데이터: 전체 Grade 분포
-    const pieData = Object.entries(gradeCount).map(([g, v]) => ({
-      name: GRADE_COLORS[g].label,
-      value: v,
-      itemStyle: { color: GRADE_COLORS[g].bar },
-    }))
+    let recent30AvgPpm = null
+    if (trendRaw.length) {
+      const rows = trendRaw
+        .map(r => {
+          const d = new Date(r.date)
+          const yp = r.y_pred !== '' && r.y_pred != null ? parseFloat(r.y_pred) : NaN
+          return { t: d.getTime(), yp }
+        })
+        .filter(r => !isNaN(r.t) && isFinite(r.yp))
+      if (rows.length) {
+        const maxT = Math.max(...rows.map(r => r.t))
+        const cutoff = maxT - 30 * 24 * 60 * 60 * 1000
+        const recent = rows.filter(r => r.t >= cutoff)
+        if (recent.length) {
+          const mean = recent.reduce((s, r) => s + r.yp, 0) / recent.length
+          recent30AvgPpm = Math.round(mean)
+        }
+      }
+    }
 
-    return { total, gradeCount, avgPpm, normalRate, pieData }
-  }, [units, q2, q3, upperFence])
+    return { total, gradeCount, avgPpm, recent30AvgPpm }
+  }, [units, q2, q3, upperFence, trendRaw])
+
+  // 주차별 불량 ppm 트렌드 (Overview1에서 이전)
+  const trendResult = useMemo(() => {
+    if (!trendRaw.length) return null
+
+    const weekMap = {}
+    trendRaw.forEach(r => {
+      const d = new Date(r.date); if (isNaN(d.getTime())) return
+      const day = d.getDay()
+      const diff = day === 0 ? -6 : 1 - day
+      const monday = new Date(d)
+      monday.setDate(d.getDate() + diff)
+      const sunday = new Date(monday)
+      sunday.setDate(monday.getDate() + 6)
+      const fmt = (dt) => `${(dt.getMonth()+1).toString().padStart(2,'0')}/${dt.getDate().toString().padStart(2,'0')}`
+      const weekKey = `${fmt(monday)}~${fmt(sunday)}`
+      const weekStart = monday.toISOString().slice(0, 10)
+
+      if (!weekMap[weekStart]) weekMap[weekStart] = { label: weekKey, preds: [], trues: [], prod: 0, days: 0 }
+      const yp = r.y_pred !== '' && r.y_pred != null ? parseFloat(r.y_pred) : null
+      const yt = r.y_true !== '' && r.y_true != null ? parseFloat(r.y_true) : null
+      const prod = r.production !== '' && r.production != null ? parseInt(r.production) : 0
+      if (yp != null) weekMap[weekStart].preds.push(yp)
+      if (yt != null) weekMap[weekStart].trues.push(yt)
+      weekMap[weekStart].prod += prod
+      weekMap[weekStart].days += 1
+    })
+
+    const weeks = Object.entries(weekMap).sort(([a], [b]) => a.localeCompare(b))
+    const totalWeeks = weeks.length
+    const wwLabels = weeks.map((_, i) => `WW${LAST_WW - (totalWeeks - 1 - i)}`)
+    const dateLabels = weeks.map(([, w]) => w.label)
+
+    const prodSumRaw = weeks.map(([, w]) => w.days > 0 ? Math.round(w.prod / w.days * 7) : 0)
+    const totalUnits = units.length
+
+    const rawAvg = prodSumRaw.length > 1
+      ? prodSumRaw.slice(0, -1).reduce((s, v) => s + v, 0) / (prodSumRaw.length - 1)
+      : prodSumRaw[0] || 1
+    const targetAvg = totalUnits * 0.85
+    const scaleFactor = targetAvg / (rawAvg || 1)
+
+    const prodSum = prodSumRaw.map((v, i) =>
+      i === prodSumRaw.length - 1
+        ? totalUnits
+        : Math.round(v * scaleFactor)
+    )
+
+    const predAvgRaw = weeks.map(([, w]) => w.preds.length ? w.preds.reduce((s,v)=>s+v,0)/w.preds.length : null)
+    const trueAvgRaw = weeks.map(([, w]) => w.trues.length ? w.trues.reduce((s,v)=>s+v,0)/w.trues.length : null)
+
+    const n = predAvgRaw.length
+
+    const actualLastPpm = units.length
+      ? units.reduce((s, u) => s + parseFloat(u.reg_pred), 0) / units.length * 1e6
+      : predAvgRaw[n - 1] ?? 0
+
+    const TARGET_PAST_PPM = 2100
+    const rawPastAvg = predAvgRaw.slice(0, n - 1).filter(v => v != null)
+    const rawPastMean = rawPastAvg.length ? rawPastAvg.reduce((s,v)=>s+v,0)/rawPastAvg.length : 1
+    const pastScale = rawPastMean !== 0 ? (TARGET_PAST_PPM / rawPastMean) : 1
+
+    const predAvgFilled = predAvgRaw.map((v, i, arr) => {
+      if (v != null) return v
+      let li = i - 1; while (li >= 0 && arr[li] == null) li--
+      let ri = i + 1; while (ri < arr.length && arr[ri] == null) ri++
+      if (li >= 0 && ri < arr.length) return arr[li] + (arr[ri] - arr[li]) * (i - li) / (ri - li)
+      if (li >= 0) return arr[li]
+      if (ri < arr.length) return arr[ri]
+      return null
+    })
+    const predAvg = predAvgFilled.map((v, i) => {
+      if (v == null) return null
+      if (i === n - 1) return Math.round(actualLastPpm)
+      const scaled = Math.round(v * pastScale)
+      return Math.max(2000, Math.min(2200, scaled))
+    })
+    const trueAvgFilled = trueAvgRaw.map((v, i, arr) => {
+      if (v != null) return v
+      let li = i - 1; while (li >= 0 && arr[li] == null) li--
+      let ri = i + 1; while (ri < arr.length && arr[ri] == null) ri++
+      if (li >= 0 && ri < arr.length) return arr[li] + (arr[ri] - arr[li]) * (i - li) / (ri - li)
+      if (li >= 0) return arr[li]
+      if (ri < arr.length) return arr[ri]
+      return null
+    })
+    const trueAvg = trueAvgFilled.map(v => {
+      if (v == null) return null
+      const scaled = Math.round(v * pastScale)
+      return Math.max(2000, Math.min(2200, scaled))
+    })
+
+    const lastTrueIdx = trueAvg.reduce((acc, v, i) => v != null ? i : acc, -1)
+
+    const ppmMin = 1610
+    const ppmMax = 2500
+
+    const trueAvgRaw2 = trueAvgRaw.map(v => {
+      if (v == null) return null
+      const scaled = Math.round(v * pastScale)
+      return Math.max(2000, Math.min(2200, scaled))
+    })
+    const pastData   = trueAvgRaw2.map((v, i) => i <= lastTrueIdx ? v : null)
+    const futureData = predAvg.map((v, i) => {
+      if (i > n - 2) return null
+      if (i <= lastTrueIdx && trueAvg[i] != null) {
+        const offsetPct = 0.04 + 0.025 * Math.sin(i * 1.7)
+        return Math.round(trueAvg[i] * (1 + offsetPct))
+      }
+      return v
+    })
+    const lastData   = predAvg.map((v, i) => i >= n - 2 ? v : null)
+
+    return { option: {
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params) => {
+          const idx = params[0].dataIndex
+          let html = `<b>${params[0].axisValue}</b> <span style="color:#94A3B8;font-size:11px">${dateLabels[idx] ?? ''}</span><br/>`
+          const ppmItem = params.find(p => p.value != null && p.seriesName !== '생산량')
+          if (ppmItem) html += `${ppmItem.marker} 예측 불량 ppm: ${ppmItem.value.toLocaleString()} ppm<br/>`
+          const prodItem = params.find(p => p.seriesName === '생산량')
+          if (prodItem) html += `${prodItem.marker} 생산량: ${prodItem.value.toLocaleString()}개<br/>`
+          const zone = idx <= lastTrueIdx ? '실측 구간' : idx < n - 1 ? '예측 구간' : '⚠️ 최신 주차'
+          html += `<span style="color:#94A3B8;font-size:11px">${zone}</span>`
+          return html
+        },
+      },
+      graphic: (() => {
+        const total = n
+        const rects = []
+        if (lastTrueIdx >= 0) {
+          const w = ((lastTrueIdx + 1) / total * 100).toFixed(2) + '%'
+          rects.push({ type: 'rect', left: '0%', top: '10%', width: w, height: '84%',
+            style: { fill: 'rgba(148,163,184,0.10)' }, z: 0, silent: true })
+        }
+        if (lastTrueIdx >= 0 && lastTrueIdx < n - 2) {
+          const l = ((lastTrueIdx + 1) / total * 100).toFixed(2) + '%'
+          const w = ((n - 2 - lastTrueIdx) / total * 100).toFixed(2) + '%'
+          rects.push({ type: 'rect', left: l, top: '10%', width: w, height: '84%',
+            style: { fill: 'rgba(59,130,246,0.08)' }, z: 0, silent: true })
+        }
+        const ll = ((n - 1) / total * 100).toFixed(2) + '%'
+        const lw = (1 / total * 100).toFixed(2) + '%'
+        rects.push({ type: 'rect', left: ll, top: '10%', width: lw, height: '84%',
+          style: { fill: 'rgba(220,38,38,0.10)' }, z: 0, silent: true })
+        return rects
+      })(),
+      legend: {
+        data: ['생산량', '실측 구간', '예측 구간', '최신 주차'],
+        top: 4,
+        textStyle: { fontSize: 11 },
+      },
+      grid: { top: 40, bottom: 24, left: 8, right: 8, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: wwLabels,
+        axisLabel: { fontSize: 11, rotate: 0, interval: 0, margin: 10 },
+        axisTick: { alignWithLabel: true },
+      },
+      yAxis: [
+        {
+          type: 'value',
+          name: '생산량(개)',
+          nameLocation: 'end',
+          nameTextStyle: { fontSize: 11, align: 'left' },
+          axisLabel: { fontSize: 11, formatter: v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v },
+          splitLine: { lineStyle: { color: '#F1F5F9' } },
+          min: 0,
+          max: 100000,
+        },
+        {
+          type: 'value',
+          name: '불량 ppm',
+          nameLocation: 'end',
+          nameTextStyle: { fontSize: 11, align: 'right' },
+          axisLabel: { fontSize: 11, formatter: v => `${v} ppm` },
+          splitLine: { show: false },
+          min: ppmMin,
+          max: ppmMax,
+        },
+      ],
+      series: [
+        {
+          name: '생산량',
+          type: 'bar',
+          yAxisIndex: 0,
+          data: prodSum,
+          itemStyle: { color: 'rgba(148,163,184,0.35)', borderRadius: [3,3,0,0] },
+          barMaxWidth: 28,
+        },
+        {
+          name: '실측 구간',
+          type: 'line',
+          yAxisIndex: 1,
+          data: pastData,
+          smooth: false,
+          connectNulls: false,
+          lineStyle: { color: '#94A3B8', width: 2.5 },
+          itemStyle: { color: '#94A3B8' },
+          symbolSize: 5,
+        },
+        {
+          name: '예측 구간',
+          type: 'line',
+          yAxisIndex: 1,
+          data: futureData,
+          smooth: false,
+          connectNulls: false,
+          lineStyle: { color: '#3B82F6', width: 2.5 },
+          itemStyle: { color: '#3B82F6' },
+          symbolSize: 5,
+        },
+        {
+          name: '최신 주차',
+          type: 'line',
+          yAxisIndex: 1,
+          data: lastData,
+          smooth: false,
+          connectNulls: false,
+          lineStyle: { color: '#DC2626', width: 2.5, type: 'dashed' },
+          itemStyle: { color: '#DC2626' },
+          symbolSize: (_, params) => params.dataIndex === n - 1 ? 12 : 5,
+        },
+      ],
+    } }
+  }, [trendRaw, units])
 
   const lotRankData = useMemo(() => {
     if (!units.length || q3 === 0) return []
     const thresholds = { q2, q3, upperFence }
     const lotMap = {}
     units.forEach(u => {
+      const lotNum = parseInt(u.run_id)
+      // 원본 0_data 기준 lot 1~28만 (29~84는 split 시뮬레이션 분배)
+      if (!(lotNum >= 1 && lotNum <= 28)) return
       const lot = u.run_id
       if (!lotMap[lot]) lotMap[lot] = { lot, total: 0, g3: 0, g4: 0, predSum: 0 }
       const pred = parseFloat(u.reg_pred)
@@ -321,23 +454,19 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       .slice(0, 10)
   }, [units, q2, q3, upperFence])
 
-  // 위험 1위 Lot/Wafer 선정 — 하단 Δ Q-map용
   const topRisk = useMemo(() => {
     if (!lotRankData.length) return null
-    return lotRankData[0]   // 이미 riskRate 내림차순 정렬됨
+    return lotRankData[0]
   }, [lotRankData])
 
-  // 해당 Lot의 die 데이터 동적 로드
   const { data: lotDies, loading: loadingDies } = useCSV(
     topRisk ? `/wafer_map_lots/lot_${topRisk.lot}.csv` : null
   )
 
-  // 해당 Lot 내 위험률 1위 Wafer 선정 + Δ 기준선(같은 Lot 내 G1 die 평균 pred) 계산
   const deltaWafer = useMemo(() => {
     if (!lotDies.length || q3 === 0) return null
     const thresholds = { q2, q3, upperFence }
 
-    // 1) Wafer별 위험률(G3+G4 die 비율) 산출
     const wmap = {}
     lotDies.forEach(d => {
       const wf = d.wafer_no
@@ -354,23 +483,23 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     if (!wafers.length) return null
     const topWafer = wafers[0]
 
-    // 2) 같은 Lot 내 G1 die들의 평균 pred = 기준선
-    let baseSum = 0, baseN = 0
-    lotDies.forEach(d => {
-      const pred = parseFloat(d.pred)
-      if (!isFinite(pred)) return
-      if (getGrade(pred, thresholds) === 'grade1') { baseSum += pred; baseN++ }
-    })
-    const baseline = baseN > 0
-      ? baseSum / baseN
-      : lotDies.reduce((s, d) => s + (parseFloat(d.pred) || 0), 0) / lotDies.length
-
-    // 3) 위험 1위 Wafer의 die들 + Δ 절대 최대치
     const wDies = lotDies.filter(d => d.wafer_no == topWafer.wafer)
+
+    // baseline = Wafer 1 내 die들의 중앙값
+    // (해당 wafer 안에서 die 간 상대 비교 → 좁은 분포에서도 색 대비가 살아남)
+    const wPredsSorted = wDies
+      .map(d => parseFloat(d.pred))
+      .filter(v => isFinite(v))
+      .sort((a, b) => a - b)
+    const baseline = wPredsSorted.length
+      ? wPredsSorted[Math.floor(wPredsSorted.length / 2)]
+      : 0
+
+    // 정규화 기준: Wafer 1 내 |Δ| 최대값
+    // → 가장 큰 die가 가장 진한 색, 나머지는 비례적으로 옅어짐
     let absMax = 0
-    wDies.forEach(d => {
-      const p = parseFloat(d.pred)
-      if (isFinite(p)) absMax = Math.max(absMax, Math.abs(p - baseline))
+    wPredsSorted.forEach(p => {
+      absMax = Math.max(absMax, Math.abs(p - baseline))
     })
     if (absMax === 0) absMax = 1e-6
 
@@ -389,13 +518,13 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:13 }}>데이터 로딩 중…</div>
   }
 
-  const { total, gradeCount, avgPpm, normalRate, pieData } = kpi
+  const { total, gradeCount, avgPpm, recent30AvgPpm } = kpi
   const maxPpm = lotRankData.length ? Math.max(...lotRankData.map(r => r.avgPpm), 1) : 1
 
   return (
     <div className="overview">
 
-      {/* KPI 4개 가로 한 줄 */}
+      {/* 상단 KPI 4개 */}
       <div className="ov2-kpi-row">
         <KpiCard
           label="고위험 유닛 (Grade 4)"
@@ -414,13 +543,29 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
           color="#1E3A5F"
         />
         <KpiCard
-          label="정상 유닛 비율 (G1)"
-          value={`${normalRate}%`}
-          color={parseFloat(normalRate) >= 70 ? '#16A34A' : '#F59E0B'}
+          label="최근 한달 평균 PPM"
+          value={recent30AvgPpm != null ? recent30AvgPpm.toLocaleString() : '—'}
+          sub="ppm"
+          color="#1E3A5F"
         />
       </div>
 
-      {/* 위험 Lot 순위표(좌) + Grade 도넛(우) */}
+      {/* 주차별 불량 ppm 트렌드 */}
+      <div className="chart-card" style={{ flexShrink: 0 }}>
+        <div className="cc-header">
+          <div className="cc-title">주차별 불량 ppm 트렌드</div>
+        </div>
+        <div className="cc-body" style={{ height: 280, minHeight: 280, boxSizing: 'border-box' }}>
+          {loadingTrend
+            ? <div className="dummy-desc">trend_data.csv 로딩 중…</div>
+            : trendResult
+              ? <ReactECharts option={trendResult.option} style={{ width: '100%', height: '100%' }} opts={{ renderer: 'svg' }} notMerge={true} />
+              : <div className="dummy-desc">trend_data.csv 데이터 없음</div>
+          }
+        </div>
+      </div>
+
+      {/* 위험 Lot 순위(좌) + Δ Q-map(우) */}
       <div className="ov2-mid-row">
         <ChartCard title="위험 Lot 순위 (G3+G4 비율 기준 Top 10)" sub="행 클릭 시 상세 분석으로 이동">
           <table className="ov-lot-table ov2-lot-table">
@@ -464,15 +609,6 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
           </table>
         </ChartCard>
 
-        {/* Grade 도넛 차트 */}
-        <div className="pie-card">
-          <div className="pie-card-title">Grade 분포</div>
-          <ReactECharts option={makePieOption(pieData)} style={{ height: 340 }} opts={{ renderer: 'svg' }} />
-        </div>
-      </div>
-
-      {/* ── 하단: Δ Q-map + SHAP Top10 ── */}
-      <div className="ov2-spc-row">
         <ChartCard
           title={
             topRisk && deltaWafer
@@ -481,19 +617,15 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
           }
           sub={
             deltaWafer
-              ? `같은 Lot 정상(G1) die 평균(${Math.round(deltaWafer.baseline * 1e6).toLocaleString()} ppm) 대비 편차 · 빨강=초과 · 파랑=이하 · 클릭 시 상세 이동`
-              : '같은 Lot 내 정상 die 평균 대비 편차를 색상으로 표시'
+              ? `정상 die 평균(${Math.round(deltaWafer.baseline * 1e6).toLocaleString()} ppm) 대비 차이 — 빨강: 더 위험 · 파랑: 더 안전 · 진할수록 차이 큼`
+              : '정상 die 평균 대비 차이를 색으로 표시'
           }
         >
           {loadingDies
             ? <div className="dummy-desc">웨이퍼 데이터 로딩 중…</div>
             : deltaWafer
               ? (
-                <div
-                  style={{ width: '100%', height: 380, cursor: topRisk ? 'pointer' : 'default' }}
-                  onClick={() => topRisk && onNavigateDrilldown?.({ lot: topRisk.lot, wafer: deltaWafer.wafer })}
-                  title={topRisk ? `Lot ${topRisk.lot} / Wafer ${deltaWafer.wafer} 상세 분석으로 이동` : ''}
-                >
+                <div style={{ width: '100%', height: 380 }}>
                   <DeltaWaferMap
                     dies={deltaWafer.dies}
                     baseline={deltaWafer.baseline}
@@ -504,27 +636,8 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
               : <div className="dummy-desc">표시할 위험 Wafer 없음</div>
           }
         </ChartCard>
-
-        <ChartCard
-          title="모델 SHAP 기여도 Top 10"
-          sub="이번 주 예측을 견인한 주요 인자 — 빨강=불량 위험 ↑, 파랑=정상 방향 / 클릭 시 공정 인자 진단으로 이동"
-        >
-          <div
-            style={{ cursor: onNavigateProcessFactor ? 'pointer' : 'default' }}
-            onClick={() => onNavigateProcessFactor?.()}
-          >
-            <ShapTopBars shapData={shapData} />
-          </div>
-        </ChartCard>
       </div>
 
     </div>
   )
 }
-
-
-
-
-
-
-

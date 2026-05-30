@@ -75,7 +75,7 @@ function computeScale(allDies) {
 }
 
 // ── WaferMap SVG 컴포넌트 (1팀 WaferMap.tsx 포팅) ────
-function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSelectDie }) {
+function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSelectDie, mini = false }) {
   const layout = useMemo(() => {
     if (!dies.length) return null
     const xs = dies.map(d => d.die_x)
@@ -161,8 +161,8 @@ pred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`}</title>
                     width={cellW}
                     height={cellH}
                     fill={fill}
-                    stroke={isDieSel ? '#7C3AED' : isUnitSel ? '#0f172a' : 'rgba(15,23,42,0.12)'}
-                    strokeWidth={isDieSel ? 4 : isUnitSel ? 3 : 0.6}
+                    stroke={isDieSel ? '#7C3AED' : isUnitSel ? '#0f172a' : mini ? 'none' : 'rgba(15,23,42,0.12)'}
+                    strokeWidth={isDieSel ? 4 : isUnitSel ? 3 : mini ? 0 : 0.6}
                     style={onSelectUnit ? { cursor: 'pointer' } : undefined}
                     onClick={() => {
                       if (!die.ufs_serial || !onSelectUnit) return
@@ -176,11 +176,11 @@ pred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`}</title>
             {/* 격자선 (die 위에 오버레이) */}
             {gridXs.map((gx, i) => (
               <line key={`gx-${i}`} x1={gx} y1={cy - radius} x2={gx} y2={cy + radius}
-                stroke="rgba(100,116,139,0.18)" strokeWidth={0.8} />
+                stroke="rgba(100,116,139,0.18)" strokeWidth={mini ? 0.2 : 0.8} />
             ))}
             {gridYs.map((gy, i) => (
               <line key={`gy-${i}`} x1={cx - radius} y1={gy} x2={cx + radius} y2={gy}
-                stroke="rgba(100,116,139,0.18)" strokeWidth={0.8} />
+                stroke="rgba(100,116,139,0.18)" strokeWidth={mini ? 0.2 : 0.8} />
             ))}
           </g>
           <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#94a3b8" strokeWidth={1.5} />
@@ -641,13 +641,13 @@ function classifyWaferPattern(dies, threshold) {
   const highRatio = highCount / dies.length
 
   // 위험 die 비율이 낮으면 정상
-  if (highRatio < 0.08) return 'normal'
+  if (highRatio < 0.05) return 'normal'
 
   // Edge Ring: 외곽이 중심 대비 1.6배 이상
-  if (edgeAvg > centerAvg * 1.6 && edgeAvg > threshold * 0.9) return 'edge'
+  if (edgeAvg > centerAvg * 1.6 && edgeAvg > threshold * 0.3) return 'edge'
 
   // Center Cluster: 중심이 외곽 대비 1.6배 이상
-  if (centerAvg > edgeAvg * 1.6 && centerAvg > threshold * 0.9) return 'center'
+  if (centerAvg > edgeAvg * 1.6 && centerAvg > threshold * 0.3) return 'center'
 
   // 그 외 위험 die가 흩어진 경우
   return 'random'
@@ -664,6 +664,14 @@ export default function DrilldownV2({ initialSelection }) {
   const { data: summaryData, loading: loadingSummary } = useCSV('/dashboard_lot_summary.csv')
   const { data: shapData } = useCSV('/shap_bar.csv')
   const { data: unitData } = useCSV('/dashboard_units.csv')
+  const { data: lotPatternsAll } = useCSV('/dashboard_lot_patterns.csv')
+  const [lotPatternMaps, setLotPatternMaps] = useState({})
+  useEffect(() => {
+    fetch('/dashboard_lot_pattern_maps.json')
+      .then(r => r.ok ? r.json() : {})
+      .then(setLotPatternMaps)
+      .catch(() => {})
+  }, [])
 
   const [globalScale, setGlobalScale] = useState(null)
   useEffect(() => {
@@ -699,6 +707,7 @@ export default function DrilldownV2({ initialSelection }) {
       setSelectedLot(String(lot))
       setExpandedLot(String(lot))
       setLoadedLot(String(lot))
+      setActiveTab('default')
     }
   }, [initialSelection])
 
@@ -715,8 +724,9 @@ export default function DrilldownV2({ initialSelection }) {
   }, [initialSelection, dieData])
   const [waferSort, setWaferSort]       = useState('default') // 'default' | 'risk_desc' | 'risk_asc'
   const [lotSort, setLotSort]           = useState('risk_desc') // 'risk_desc' | 'risk_asc' | 'default'
-  const [activeTab, setActiveTab]       = useState('default')   // 'default' | 'pattern'
+  const [activeTab, setActiveTab]       = useState('pattern')   // 'pattern' | 'default'
   const [selectedPattern, setSelectedPattern] = useState(null)  // 'edge' | 'center' | 'random' | 'normal'
+  const [zoomLot, setZoomLot] = useState(null)
 
   const scale = useMemo(() => globalScale ?? computeScale(dieData), [globalScale, dieData])
 
@@ -724,6 +734,9 @@ export default function DrilldownV2({ initialSelection }) {
     if (!summaryData.length) return []
     const lotMap = {}
     summaryData.forEach(d => {
+      const lotNum = parseInt(d.run_id)
+      // 원본 0_data 기준 lot 1~28만 표시 (29~84는 split 시뮬레이션 분배)
+      if (!(lotNum >= 1 && lotNum <= 28)) return
       const lot = String(d.run_id)
       const wno = String(d.wafer_no)
       const key = `${lot}_${wno}`
@@ -809,6 +822,36 @@ export default function DrilldownV2({ initialSelection }) {
     return { wafers: classified, buckets }
   }, [dieData, scale])
 
+  // ── 전체 Lot 패턴 집계 (사전 계산 파일 기반) ──
+  const lotPatternBuckets = useMemo(() => {
+    const buckets = { edge: [], center: [], random: [], normal: [] }
+    lotPatternsAll.forEach(r => {
+      const p = String(r.pattern)
+      if (buckets[p]) buckets[p].push({
+        lot: String(r.lot),
+        pattern: p,
+        riskRatio: parseFloat(r.risk_ratio) || 0,
+        avgPred: parseFloat(r.avg_pred) || 0,
+        nDies: parseInt(r.n_dies) || 0,
+        nWafers: parseInt(r.n_wafers) || 0,
+      })
+    })
+    return buckets
+  }, [lotPatternsAll])
+
+  // ── Lot 통합 패턴: 선택된 Lot의 모든 wafer die를 합친 통합맵 기준 분류 ──
+  const lotPattern = useMemo(() => {
+    if (!selectedLot || !scale || !lotAccumDies.length) return null
+    const pat = classifyWaferPattern(lotAccumDies, scale.threshold)
+    const riskN = lotAccumDies.filter(d => parseFloat(d.pred) > scale.threshold).length
+    return {
+      pattern: pat,
+      dies: lotAccumDies,
+      riskRatio: riskN / lotAccumDies.length,
+      avgPred: lotAccumDies.reduce((s, d) => s + parseFloat(d.pred), 0) / lotAccumDies.length,
+    }
+  }, [selectedLot, scale, lotAccumDies])
+
   // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
   // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
   function absBarWidth(ratio) {
@@ -828,97 +871,138 @@ export default function DrilldownV2({ initialSelection }) {
       {/* ── 탭 바 ── */}
       <div className="dd-tab-bar">
         <button
+          className={`dd-tab ${activeTab === 'pattern' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pattern')}
+        >
+          패턴 분류 (Lot 통합)
+        </button>
+        <button
           className={`dd-tab ${activeTab === 'default' ? 'active' : ''}`}
           onClick={() => setActiveTab('default')}
         >
           기본 보기 (Lot → Wafer → Unit)
         </button>
-        <button
-          className={`dd-tab ${activeTab === 'pattern' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pattern')}
-        >
-          패턴 분류 {patternResult ? `(${patternResult.wafers.length}장)` : ''}
-        </button>
       </div>
 
       {activeTab === 'pattern' && (
         <div className="dd-pattern-view">
-          {!selectedLot && (
-            <div className="dd-pattern-hint">
-              좌측 트리에서 Lot을 선택하면 해당 Lot의 wafer 패턴이 분류됩니다.
-              <br/><br/>
-              <button className="dd-tab" onClick={() => setActiveTab('default')}>← 기본 보기로 돌아가 Lot 선택</button>
+          {/* 전체 Lot 패턴 요약 카드 4개 */}
+          {lotPatternsAll.length > 0 && (
+            <div className="dd-pattern-cards">
+              {['edge', 'center', 'random', 'normal'].map(pat => {
+                const meta = PATTERN_META[pat]
+                const lots = lotPatternBuckets[pat]
+                const pct = lotPatternsAll.length
+                  ? (lots.length / lotPatternsAll.length * 100).toFixed(0)
+                  : 0
+                const isActive = selectedPattern === pat
+                return (
+                  <div
+                    key={pat}
+                    className={`dd-pattern-card ${isActive ? 'active' : ''}`}
+                    style={{ borderColor: isActive ? meta.color : undefined }}
+                    onClick={() => setSelectedPattern(isActive ? null : pat)}
+                  >
+                    <div className="dd-pattern-card-head" style={{ color: meta.color }}>
+                      <span className="dd-pattern-dot" style={{ background: meta.color }} />
+                      {meta.label}
+                    </div>
+                    <div className="dd-pattern-card-count">
+                      {lots.length}<span style={{ fontSize: 12, color: '#94A3B8' }}> Lot ({pct}%)</span>
+                    </div>
+                    <div className="dd-pattern-card-desc">{meta.desc}</div>
+                  </div>
+                )
+              })}
             </div>
           )}
-          {selectedLot && !patternResult && (
-            <div className="dd-pattern-hint">패턴 분류 중...</div>
-          )}
-          {selectedLot && patternResult && (
-            <>
-              <div className="dd-pattern-cards">
-                {['edge', 'center', 'random', 'normal'].map(pat => {
-                  const meta = PATTERN_META[pat]
-                  const wafers = patternResult.buckets[pat]
-                  const pct = patternResult.wafers.length
-                    ? (wafers.length / patternResult.wafers.length * 100).toFixed(0)
-                    : 0
-                  const isActive = selectedPattern === pat
-                  return (
-                    <div
-                      key={pat}
-                      className={`dd-pattern-card ${isActive ? 'active' : ''}`}
-                      style={{ borderColor: isActive ? meta.color : undefined }}
-                      onClick={() => setSelectedPattern(isActive ? null : pat)}
-                    >
-                      <div className="dd-pattern-card-head" style={{ color: meta.color }}>
-                        <span className="dd-pattern-dot" style={{ background: meta.color }} />
-                        {meta.label}
-                      </div>
-                      <div className="dd-pattern-card-count">
-                        {wafers.length}<span style={{ fontSize: 12, color: '#94A3B8' }}>장 ({pct}%)</span>
-                      </div>
-                      <div className="dd-pattern-card-desc">{meta.desc}</div>
-                    </div>
-                  )
-                })}
+
+          {/* 선택된 패턴의 Lot: 좌(썸네일) + 우(미리보기) */}
+          {selectedPattern && lotPatternBuckets[selectedPattern].length > 0 && (
+            <div className="dd-pattern-explorer">
+              <div className="dd-pattern-grid">
+                <div className="dd-pattern-grid-title">
+                  {PATTERN_META[selectedPattern].label} — {lotPatternBuckets[selectedPattern].length} Lot
+                </div>
+                <div className="dd-pattern-map-grid">
+                  {lotPatternBuckets[selectedPattern]
+                    .sort((a, b) => b.riskRatio - a.riskRatio)
+                    .map(l => {
+                      const rawDies = lotPatternMaps[l.lot] || []
+                      const dies = rawDies.map(([x, y, p]) => ({ die_x: x, die_y: y, pred: p }))
+                      const isActive = zoomLot && zoomLot.lot === l.lot
+                      return (
+                        <div
+                          key={l.lot}
+                          className={`dd-pattern-mini ${isActive ? 'active' : ''}`}
+                          onClick={() => setZoomLot(l)}
+                          title="클릭 → 우측에 크게 보기"
+                        >
+                          <div className="dd-pattern-mini-head">
+                            Lot {l.lot}
+                            <span className="dd-pattern-mini-risk">{(l.riskRatio * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="dd-pattern-mini-map">
+                            {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} mini />}
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
               </div>
 
-              {selectedPattern && (
-                <div className="dd-pattern-grid">
-                  <div className="dd-pattern-grid-title">
-                    {PATTERN_META[selectedPattern].label} — {patternResult.buckets[selectedPattern].length}장
+              {/* 우측 미리보기 패널 */}
+              <div className="dd-pattern-preview">
+                {!zoomLot && (
+                  <div className="dd-pattern-preview-empty">
+                    좌측에서 Lot을 선택하면 크게 표시됩니다.
                   </div>
-                  <div className="dd-pattern-grid-list">
-                    {patternResult.buckets[selectedPattern].length === 0 && (
-                      <div className="dd-pattern-hint" style={{ padding: 16 }}>해당 패턴의 wafer가 없습니다.</div>
-                    )}
-                    {patternResult.buckets[selectedPattern]
-                      .sort((a, b) => b.riskRatio - a.riskRatio)
-                      .slice(0, 12)
-                      .map(w => (
-                      <div
-                        key={`${w.lot}_${w.wno}`}
-                        className="dd-pattern-mini"
-                        onClick={() => {
-                          setSelectedKey(`${w.lot}_${w.wno}`)
-                          setActiveTab('default')
-                        }}
-                        title="클릭 → 기본 보기에서 상세 분석"
-                      >
-                        <div className="dd-pattern-mini-head">
-                          Lot {w.lot} · #{w.wno}
-                          <span className="dd-pattern-mini-risk">{(w.riskRatio * 100).toFixed(1)}%</span>
+                )}
+                {zoomLot && (() => {
+                  const rawDies = lotPatternMaps[zoomLot.lot] || []
+                  const dies = rawDies.map(([x, y, p]) => ({ die_x: x, die_y: y, pred: p }))
+                  const meta = PATTERN_META[zoomLot.pattern]
+                  return (
+                    <>
+                      <div className="dd-pattern-preview-head">
+                        <div>
+                          <div className="dd-zoom-lot">Lot {zoomLot.lot}</div>
+                          <div className="dd-zoom-pat" style={{ color: meta.color }}>
+                            <span className="dd-pattern-dot" style={{ background: meta.color }} />
+                            {meta.label}
+                          </div>
                         </div>
-                        <div className="dd-pattern-mini-map">
-                          <WaferMap dies={w.dies} scale={scale} />
+                        <div className="dd-zoom-stats">
+                          <div>die <b>{zoomLot.nDies}</b></div>
+                          <div>wafer <b>{zoomLot.nWafers}</b></div>
+                          <div>위험 <b style={{ color: '#EF4444' }}>{(zoomLot.riskRatio * 100).toFixed(1)}%</b></div>
+                          <div>평균 <b>{Math.round(zoomLot.avgPred * 1e6).toLocaleString()} ppm</b></div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+                      <div className="dd-pattern-preview-map">
+                        {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} mini />}
+                      </div>
+                      <div className="dd-zoom-actions">
+                        <button
+                          className="dd-zoom-btn"
+                          onClick={() => {
+                            setSelectedLot(zoomLot.lot)
+                            setExpandedLot(zoomLot.lot)
+                            setLoadedLot(zoomLot.lot)
+                            setSelectedKey(null)
+                            setActiveTab('default')
+                          }}
+                        >
+                          기본 보기에서 상세 분석 →
+                        </button>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            </div>
           )}
+
         </div>
       )}
 

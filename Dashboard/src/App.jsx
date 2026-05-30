@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import TopBar from './components/TopBar'
 import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
-import Overview from './pages/Overview'
 import Overview2 from './pages/Overview2'
 import WaferMap from './pages/WaferMap'
 import ModelPerformanceV2 from './pages/ModelPerformanceV2'
@@ -12,7 +11,7 @@ import { useCSV } from './hooks/useCSV'
 import './App.css'
 
 export default function App() {
-  const [activePage, setActivePage] = useState('overview')
+  const [activePage, setActivePage] = useState('overview2')
   const [notifOpen, setNotifOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)

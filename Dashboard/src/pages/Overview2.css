@@ -5,16 +5,38 @@
   gap: 14px;
 }
 
-/* 위험 Lot 순위 + 도넛 좌우 배치 */
-.ov2-mid-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  align-items: start;
+/* Overview2 KPI 카드: 4개 각각 다른 테두리 색상으로 비교 */
+.ov2-kpi-card {
+  background: #F8FAFC;
+  border: 1.5px solid #CBD5E1;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-/* SPC 두 차트 좌우 배치 */
-.ov2-spc-row {
+.ov2-kpi-card .kpi-label {
+  color: #475569;
+  font-weight: 600;
+}
+
+/* 1번 카드(고위험): 로즈 레드 — 틸과 보색 대비 */
+.ov2-kpi-row > .ov2-kpi-card:nth-child(1) {
+  border-color: #E11D48;
+  background: #FFF1F2;
+}
+.ov2-kpi-row > .ov2-kpi-card:nth-child(1) .kpi-label { color: #BE123C; }
+
+/* 2~4번 카드: 틸로 통일 */
+.ov2-kpi-row > .ov2-kpi-card:nth-child(2),
+.ov2-kpi-row > .ov2-kpi-card:nth-child(3),
+.ov2-kpi-row > .ov2-kpi-card:nth-child(4) {
+  border-color: #0EA5E9;
+  background: #F0F9FF;
+}
+.ov2-kpi-row > .ov2-kpi-card:nth-child(2) .kpi-label,
+.ov2-kpi-row > .ov2-kpi-card:nth-child(3) .kpi-label,
+.ov2-kpi-row > .ov2-kpi-card:nth-child(4) .kpi-label { color: #0369A1; }
+
+/* 위험 Lot 순위 + 도넛 좌우 배치 */
+.ov2-mid-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;

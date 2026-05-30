@@ -3,11 +3,10 @@ import './Sidebar.css'
 import skLogo from '../assets/sk_logo_nobg.png'
 
 const MENU = [
-  { id: 'overview',           label: '불량 현황',           icon: '◈' },
-  { id: 'process-factor',     label: '공정 인자 진단',      icon: '◈' },
   { id: 'overview2',          label: '불량 현황 Ⅱ',        icon: '◈' },
   { id: 'drilldown-v2',       label: '불량 상세 분석 Ⅱ',   icon: '◉' },
   { id: 'feat-importance-v2', label: 'ML 모델 분석 Ⅱ',     icon: '◇' },
+  { id: 'process-factor',     label: '공정 인자 진단',      icon: '◈' },
 ]
 
 function ButterflyLogo() {
