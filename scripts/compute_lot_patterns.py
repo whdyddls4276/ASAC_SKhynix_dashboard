@@ -1,4 +1,4 @@
-"""
+﻿"""
 Lot별 통합 패턴 사전 계산.
 
 DrilldownV2.jsx의 classifyWaferPattern과 동일한 규칙으로 모든 lot을 분류해서

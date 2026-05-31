@@ -1,4 +1,4 @@
-/* ── 전체 ── */
+﻿/* ── 전체 ── */
 .drilldown {
   display: flex;
   flex-direction: column;
@@ -1069,12 +1069,7 @@
 }
 
 /* 패턴 탐색기: 좌(그리드) + 우(미리보기) */
-.dd-pattern-explorer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  gap: 16px;
-  align-items: start;
-}
+
 .dd-pattern-preview {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1122,7 +1117,7 @@
 /* 패턴별 Lot 통합맵 그리드 */
 .dd-pattern-map-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   max-height: calc(100vh - 240px);
   overflow-y: auto;
@@ -1364,6 +1359,8 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
+  flex: 1;
+  min-width: 0;
   padding: 12px;
 }
 .dd-pattern-grid-title {
@@ -1374,7 +1371,7 @@
 }
 .dd-pattern-grid-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
 }
 .dd-pattern-mini {
@@ -1405,6 +1402,46 @@
   font-weight: 700;
 }
 .dd-pattern-mini-map {
-  height: 160px;
+  height: 100px;
   padding: 4px;
+}
+
+/* 패턴 썸네일 클릭 시 오른쪽에 나란히 배치 */
+.dd-pattern-slidein {
+  width: 340px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  align-self: flex-start;
+  animation: slideFromRight 0.22s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes slideFromRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.dd-pattern-slidein-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface2);
+}
+.dd-pattern-slidein-map {
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dd-pattern-slidein-map > * {
+  width: 100%;
+  max-width: 100%;
 }

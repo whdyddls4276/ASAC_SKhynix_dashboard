@@ -198,22 +198,22 @@ pred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`}</title>
 function ShapBar({ shapData, shapBeeswarm, ufsSerial, selectedFeature, onSelectFeature }) {
   const unitShap = useMemo(() => {
     if (!shapBeeswarm?.length || !ufsSerial) return null
-    const rows = shapBeeswarm.filter(r => r.ufs_serial === ufsSerial)
+    const rows = shapBeeswarm.filter(r => String(r.ufs_serial).trim() === String(ufsSerial).trim())
     if (!rows.length) return null
-    return rows.map(r => ({
-      feature: r.feature,
-      val: parseFloat(r.shap_value) || 0,
-      magnitude: Math.abs(parseFloat(r.shap_value) || 0),
-    })).sort((a, b) => b.magnitude - a.magnitude).slice(0, 10)
+    const mapped = rows.map(r => {
+      const v = Number(r.shap_value)
+      return { feature: String(r.feature), val: isNaN(v) ? 0 : v, magnitude: isNaN(v) ? 0 : Math.abs(v) }
+    }).filter(r => r.magnitude > 0).sort((a, b) => b.magnitude - a.magnitude).slice(0, 10)
+    return mapped.length ? mapped : null
   }, [shapBeeswarm, ufsSerial])
 
   const allBars = unitShap ?? (
     shapData?.length
-      ? shapData.slice(0, 20).map(f => ({
-          feature: f.feature,
-          val: parseFloat(f.mean_shap ?? f.effect_norm) || 0,
-          magnitude: Math.abs(parseFloat(f.mean_abs_shap ?? f.lgbm_gain) || 0),
-        })).sort((a, b) => b.magnitude - a.magnitude)
+      ? shapData.slice(0, 20).map(f => {
+          const v = Number(f.mean_shap ?? f.effect_norm)
+          const m = Number(f.mean_abs_shap ?? f.lgbm_gain)
+          return { feature: String(f.feature), val: isNaN(v) ? 0 : v, magnitude: isNaN(m) ? 0 : Math.abs(m) }
+        }).filter(r => r.magnitude > 0).sort((a, b) => b.magnitude - a.magnitude)
       : []
   )
   const bars = allBars.filter(b => /^X\d+$/.test(b.feature)).slice(0, 10)
@@ -234,8 +234,8 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial, selectedFeature, onSelectF
               display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
               cursor: onSelectFeature ? 'pointer' : undefined,
               background: isSelected ? '#eff6ff' : 'transparent',
-              borderRadius: 4, padding: '1px 2px',
-              outline: isSelected ? '1.5px solid #3b82f6' : 'none',
+              borderRadius: 4, padding: '2px 2px',
+              boxShadow: isSelected ? 'inset 0 0 0 1.5px #3b82f6' : 'none',
             }}
           >
             <span style={{ width: 60, textAlign: 'right', fontFamily: 'monospace', color: isSelected ? '#1d4ed8' : '#374151', flexShrink: 0, fontWeight: isSelected ? 700 : 400 }}>{b.feature}</span>
@@ -405,6 +405,12 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
       <div className="dd-section" style={{ padding: '6px 4px 4px' }}>
         <div className="dd-section-title">주요 기여 변수 Top 10 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>unit별 SHAP</span><span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginLeft: 6 }}>(ppm)</span></div>
         <ShapBar shapData={shapData} shapBeeswarm={shapBeeswarm} ufsSerial={ufsSerial} selectedFeature={selectedFeature} onSelectFeature={setSelectedFeature} />
+        {/* 피처 웨이퍼 히트맵 (SHAP 막대 클릭 시 SHAP 바 바로 아래 표시) */}
+        {selectedFeature && (
+          <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
+            <FeatureWaferMap feature={selectedFeature} featNormData={featNormData} />
+          </div>
+        )}
       </div>
 
       {/* 이상도 점수 (IsolationForest — dashboard_units.csv anomaly_score) */}
@@ -447,13 +453,6 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
       )}
 
       {/* 보고서 생성 버튼은 AI Agent 서버 비활성으로 인해 숨김 */}
-
-      {/* 피처 웨이퍼 히트맵 (SHAP 막대 클릭 시 표시) */}
-      {selectedFeature && (
-        <div className="dd-section-box">
-          <FeatureWaferMap feature={selectedFeature} featNormData={featNormData} />
-        </div>
-      )}
     </div>
   )
 }
@@ -1022,9 +1021,9 @@ export default function DrilldownV2({ initialSelection }) {
             </div>
           )}
 
-          {/* 선택된 패턴의 Lot: 좌(썸네일) + 우(미리보기) */}
+          {/* 선택된 패턴의 Lot 썸네일 그리드 (전체 너비) */}
           {selectedPattern && lotPatternBuckets[selectedPattern].length > 0 && (
-            <div className="dd-pattern-explorer">
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
               <div className="dd-pattern-grid">
                 <div className="dd-pattern-grid-title">
                   {PATTERN_META[selectedPattern].label} — {lotPatternBuckets[selectedPattern].length} Lot
@@ -1040,7 +1039,7 @@ export default function DrilldownV2({ initialSelection }) {
                         <div
                           key={l.lot}
                           className={`dd-pattern-mini ${isActive ? 'active' : ''}`}
-                          onClick={() => setZoomLot(l)}
+                          onClick={() => setZoomLot(isActive ? null : l)}
                           title="클릭 → 우측에 크게 보기"
                         >
                           <div className="dd-pattern-mini-head">
@@ -1056,55 +1055,51 @@ export default function DrilldownV2({ initialSelection }) {
                 </div>
               </div>
 
-              {/* 우측 미리보기 패널 */}
-              <div className="dd-pattern-preview">
-                {!zoomLot && (
-                  <div className="dd-pattern-preview-empty">
-                    좌측에서 Lot을 선택하면 크게 표시됩니다.
-                  </div>
-                )}
-                {zoomLot && (() => {
-                  const rawDies = lotPatternMaps[zoomLot.lot] || []
-                  const dies = rawDies.map(([x, y, p]) => ({ die_x: x, die_y: y, pred: p }))
-                  const meta = PATTERN_META[zoomLot.pattern]
-                  return (
-                    <>
-                      <div className="dd-pattern-preview-head">
-                        <div>
-                          <div className="dd-zoom-lot">Lot {zoomLot.lot}</div>
-                          <div className="dd-zoom-pat" style={{ color: meta.color }}>
-                            <span className="dd-pattern-dot" style={{ background: meta.color }} />
-                            {meta.label}
-                          </div>
+              {/* 슬라이드인 미리보기 패널 */}
+              {zoomLot && (() => {
+                const rawDies = lotPatternMaps[zoomLot.lot] || []
+                const dies = rawDies.map(([x, y, p]) => ({ die_x: x, die_y: y, pred: p }))
+                const meta = PATTERN_META[zoomLot.pattern]
+                return (
+                  <div className="dd-pattern-slidein">
+                    <div className="dd-pattern-slidein-header">
+                      <div>
+                        <div className="dd-zoom-lot">Lot {zoomLot.lot}</div>
+                        <div className="dd-zoom-pat" style={{ color: meta.color }}>
+                          <span className="dd-pattern-dot" style={{ background: meta.color }} />
+                          {meta.label}
                         </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div className="dd-zoom-stats">
                           <div>die <b>{zoomLot.nDies}</b></div>
                           <div>wafer <b>{zoomLot.nWafers}</b></div>
                           <div>위험 <b style={{ color: '#EF4444' }}>{(zoomLot.riskRatio * 100).toFixed(1)}%</b></div>
                           <div>평균 <b>{Math.round(zoomLot.avgPred * 1e6).toLocaleString()} ppm</b></div>
                         </div>
+                        <button className="dd-report-close" onClick={() => setZoomLot(null)}>✕</button>
                       </div>
-                      <div className="dd-pattern-preview-map">
-                        {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} mini />}
-                      </div>
-                      <div className="dd-zoom-actions">
-                        <button
-                          className="dd-zoom-btn"
-                          onClick={() => {
-                            setSelectedLot(zoomLot.lot)
-                            setExpandedLot(zoomLot.lot)
-                            setLoadedLot(zoomLot.lot)
-                            setSelectedKey(null)
-                            setActiveTab('default')
-                          }}
-                        >
-                          기본 보기에서 상세 분석 →
-                        </button>
-                      </div>
-                    </>
-                  )
-                })()}
-              </div>
+                    </div>
+                    <div className="dd-pattern-slidein-map">
+                      {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} />}
+                    </div>
+                    <div className="dd-zoom-actions">
+                      <button
+                        className="dd-zoom-btn"
+                        onClick={() => {
+                          setSelectedLot(zoomLot.lot)
+                          setExpandedLot(zoomLot.lot)
+                          setLoadedLot(zoomLot.lot)
+                          setSelectedKey(null)
+                          setActiveTab('default')
+                        }}
+                      >
+                        기본 보기에서 상세 분석 →
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )}
 
