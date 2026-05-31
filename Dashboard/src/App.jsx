@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import TopBar from './components/TopBar'
 import Sidebar from './components/Sidebar'
 import ChatBot from './components/ChatBot'
@@ -84,34 +84,31 @@ export default function App() {
           <button className="np-close" onClick={() => setNotifOpen(false)}>✕</button>
         </div>
         <div className="np-list">
-          {[
-            { key: 'grade4', label: '매우위험 (G4)', color: '#EF4444', bg: '#FEE2E2' },
-            { key: 'grade3', label: '위험 (G3)',     color: '#F59E0B', bg: '#FEF3C7' },
-            { key: 'grade2', label: '조심 (G2)',     color: '#EAB308', bg: '#FEF9C3' },
-            { key: 'grade1', label: '정상 (G1)',     color: '#22C55E', bg: '#F0FDF4' },
-          ].map(({ key, label, color, bg }) => {
-            const list = notifByGrade[key] ?? []
-            if (!list.length) return null
+          {!units.length && (
+            <div style={{ padding: 16, color: '#94A3B8', fontSize: 11 }}>데이터 로딩 중…</div>
+          )}
+          {units.length > 0 && (() => {
+            const list = notifByGrade['grade4'] ?? []
+            if (!list.length) return (
+              <div style={{ padding: 16, color: '#94A3B8', fontSize: 11 }}>위험 감지 유닛 없음</div>
+            )
             return (
-              <div key={key} className="np-grade-section">
-                <div className="np-grade-header" style={{ background: bg, borderColor: color }}>
-                  <span className="np-grade-label" style={{ color }}>{label}</span>
-                  <span className="np-grade-count" style={{ color }}>{list.length.toLocaleString()}개</span>
+              <div className="np-grade-section">
+                <div className="np-grade-header" style={{ background: '#FEE2E2', borderColor: '#EF4444' }}>
+                  <span className="np-grade-label" style={{ color: '#EF4444' }}>⚠ 매우위험 (Grade 4)</span>
+                  <span className="np-grade-count" style={{ color: '#EF4444' }}>{list.length.toLocaleString()}개</span>
                 </div>
                 <div className="np-unit-list">
-                  {list.slice(0, 30).map(serial => (
+                  {list.slice(0, 50).map(serial => (
                     <div key={serial} className="np-unit-item">{serial}</div>
                   ))}
-                  {list.length > 30 && (
-                    <div className="np-unit-more">+{(list.length - 30).toLocaleString()}개 더</div>
+                  {list.length > 50 && (
+                    <div className="np-unit-more">+{(list.length - 50).toLocaleString()}개 더</div>
                   )}
                 </div>
               </div>
             )
-          })}
-          {!units.length && (
-            <div style={{ padding: 16, color: '#94A3B8', fontSize: 11 }}>데이터 로딩 중…</div>
-          )}
+          })()}
         </div>
       </div>
     </div>
