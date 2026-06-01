@@ -1128,6 +1128,8 @@ def _handle_command(cmd: dict, d: dict):
             return False, "기존 피처 정보가 없습니다. feat1, feat2 모두 지정해 주세요."
         try:
             d["feat_scatter"] = get_feature_scatter_data(feat1=feat1, feat2=feat2)
+            # R3 피처 정상/불량 분포 차트도 같은 feature(feat1)로 갱신
+            d["feat_dist_compare"] = get_feature_dist_compare(feature=feat1)
         except Exception as e:
             return False, str(e)
         return True, None

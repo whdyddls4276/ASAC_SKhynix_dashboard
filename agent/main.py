@@ -132,8 +132,10 @@ async def chat(req: ChatRequest):
 
 @app.post("/report/pptx")
 async def generate_pptx(req: ReportRequest):
-    """구조화된 report_data로 PPTX 생성."""
-    pptx_bytes = build_pptx(req.report_data)
+    """구조화된 report_data로 PPTX 생성. report.py 수정 즉시 반영을 위해 매번 재import."""
+    import importlib, report
+    importlib.reload(report)
+    pptx_bytes = report.build_pptx(req.report_data)
     from urllib.parse import quote
     encoded = quote(req.filename, encoding="utf-8")
     return Response(
@@ -163,14 +165,24 @@ async def pptx_preflight():
 
 @app.get("/report/preview")
 async def preview_report():
-    """실데이터로 HTML + report_data JSON 반환 (캐시 즉시 응답, 없으면 대기)."""
+    """실데이터로 HTML + report_data JSON 반환.
+    report_data는 캐시 사용(생성 비용 큼), HTML은 매 요청 재생성(코드 수정 즉시 반영)."""
     # 캐시가 아직 없으면 최대 60초 대기
     for _ in range(60):
         if _preview_cache:
-            return _preview_cache
+            break
         await asyncio.sleep(1)
-    # 60초 후에도 없으면 빈 응답
-    return {"html": "<p>데이터 로딩 중입니다. 잠시 후 다시 시도해주세요.</p>", "report_data": {}}
+    if not _preview_cache:
+        return {"html": "<p>데이터 로딩 중입니다. 잠시 후 다시 시도해주세요.</p>", "report_data": {}}
+    # HTML은 매번 새로 빌드 → report.py 수정 즉시 반영
+    try:
+        import importlib, report
+        importlib.reload(report)
+        html = report.build_html(_preview_cache["report_data"])
+        return {"html": html, "report_data": _preview_cache["report_data"]}
+    except Exception as e:
+        print(f"[preview] HTML 재빌드 실패: {e}")
+        return _preview_cache
 
 
 @app.post("/report/interact")

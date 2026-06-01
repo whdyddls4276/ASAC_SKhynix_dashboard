@@ -179,6 +179,12 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
             alpha=0.35, width=0.55, zorder=1, label="생산량")
     ax1.set_ylabel("생산량(개)", fontsize=11, color="#94a3b8")
     ax1.tick_params(axis="y", labelsize=11, colors="#94a3b8")
+    # 대시보드와 동일: y1 max 100k 고정 → 막대가 아래쪽에만 작게 표시
+    ax1.set_ylim(0, 100_000)
+    import matplotlib.ticker as _mticker
+    ax1.yaxis.set_major_formatter(_mticker.FuncFormatter(
+        lambda v, _: f"{v/1000:.0f}k" if abs(v) >= 1000 else f"{v:.0f}"
+    ))
 
     ax2 = ax1.twinx()
     ax2.plot(xs, ppm, color="#3b82f6", linewidth=1.5, marker="o", markersize=3,
@@ -189,6 +195,8 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
                  markeredgecolor="#ffffff", markeredgewidth=1.5, zorder=3)
     ax2.set_ylabel("예측불량 ppm", fontsize=11, color="#4b5563")
     ax2.tick_params(axis="y", labelsize=11, colors="#4b5563")
+    # ppm y축 고정 (HTML과 동일 스케일)
+    ax2.set_ylim(0, 4500)
     import matplotlib.ticker as _mticker
     ax2.yaxis.set_major_formatter(_mticker.FuncFormatter(lambda v,_: f"{v/1000:.0f}k"))
 
@@ -501,8 +509,11 @@ def _chart_fdc_line_png(labels, normal, danger, threshold, feature_name, w_px=30
         ax.set_xlabel("피처값", fontsize=11.5, color="#4b5563", labelpad=2)
         ax.set_ylabel("비율 (%)", fontsize=11.5, color="#4b5563", labelpad=2)
         ax.tick_params(labelsize=11, colors="#4b5563", length=2)
-        ax.legend(fontsize=11, framealpha=0.8, loc="upper right",
-                  handlelength=1.2, borderpad=0.3, labelspacing=0.2)
+        # 범례를 차트 위쪽 바깥에 배치 (차트 데이터 가리지 않도록)
+        ax.legend(fontsize=9, framealpha=0, loc="lower center",
+                  bbox_to_anchor=(0.5, 1.02), ncol=2,
+                  handlelength=1.2, borderpad=0.2, labelspacing=0.2,
+                  columnspacing=1.0)
         for sp in ax.spines.values(): sp.set_edgecolor("#d1d5db"); sp.set_linewidth(0.5)
         ax.grid(color="#eef0f2", linewidth=0.4, zorder=0)
 
@@ -511,19 +522,20 @@ def _chart_fdc_line_png(labels, normal, danger, threshold, feature_name, w_px=30
     plt.close(fig); buf.seek(0); return buf.read()
 
 
-def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220) -> bytes:
-    """웨이퍼맵: 직사각형 die, pred 연속 그라디언트 색상, 원형 clip (DrilldownV2 동일)."""
+def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=240, h_px=240) -> bytes:
+    """웨이퍼맵: HTML SVG 렌더링과 동일한 좌표·스타일 (정사각형 출력, 컬러바 없음).
+    HTML build_html의 wafer_svg와 1:1 매핑 — 픽셀 좌표계, y↓.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
     from matplotlib.patches import Circle, Rectangle
-    from matplotlib.colors import LinearSegmentedColormap
-    import numpy as np
+    from matplotlib.patches import PathPatch
+    from matplotlib.path import Path as MPath
 
     _try_set_font()
 
-    # die-level pred 기준 색상 스케일 — wafer_scale.json 글로벌 기준 (DrilldownV2 동일)
+    # pred 색상 스케일 — wafer_scale.json 글로벌 기준
     preds = [d.get("pred") if d.get("pred") is not None else (d.get("pred_ppm", 0) or 0) / 1e6
              for d in wd_dies]
     try:
@@ -540,54 +552,106 @@ def _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, serial, w_px=210, h_px=220
         sorted_p = sorted(preds)
         threshold = sorted_p[int(len(sorted_p) * 0.75)] if sorted_p else (pred_max * 0.5)
 
+    # HTML SVG와 완전 동일한 좌표 계산
+    side = min(w_px, h_px)
+    wmap_w = wmap_h = side
+    cx_px, cy_px = wmap_w / 2, wmap_h / 2
+    pad = 14
+    r_svg = min(cx_px, cy_px) - pad
+
+    # GLOBAL die grid → pixel 변환 (DrilldownV2 SCALE=0.9)
+    GX_MIN, GX_MAX = 12, 66
+    GY_MIN, GY_MAX = 11, 32
+    ref_x = GX_MAX - GX_MIN + 1   # 55
+    ref_y = GY_MAX - GY_MIN + 1   # 22
+    mx = (GX_MIN + GX_MAX) / 2    # 39
+    my = (GY_MIN + GY_MAX) / 2    # 21.5
+    SCALE = 0.9
+    sx = (r_svg * 2 / ref_x) * SCALE
+    sy = (r_svg * 2 / ref_y) * SCALE
+    die_w = sx
+    die_h = sy
+
+    def to_px(dx, dy):
+        return cx_px + (dx - mx) * sx, cy_px + (dy - my) * sy
+
+    # figure: 정사각형, 축은 figure 전체 차지, 마진 0
     dpi = 96
-    fig, ax = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
+    fig, ax = plt.subplots(figsize=(wmap_w/dpi, wmap_h/dpi), dpi=dpi)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
-
-    # DrilldownV2와 동일한 글로벌 좌표 기준 (웨이퍼마다 격자 고정)
-    x_min, x_max = 12, 66
-    y_min, y_max = 11, 32
-    cx = (x_min + x_max) / 2; cy = (y_min + y_max) / 2  # centerX=39, centerY=21.5
-    r = max(x_max - x_min, y_max - y_min) / 2 * 1.05
-
-    wafer_circle = Circle((cx, cy), r, fill=True, facecolor="#F8FAFC",
-                           edgecolor="#94A3B8", linewidth=1.5)
-    ax.add_patch(wafer_circle)
-
-    # die 크기: DrilldownV2 cellW/H 비율 (SCALE=0.9)
-    ref_x_range = x_max - x_min + 1  # 55
-    ref_y_range = y_max - y_min + 1  # 22
-    die_w = (x_max - x_min) / ref_x_range * 0.9
-    die_h = (y_max - y_min) / ref_y_range * 0.9
-
-    for die in wd_dies:
-        dx, dy = die["x"], die["y"]
-        die_pred = die.get("pred") if die.get("pred") is not None else (die.get("pred_ppm", 0) or 0) / 1e6
-        clr = _pred_color(die_pred, pred_min, pred_max, threshold)
-        is_target = die.get("is_target", False)
-        rect = Rectangle((dx - die_w/2, dy - die_h/2), die_w, die_h,
-                          facecolor=clr,
-                          edgecolor="#7f1d1d" if is_target else "none",
-                          linewidth=0.8 if is_target else 0)
-        ax.add_patch(rect)
-
-    ax.set_xlim(cx - r*1.1, cx + r*1.1)
-    ax.set_ylim(cy - r*1.1, cy + r*1.1)
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    ax.set_xlim(0, wmap_w)
+    ax.set_ylim(wmap_h, 0)  # y↓ (SVG 좌표)
     ax.set_aspect("equal")
     ax.axis("off")
 
-    # 색상바 범례 (정상→위험 세로 그라디언트, 오른쪽 배치)
+    # 웨이퍼 배경 원
+    wafer_bg = Circle((cx_px, cy_px), r_svg, fill=True,
+                      facecolor="#F8FAFC", edgecolor="#94A3B8", linewidth=1.5)
+    ax.add_patch(wafer_bg)
+
+    # 원 클립 영역 (SVG clipPath와 동일)
+    clip_path = mpath_circle = MPath.unit_circle()
+    from matplotlib.transforms import Affine2D
+    clip_transform = Affine2D().scale(r_svg, r_svg).translate(cx_px, cy_px) + ax.transData
+    clip_patch = PathPatch(clip_path, transform=clip_transform, facecolor='none', edgecolor='none')
+    ax.add_patch(clip_patch)
+
+    # die 사각형 (clip 적용)
+    for die in wd_dies:
+        px, py = to_px(die["x"], die["y"])
+        die_pred = die.get("pred") if die.get("pred") is not None else (die.get("pred_ppm", 0) or 0) / 1e6
+        clr = _pred_color(die_pred, pred_min, pred_max, threshold)
+        is_target = die.get("is_target", False)
+        rect = Rectangle((px - die_w/2, py - die_h/2), die_w, die_h,
+                          facecolor=clr,
+                          edgecolor="#7f1d1d" if is_target else "none",
+                          linewidth=0.8 if is_target else 0)
+        rect.set_clip_path(clip_patch)
+        ax.add_patch(rect)
+
+    # 노치 (웨이퍼 하단 작은 사각형)
+    notch = Rectangle((cx_px - 3, cy_px + r_svg - 3), 6, 6,
+                       facecolor="#CBD5E1", edgecolor="none")
+    ax.add_patch(notch)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, pad_inches=0)
+    plt.close(fig); buf.seek(0); return buf.read()
+
+
+def _chart_wafer_cbar_png(w_px=24, h_px=200) -> bytes:
+    """웨이퍼맵 옆 세로 컬러바 (정상→위험). 좁은 그라디언트 + 위아래 라벨."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    import numpy as np
+
+    _try_set_font()
+    dpi = 96
+    fig, ax = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
+    fig.patch.set_facecolor("white")
+    # 라벨 공간 확보: 좌우 여유 두고 그라디언트는 가운데 좁게
+    fig.subplots_adjust(left=0.30, right=0.70, top=0.88, bottom=0.12)
+
     grad_colors = ["#f3f4f6", "#dbeafe", "#a5d7dc", "#fef08a", "#fb923c", "#dc2626"]
     cmap = LinearSegmentedColormap.from_list("wafer", grad_colors)
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=pred_min, vmax=pred_max))
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax, orientation="vertical", fraction=0.05, pad=0.02, aspect=18)
-    cbar.ax.tick_params(labelsize=10, colors="#6b7280")
-    cbar.set_label("정상 ↑ 위험", fontsize=11, color="#374151", labelpad=3)
+    gradient = np.linspace(1, 0, 256).reshape(256, 1)
+    ax.imshow(gradient, aspect="auto", cmap=cmap)
+    ax.set_xticks([]); ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_edgecolor("#94a3b8"); sp.set_linewidth(0.5)
 
-    fig.tight_layout(pad=0.2)
-    buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
+    # 위/아래 라벨 (figure 전체 좌표 기준으로 가운데 정렬)
+    fig.text(0.5, 0.96, "위험", ha="center", va="top",
+             fontsize=7, fontweight="bold", color="#dc2626")
+    fig.text(0.5, 0.04, "정상", ha="center", va="bottom",
+             fontsize=7, fontweight="bold", color="#16803c")
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, pad_inches=0)
     plt.close(fig); buf.seek(0); return buf.read()
 
 
@@ -653,6 +717,9 @@ def _txt(slide, text, x_px, y_px, w_px, h_px, size=9, bold=False, color=(32,36,4
         Emu(_emu(w_px, dpi)), Emu(_emu(h_px, dpi))
     )
     tf = tb.text_frame; tf.word_wrap = wrap
+    # 텍스트 프레임 기본 내부 마진 제거 (텍스트가 박스 좌상단에 정확히 위치)
+    tf.margin_top = 0; tf.margin_bottom = 0
+    tf.margin_left = 0; tf.margin_right = 0
     p = tf.paragraphs[0]
     p.alignment = {"left":_ALIGN.LEFT,"center":_ALIGN.CENTER,"right":_ALIGN.RIGHT}.get(align, _ALIGN.LEFT)
     run = p.add_run(); run.text = _strip_html(text)
@@ -668,6 +735,33 @@ def _strip_html(s: str) -> str:
     s = re.sub(r"<[^>]+>", "", s)
     s = s.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
     return s
+
+
+def _multi_run_tx(slide, runs, x_px, y_px, w_px, h_px, sz=10, bold=False,
+                  align="left", wrap=True, dpi=96):
+    """여러 색상 run을 한 텍스트 박스에 표시. runs=[(text, (r,g,b)), ...]."""
+    from pptx.util import Emu, Pt as _Pt
+    from pptx.dml.color import RGBColor as RGB
+    from pptx.enum.text import PP_ALIGN as _ALIGN
+    tb = slide.shapes.add_textbox(
+        Emu(_emu(x_px, dpi)), Emu(_emu(y_px, dpi)),
+        Emu(_emu(w_px, dpi)), Emu(_emu(h_px, dpi))
+    )
+    tf = tb.text_frame; tf.word_wrap = wrap
+    tf.margin_top = 0; tf.margin_bottom = 0
+    tf.margin_left = 0; tf.margin_right = 0
+    p = tf.paragraphs[0]
+    p.alignment = {"left":_ALIGN.LEFT,"center":_ALIGN.CENTER,"right":_ALIGN.RIGHT}.get(align, _ALIGN.LEFT)
+    for text, color in runs:
+        if not text:
+            continue
+        run = p.add_run()
+        run.text = _strip_html(text)
+        run.font.size = _Pt(sz); run.font.bold = bold
+        run.font.color.rgb = RGB(*color)
+        try: run.font.name = "Malgun Gothic"
+        except Exception: pass
+    return tb
 
 
 def _boxtxt(slide, text, x_px, y_px, w_px, h_px, fill_rgb, text_rgb=(255,255,255),
@@ -820,14 +914,25 @@ def build_pptx(report_data: dict) -> bytes:
     bx(0, 0, SW, SH, (255,255,255))
     bx(0, 0, SW, TOPBAR_H, (255,255,255))
     bx(0, TOPBAR_H-2, SW, 2, (30,58,138))
-    tx(f"발행일자: {today_str}", 18, 9, 220, 20, sz=12, bold=True, clr=(51,78,118))
-    tx(report_title, 0, 7, SW, 24, sz=14, bold=True, clr=(15,23,42), align="center")
-    btx("대외비", SW-88, 8, 72, 22, fill=(220,38,38), sz=12, bold=True, align="center")
+    tx(f"발행일자: {today_str}", 18, 10, 220, 18, sz=11, bold=True, clr=(51,78,118))
+    tx(report_title, 0, 6, SW, 26, sz=15, bold=True, clr=(15,23,42), align="center")
+    btx("대외비", SW-100, 8, 86, 22, fill=(220,38,38), sz=11, bold=True, align="center")
 
     # ─── 요약 배너 ─────────────────────────────────────────────
     bx(0, TOPBAR_H, SW, SUM_H, (255,247,237))
     bx(0, TOPBAR_H+SUM_H-1, SW, 1, (253,215,170))
-    tx(summary_title, 0, TOPBAR_H+5, SW, 24, sz=15, bold=True, clr=(17,24,39), align="center")
+    # summary_title: "▲N ppm" 부분만 색상 강조 (▲=빨강 열화, ▼=초록 개선)
+    import re as _re_st
+    _m = _re_st.search(r'([▲▼]\s*\d[\d,]*\s*ppm)', summary_title)
+    if _m:
+        _pre = summary_title[:_m.start()]
+        _mid = _m.group(1)
+        _suf = summary_title[_m.end():]
+        _delta_clr = (220,38,38) if _mid.startswith('▲') else (22,163,74)
+        _runs = [(_pre, (17,24,39)), (_mid, _delta_clr), (_suf, (17,24,39))]
+        _multi_run_tx(slide, _runs, 0, TOPBAR_H+5, SW, 24, sz=15, bold=True, align="center", dpi=DPI)
+    else:
+        tx(summary_title, 0, TOPBAR_H+5, SW, 24, sz=15, bold=True, clr=(17,24,39), align="center")
     tx(summary_sub,   0, TOPBAR_H+30, SW, 18, sz=11, bold=True, clr=(26,58,92), align="center")
 
     # ─── 좌칼럼 sbox ───────────────────────────────────────────
@@ -847,22 +952,22 @@ def build_pptx(report_data: dict) -> bytes:
     tx(f"1. {slabel('L1','모델 성능')}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
     cy += 18
 
-    KPI_H = 68
+    KPI_H = 56
     KPI_GAP = 8
     KPI_W = (LW - 24 - KPI_GAP*2) // 3
+    # HTML과 동일: sub 텍스트 제거
     kpi_data = [
-        ("RMSE",       val_rmse,          model_nm,     (30,58,138), (30,58,138)),
-        ("분석 유닛",  f"{scan_total}개",  "전체",       (55,65,81),  (55,65,81)),
-        ("평균 예측 health", _ppm_str + " ppm", "전체 평균",(180,83,9),  (180,83,9)),
+        ("RMSE",            val_rmse,           (30,58,138), (30,58,138)),
+        ("분석 유닛",       f"{scan_total}개",  (55,65,81),  (55,65,81)),
+        ("평균 예측 health", _ppm_str + " ppm", (180,83,9),  (180,83,9)),
     ]
-    for i, (lbl, val, sub, lclr, vclr) in enumerate(kpi_data):
+    for i, (lbl, val, lclr, vclr) in enumerate(kpi_data):
         kx = LX + 12 + i*(KPI_W+KPI_GAP)
         bx(kx, cy, KPI_W, KPI_H, (255,255,255), (156,163,175), 0.5)
         bx(kx, cy, 3, KPI_H, lclr)
-        tx(lbl,  kx+8, cy+6,  KPI_W-14, 14, sz=10, bold=True, clr=(75,85,99))
-        tx(val,  kx+8, cy+20, KPI_W-14, 26, sz=16, bold=True, clr=vclr)
-        tx(sub,  kx+8, cy+50, KPI_W-14, 14, sz=10, clr=(75,85,99))
-    cy += KPI_H + 16
+        tx(lbl, kx+8, cy+5,  KPI_W-14, 14, sz=10, bold=True, clr=(75,85,99))
+        tx(val, kx+8, cy+22, KPI_W-14, 28, sz=16, bold=True, clr=vclr)
+    cy += KPI_H + 12
 
     # ── 2. Feature Importance Top 5 (L2_fi) / 3. 불량 트렌드 (L3_trend) ─
     show_l2 = "L2_fi" not in hidden_sids
@@ -945,9 +1050,18 @@ def build_pptx(report_data: dict) -> bytes:
             tx("불량 위치 웨이퍼맵", RX+15, ry+6, HALF_W-8, 14, sz=10, bold=True, clr=(17,24,39))
             bx(RX+12, ry+22, HALF_W, 1, (209,213,219))
             try:
+                # 웨이퍼(정사각형) + 컬러바(세로)를 분리해서 배치 → stretch 없음
+                _cbar_w = 26  # 캔버스 폭(라벨 공간 포함), 내부 그라디언트는 ~30%만 차지
+                _cbar_gap = 4
+                _wmap_side = min(HALF_W - 14 - _cbar_w - _cbar_gap, UNIT_H - 44)
                 wmap_png = _chart_wafer_png(wd_dies, wd_x_range, wd_y_range, unit_serial,
-                                             w_px=HALF_W-10, h_px=UNIT_H-44)
-                img(wmap_png, RX+17, ry+24, HALF_W-10, UNIT_H-44)
+                                             w_px=_wmap_side, h_px=_wmap_side)
+                cbar_png = _chart_wafer_cbar_png(w_px=_cbar_w, h_px=_wmap_side - 18)
+                # 가운데 정렬: 웨이퍼 + cbar 합쳐서 box 중앙
+                _total_w = _wmap_side + _cbar_gap + _cbar_w
+                _wx = RX + 12 + (HALF_W - _total_w) // 2
+                img(wmap_png, _wx, ry+24, _wmap_side, _wmap_side)
+                img(cbar_png, _wx + _wmap_side + _cbar_gap, ry+24+9, _cbar_w, _wmap_side - 18)
             except Exception as _e:
                 tx(f"웨이퍼맵 오류: {_e}", RX+16, ry+UNIT_H//2, HALF_W-8, 18, sz=9, clr=(220,80,80))
             tx(unit_serial, RX+12, ry+UNIT_H-16, HALF_W, 14, sz=11, bold=True, clr=(17,24,39), align="center")
@@ -971,7 +1085,7 @@ def build_pptx(report_data: dict) -> bytes:
             ]
             POS_HDR_H = 22
             ROW_H = (UNIT_H - POS_HDR_H) // 8
-            LBL_W = 80
+            LBL_W = 105
 
             for ri, (lbl, val, is_hot) in enumerate(top_rows):
                 row_y = ry + ri * ROW_H
@@ -1032,7 +1146,7 @@ def build_pptx(report_data: dict) -> bytes:
         else:
             n_anom  = max(len(anomaly_stats), 1)
             ACARD_H = max(34, (REMAIN_H - HDR_H_PANEL - 6) // n_anom)
-            LBL_W_A = 20
+            LBL_W_A = 32
             BAR_W_A = R2_W - 18 - LBL_W_A - 50
 
             for ai, s in enumerate(anomaly_stats):
@@ -1067,14 +1181,14 @@ def build_pptx(report_data: dict) -> bytes:
                 bar_bot = bar_top + BAR_H_A + 3
                 BAR_X = AX + 8 + LBL_W_A
 
-                tx("정상", AX+7, bar_top, LBL_W_A-1, BAR_H_A, sz=8, clr=(22,128,60))
+                tx("정상", AX+7, bar_top, LBL_W_A-1, BAR_H_A, sz=7, bold=True, clr=(22,128,60))
                 bx(BAR_X, bar_top, BAR_W_A, BAR_H_A, (220,235,220))
                 bx(BAR_X, bar_top, max(4,int(BAR_W_A*g4_pct/100)), BAR_H_A, (22,128,60))
                 if g4m is not None:
                     tx(f"{float(g4m):.4g}", BAR_X+BAR_W_A+4, bar_top, 46, BAR_H_A,
                        sz=8, bold=True, clr=(22,128,60), align="right")
 
-                tx("불량", AX+7, bar_bot, LBL_W_A-1, BAR_H_A, sz=8, clr=(185,28,28))
+                tx("불량", AX+7, bar_bot, LBL_W_A-1, BAR_H_A, sz=7, bold=True, clr=(185,28,28))
                 bx(BAR_X, bar_bot, BAR_W_A, BAR_H_A, (240,218,218))
                 bx(BAR_X, bar_bot, max(4,int(BAR_W_A*g1_pct/100)), BAR_H_A, (185,28,28))
                 if g1m is not None:
@@ -1120,8 +1234,6 @@ def build_pptx(report_data: dict) -> bytes:
        sz=10, bold=True, clr=(17,24,39))
     tx(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
        sz=10, clr=(75,85,99), align="center")
-    tx(f"Field Health Prediction Model v1.0  ·  Page 1 of {total_pages}", SW-270, FTR_Y+4, 258, 14,
-       sz=10, clr=(75,85,99), align="right")
 
     # ─── 2번째 슬라이드: 추가 차트 + 메모 (있을 때만) ───────────
     if has_extra_page:
@@ -1181,8 +1293,6 @@ def build_pptx(report_data: dict) -> bytes:
         tx2("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14, sz=10, bold=True, clr=(17,24,39))
         tx2(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
             sz=10, clr=(75,85,99), align="center")
-        tx2(f"Field Health Prediction Model v1.0  ·  Page 2 of {total_pages}", SW-270, FTR_Y+4, 258, 14,
-            sz=10, clr=(75,85,99), align="right")
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -2000,7 +2110,6 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 <div class="s-footer">
   <div class="footer-brand">We Do Technology | SK hynix</div>
   <span>{today_str} · {model_nm} · Val RMSE {val_rmse}</span>
-  <span>Field Health Prediction Model v1.0 · Page 1 of 1</span>
 </div>
 </div>
 
@@ -2039,9 +2148,8 @@ Chart.defaults.color       = '#202832';
   var LAST_WW = 37;
   var wwLabels = rawLabels.map(function(_,i){{ return 'WW'+(LAST_WW-(n-1-i)); }});
   var dateLabels = rawLabels;
-  // 생산량 막대를 위쪽으로 작게 보이게 — y1 max를 6.5배로 (Overview와 동일)
-  var prodMax = Math.max.apply(null, prodData.filter(function(v){{return v!=null;}})) || 1;
-  var y1Max   = Math.round(prodMax * 6.5);
+  // 생산량 막대를 위쪽으로 작게 보이게 — y1 max 100k 고정 (대시보드 동일)
+  var y1Max = 100000;
 
   new Chart(ctx,{{type:'bar',data:{{labels:wwLabels,datasets:[
     {{label:'생산량',data:prodData,type:'bar',
@@ -2049,16 +2157,18 @@ Chart.defaults.color       = '#202832';
     {{label:'예측 구간',data:futureData,type:'line',
       borderColor:'#3B82F6',backgroundColor:'#3B82F6',borderWidth:2,borderDash:[4,3],
       pointRadius:3,pointBackgroundColor:'#3B82F6',fill:false,tension:0.35,
+      pointStyle:'circle',
       yAxisID:'y2',order:1,spanGaps:true}},
     {{label:'최신 주차',data:lastData,type:'line',
       borderColor:'#DC2626',backgroundColor:'#DC2626',borderWidth:2,
       pointRadius:function(c){{return c.dataIndex===n-1?7:3;}},
       pointBackgroundColor:'#DC2626',pointBorderColor:'#fff',pointBorderWidth:2,
+      pointStyle:'circle',
       fill:false,tension:0.35,yAxisID:'y2',order:0,spanGaps:true}},
   ]}},options:{{responsive:true,maintainAspectRatio:false,animation:false,
     interaction:{{mode:'index',intersect:false}},
     plugins:{{
-      legend:{{display:true,position:'top',labels:{{boxWidth:8,font:{{size:13,weight:'700'}}}}}},
+      legend:{{display:true,position:'top',labels:{{usePointStyle:true,pointStyle:'circle',boxWidth:10,font:{{size:13,weight:'700'}}}}}},
       tooltip:{{callbacks:{{title:function(items){{
         var i=items[0].dataIndex;
         return wwLabels[i]+' ('+dateLabels[i]+')';
@@ -2082,7 +2192,7 @@ Chart.defaults.color       = '#202832';
         title:{{display:true,text:'불량 ppm',font:{{size:12,weight:'700'}}}},
         grid:{{display:false}},
         ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',
-          callback:function(v){{return (v/1000).toFixed(0)+'k';}}}},min:0}},
+          callback:function(v){{return (v/1000).toFixed(0)+'k';}}}},min:0,max:4500}},
       x:{{grid:{{display:false}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',maxRotation:0}}}}
     }}
   }}}});
@@ -2327,12 +2437,22 @@ Chart.defaults.color       = '#202832';
     selected=null;
   }}
   function hideMenu(){{menu.style.display='none';chartMenu.style.display='none';}}
-  function showMenuAt(x,y){{
-    menu.style.display='block';menu.style.left=x+'px';menu.style.top=y+'px';
+  function _clampMenu(el, x, y){{
+    // 슬라이드 영역 안에 들어가도록 위치 보정 (viewport 기준)
+    el.style.left='0px';el.style.top='0px';el.style.visibility='hidden';
+    el.style.display='block';
+    var w=el.offsetWidth, h=el.offsetHeight;
+    var vw=window.innerWidth, vh=window.innerHeight;
+    var pad=4;
+    if(x+w+pad>vw) x=Math.max(pad, vw-w-pad);
+    if(y+h+pad>vh) y=Math.max(pad, vh-h-pad);
+    if(x<pad) x=pad;
+    if(y<pad) y=pad;
+    el.style.left=x+'px';el.style.top=y+'px';
+    el.style.visibility='visible';
   }}
-  function showChartMenuAt(x,y){{
-    chartMenu.style.display='block';chartMenu.style.left=x+'px';chartMenu.style.top=y+'px';
-  }}
+  function showMenuAt(x,y){{ _clampMenu(menu, x, y); }}
+  function showChartMenuAt(x,y){{ _clampMenu(chartMenu, x, y); }}
 
   function selectSection(el,clientX,clientY){{
     clearSelection();
