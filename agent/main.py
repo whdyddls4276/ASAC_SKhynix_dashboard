@@ -94,6 +94,7 @@ class InteractRequest(BaseModel):
 class ReportRequest(BaseModel):
     report_data: dict = {}
     filename: str = "품질불량개선조치보고서.pptx"
+    current_html: str | None = None  # 인라인 텍스트 편집 반영용
 
 
 @app.post("/chat")
@@ -135,7 +136,7 @@ async def generate_pptx(req: ReportRequest):
     """구조화된 report_data로 PPTX 생성. report.py 수정 즉시 반영을 위해 매번 재import."""
     import importlib, report
     importlib.reload(report)
-    pptx_bytes = report.build_pptx(req.report_data)
+    pptx_bytes = report.build_pptx(req.report_data, current_html=req.current_html)
     from urllib.parse import quote
     encoded = quote(req.filename, encoding="utf-8")
     return Response(

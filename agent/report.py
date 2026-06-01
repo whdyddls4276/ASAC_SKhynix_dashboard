@@ -773,13 +773,71 @@ def _boxtxt(slide, text, x_px, y_px, w_px, h_px, fill_rgb, text_rgb=(255,255,255
 
 
 # ── 메인 빌드 ─────────────────────────────────────────────────
-def build_pptx(report_data: dict) -> bytes:
+def _apply_html_overrides(report_data: dict, html: str) -> dict:
+    """현재 미리보기 HTML에서 인라인 편집된 텍스트들을 추출해 report_data 덮어쓰기.
+    인라인 텍스트 편집(텍스트 더블클릭으로 직접 수정)이 PPT에도 반영되도록 함.
+    """
+    import re as _re_h, copy as _copy_h
+    d = _copy_h.deepcopy(report_data)
+    d.setdefault("meta", {})
+
+    def _extract_inner(pattern):
+        m = _re_h.search(pattern, html, _re_h.DOTALL)
+        if not m: return None
+        # HTML 태그 제거
+        inner = _re_h.sub(r"<[^>]+>", "", m.group(1)).strip()
+        inner = inner.replace("&nbsp;", " ").replace("&amp;", "&")
+        inner = inner.replace("&lt;", "<").replace("&gt;", ">")
+        return inner if inner else None
+
+    # 헤더 제목
+    v = _extract_inner(r'<div class="s-caption"[^>]*>(.*?)</div>')
+    if v: d["meta"]["report_title"] = v
+
+    # 배너
+    v = _extract_inner(r'<div class="s-title"[^>]*>(.*?)</div>')
+    if v: d["meta"]["summary_title"] = v
+    v = _extract_inner(r'<div class="s-subtitle"[^>]*>(.*?)</div>')
+    if v: d["meta"]["summary_sub"] = v
+
+    # 섹션 헤더 [모델링 결과] / [불량 예측 현황]
+    for label_key, pat in [
+        ("left_header",  r'<div class="shdr"[^>]*>(\[ ?모델링[^<]*)'),
+        ("right_header", r'<div class="shdr"[^>]*>(\[ ?불량[^<]*)'),
+    ]:
+        v = _extract_inner(pat + r'(?:.*?)</div>')
+        if v:
+            d["meta"].setdefault("section_labels", {})[label_key] = v
+
+    # 좌측 inum 섹션 라벨 (2. xxx, 3. xxx)
+    inums = _re_h.findall(r'<div class="inum"[^>]*>(.*?)</div>', html, _re_h.DOTALL)
+    for inum_html in inums:
+        plain = _re_h.sub(r"<[^>]+>", "", inum_html).strip()
+        m = _re_h.match(r'(\d+)\.\s*(.+?)(?:\s+출처:.*)?$', plain)
+        if not m: continue
+        num, label = m.group(1), m.group(2).strip()
+        sl_map = {"1": "L1", "2": "L2", "3": "L3"}
+        if num in sl_map:
+            d["meta"].setdefault("section_labels", {})[sl_map[num]] = label
+
+    return d
+
+
+def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     """
     HTML 보고서와 1:1 동일 레이아웃 PPTX 생성.
     차트는 matplotlib PNG, 텍스트/박스/테이블은 pptx 도형으로 재현.
+    current_html: 미리보기 iframe의 현재 HTML (인라인 텍스트 편집 반영용)
     """
     from datetime import timedelta
     import re
+
+    # 인라인 편집 내용을 report_data에 덮어쓰기 (PPT에 반영)
+    if current_html:
+        try:
+            report_data = _apply_html_overrides(report_data, current_html)
+        except Exception as _e:
+            print(f"[build_pptx] HTML override 파싱 실패: {_e}")
 
     meta         = report_data.get("meta", {})
     scan         = report_data.get("scan", {})
