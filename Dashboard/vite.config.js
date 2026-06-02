@@ -6,11 +6,7 @@ export default defineConfig({
   plugins: [react()],
   publicDir: '../data/processed',
   server: {
-    hmr: {
-      protocol: 'ws',
-      host: 'localhost',
-      port: 5173,
-    },
+    hmr: false,
     proxy: {
       '/chat/assistant': { target: 'http://localhost:8002', changeOrigin: true },
       '/chat':           { target: 'http://localhost:8000', changeOrigin: true },

@@ -251,88 +251,88 @@ function ShapBar({ shapData, shapBeeswarm, ufsSerial, selectedFeature, onSelectF
   )
 }
 
-// ── 피처 웨이퍼 히트맵 ────────────────────────────────
-const FEAT_HEATMAP_STOPS = [
-  [0.0, [219, 234, 254]],
-  [0.5, [250, 250, 200]],
-  [1.0, [220, 38,  38]],
-]
-
+// ── 피처 웨이퍼 히트맵 (SVG 직접 렌더링) ────────────────
 function FeatureWaferMap({ feature, featNormData }) {
-  const heatDies = useMemo(() => {
-    if (!feature || !featNormData?.length) return []
-    return featNormData
-      .filter(r => r.feature === feature)
-      .map(r => ({
-        die_x: parseInt(r.die_x),
-        die_y: parseInt(r.die_y),
-        val: parseFloat(r.feat_norm),
-      }))
-      .filter(d => isFinite(d.val))
-  }, [feature, featNormData])
+  const dies = useMemo(() => {
+    if (!featNormData?.length || !feature) return []
+    return featNormData.filter(r => r.feature === feature).map(r => ({
+      die_x: parseInt(r.die_x),
+      die_y: parseInt(r.die_y),
+      val: parseFloat(r.feat_norm),
+    }))
+  }, [featNormData, feature])
 
   if (!feature) return null
-  if (!featNormData?.length) return (
-    <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>
-      피처 데이터 로딩 중..
-    </div>
-  )
-  if (!heatDies.length) return (
+  if (!dies.length) return (
     <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>
       {feature} 데이터 없음
     </div>
   )
 
   const D = 800, PAD = 12
-  const VB_W = D + PAD * 2, VB_H = D + PAD * 2
+  const VB = D + PAD * 2
   const cx = PAD + D / 2, cy = PAD + D / 2, radius = D / 2
+
   const refXMin = GLOBAL_DIE_X_MIN, refXMax = GLOBAL_DIE_X_MAX
   const refYMin = GLOBAL_DIE_Y_MIN, refYMax = GLOBAL_DIE_Y_MAX
-  const refXRange = refXMax - refXMin + 1, refYRange = refYMax - refYMin + 1
-  const centerX = (refXMin + refXMax) / 2, centerY = (refYMin + refYMax) / 2
+  const centerX = (refXMin + refXMax) / 2
+  const centerY = (refYMin + refYMax) / 2
   const SCALE = 0.9
-  const cellW = (D / refXRange) * SCALE, cellH = (D / refYRange) * SCALE
+  const cellW = (D / (refXMax - refXMin + 1)) * SCALE
+  const cellH = (D / (refYMax - refYMin + 1)) * SCALE
 
-  const dieMap = new Map()
-  heatDies.forEach(d => dieMap.set(`${d.die_x},${d.die_y}`, d.val))
+  const dieMap = new Map(dies.map(d => [`${d.die_x},${d.die_y}`, d.val]))
+
+  function featColor(v) {
+    if (!isFinite(v)) return '#f1f5f9'
+    // 0.5 기준 diverging: 파랑(낮음) → 흰색(중간) → 빨강(높음)
+    if (v <= 0.5) {
+      const t = v / 0.5  // 0~1
+      const r = Math.round(59  + t * (255 - 59))
+      const g = Math.round(130 + t * (255 - 130))
+      const b = Math.round(246 + t * (255 - 246))
+      return `rgb(${r},${g},${b})`
+    } else {
+      const t = (v - 0.5) / 0.5  // 0~1
+      const r = Math.round(255)
+      const g = Math.round(255 - t * (255 - 59))
+      const b = Math.round(255 - t * (255 - 59))
+      return `rgb(${r},${g},${b})`
+    }
+  }
 
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2 }}>die {heatDies.length}개 | feat_norm [{Math.min(...heatDies.map(d=>d.val)).toFixed(2)}, {Math.max(...heatDies.map(d=>d.val)).toFixed(2)}]</div>
       <div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', marginBottom: 4 }}>
         {feature} 웨이퍼 히트맵
-        <span style={{ fontWeight: 400, color: '#64748b', marginLeft: 4 }}>feat_norm 기준</span>
       </div>
-      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet"
-        style={{ width: '100%', maxWidth: 220, display: 'block', margin: '0 auto' }}>
+      <svg viewBox={`0 0 ${VB} ${VB}`} preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', display: 'block' }}>
         <defs>
-          <clipPath id="featWaferCircle">
+          <clipPath id={`fc-${feature}`}>
             <circle cx={cx} cy={cy} r={radius} />
           </clipPath>
         </defs>
-        <circle cx={cx} cy={cy} r={radius} fill="#f8fafc" stroke="#cbd5e1" strokeWidth={1.5} />
-        <g clipPath="url(#featWaferCircle)">
+        <circle cx={cx} cy={cy} r={radius} fill="#fafafa" stroke="#cbd5e1" strokeWidth={1.5} />
+        <g clipPath={`url(#fc-${feature})`}>
           {ALL_DIE_POSITIONS.map(([dx, dy]) => {
-            const val = dieMap.get(`${dx},${dy}`)
-            if (val == null) return null
+            const v = dieMap.get(`${dx},${dy}`)
+            if (v === undefined) return null
             const x = cx + (dx - centerX) * cellW - cellW / 2
             const y = cy + (dy - centerY) * cellH - cellH / 2
-            const fill = interp(FEAT_HEATMAP_STOPS, val)
             return (
               <rect key={`${dx}-${dy}`} x={x} y={y} width={cellW} height={cellH}
-                fill={fill} stroke="rgba(15,23,42,0.08)" strokeWidth={0.4}>
-                <title>{`(${dx},${dy})  ${feature}=${val.toFixed(3)}`}</title>
-              </rect>
+                fill={featColor(v)} stroke="rgba(15,23,42,0.08)" strokeWidth={0.5} />
             )
           })}
         </g>
         <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#94a3b8" strokeWidth={1.5} />
         <rect x={cx - 18} y={cy + radius - 6} width={36} height={8} fill="#fff" stroke="#94a3b8" strokeWidth={1} />
       </svg>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 10, color: '#64748b' }}>
-        <span>낮음</span>
-        <div style={{ flex: 1, height: 7, borderRadius: 3, background: 'linear-gradient(to right, #dbeafe, #fafac8, #dc2626)' }} />
-        <span>높음</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#64748b', marginTop: 2, padding: '0 2px' }}>
+        <span style={{ color: '#3b82f6' }}>낮음</span>
+        <div style={{ flex: 1, height: 6, margin: '0 6px', borderRadius: 3, background: 'linear-gradient(to right, rgb(59,130,246), #fff, rgb(255,59,59))', alignSelf: 'center' }} />
+        <span style={{ color: '#ef4444' }}>높음</span>
       </div>
     </div>
   )
@@ -412,34 +412,6 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
           </div>
         )}
       </div>
-
-      {/* 이상도 점수 (IsolationForest — dashboard_units.csv anomaly_score) */}
-      {anomalyScore !== null && (() => {
-        const score = Math.round(anomalyScore)
-        const scoreColor = score >= 70 ? '#dc2626' : score >= 40 ? '#f97316' : '#16a34a'
-        return (
-          <div className="dd-section-box">
-            <div className="dd-section-title">이상도 점수 <span style={{ fontSize: 11, color: '#64748b' }}>IsolationForest · 0~100</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
-              <div style={{ fontSize: 25, fontWeight: 900, color: scoreColor, fontFamily: 'monospace' }}>{score}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ background: '#f1f5f9', height: 8, borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ width: `${score}%`, height: '100%', background: scoreColor, borderRadius: 4 }} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, fontSize: 11, color: '#94a3b8' }}>
-                  <span>0 정상</span>
-                  <span style={{ color: '#f97316' }}>40 주의</span>
-                  <span style={{ color: '#dc2626' }}>70 위험</span>
-                  <span>100</span>
-                </div>
-              </div>
-            </div>
-            <div style={{ marginTop: 6, fontSize: 11, color: '#94a3b8' }}>
-              정상 유닛들의 공정 피처 분포를 학습해서, 해당 유닛이 그 분포에서 얼마나 벗어났는지를 0~100으로 나타낸 값.
-            </div>
-          </div>
-        )
-      })()}
 
       {/* 가장 위험한 die */}
       {worstDie && (
@@ -984,7 +956,7 @@ export default function DrilldownV2({ initialSelection }) {
           className={`dd-tab ${activeTab === 'default' ? 'active' : ''}`}
           onClick={() => setActiveTab('default')}
         >
-          기본 보기 (Lot → Wafer → Unit)
+          계층 탐색 (Lot → Wafer → Unit)
         </button>
       </div>
 
@@ -1094,7 +1066,7 @@ export default function DrilldownV2({ initialSelection }) {
                           setActiveTab('default')
                         }}
                       >
-                        기본 보기에서 상세 분석 →
+                        계층 탐색에서 상세 분석 →
                       </button>
                     </div>
                   </div>

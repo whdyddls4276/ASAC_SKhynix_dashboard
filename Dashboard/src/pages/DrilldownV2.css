@@ -8,7 +8,7 @@
 
 .dd-body-3col {
   display: grid;
-  grid-template-columns: 330px 1fr 600px;
+  grid-template-columns: var(--dd-left-w) 1fr var(--dd-right-w);
   flex: 1;
   overflow: hidden;
   height: 100%;
@@ -29,7 +29,7 @@
 .dd-center-panel { overflow: visible; }
 
 .dd-panel-title{
-  font-size: 14px;
+  font-size: var(--dd-font-lg);
   font-weight: 700;
   color: var(--text);
   padding: 12px 14px 0;
@@ -38,7 +38,7 @@
 
 /* ── 우측 패널 섹션 타이틀 ── */
 .dd-right-panel-title{
-  font-size: 14px;
+  font-size: var(--dd-font-lg);
   font-weight: 700;
   color: var(--text2);
   padding: 8px 14px 4px;
@@ -128,7 +128,7 @@
   border-radius: 5px;
   background: var(--surface);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--dd-font-md);
   padding: 6px 10px;
   box-sizing: border-box;
 }
@@ -195,7 +195,7 @@
 }
 
 .dd-lot-name {
-  font-size: 11px;
+  font-size: var(--dd-font-md);
   font-weight: 600;
   flex-shrink: 0;
   min-width: 68px;
@@ -478,19 +478,19 @@
 }
 
 .dd-verdict-serial {
-  font-size: 11px;
+  font-size: var(--dd-font-md);
   font-family: 'JetBrains Mono', monospace;
   color: var(--text3);
   line-height: 1.6;
 }
 .dd-verdict-serial-main {
-  font-size: 11px;
+  font-size: var(--dd-font-md);
   color: var(--text2);
   font-weight: 600;
   display: block;
 }
 .dd-verdict-serial-sub {
-  font-size: 12px;
+  font-size: var(--dd-font-md);
   color: var(--text3);
   display: block;
 }
@@ -538,7 +538,7 @@
 
 .dd-section { }
 .dd-section-title{
-  font-size: 14px;
+  font-size: var(--dd-font-lg);
   font-weight: 600;
   color: var(--text);
   margin-bottom: 5px;
@@ -565,7 +565,7 @@
 }
 
 .dd-section-desc {
-  font-size: 11px;
+  font-size: var(--dd-font-md);
   color: var(--text3);
   line-height: 1.5;
 }
@@ -577,7 +577,7 @@
   justify-content: space-between;
   padding: 6px 0;
   border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: var(--dd-font-sm);
 }
 .dd-detail-row:last-child { border-bottom: none; }
 .dd-detail-key { color: var(--text3); }

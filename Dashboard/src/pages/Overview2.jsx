@@ -539,13 +539,11 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         <KpiCard
           label="평균 예측 PPM"
           value={avgPpm.toLocaleString()}
-          sub="ppm"
           color="#1E3A5F"
         />
         <KpiCard
           label="최근 한달 평균 PPM"
           value={recent30AvgPpm != null ? recent30AvgPpm.toLocaleString() : '—'}
-          sub="ppm"
           color="#1E3A5F"
         />
       </div>
@@ -617,8 +615,8 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
           }
           sub={
             deltaWafer
-              ? `정상 die 평균(${Math.round(deltaWafer.baseline * 1e6).toLocaleString()} ppm) 대비 차이 — 빨강: 더 위험 · 파랑: 더 안전 · 진할수록 차이 큼`
-              : '정상 die 평균 대비 차이를 색으로 표시'
+              ? `wafer 내 die 불량률 중앙값(${Math.round(deltaWafer.baseline * 1e6).toLocaleString()} ppm) 대비 각 die의 편차 · 빨강: 불량 높음 · 파랑: 불량 낮음`
+              : 'die별 불량 예측 분포'
           }
         >
           {loadingDies
