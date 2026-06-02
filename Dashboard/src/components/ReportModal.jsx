@@ -625,10 +625,22 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   }
 
   async function downloadPptx() {
+    // 현재 iframe 내 HTML 캡처 (인라인 텍스트 편집 반영용)
+    let liveHtml = currentHtmlRef.current || ''
+    try {
+      const iframeDoc = iframeRef.current?.contentDocument
+      if (iframeDoc?.documentElement) {
+        liveHtml = '<!DOCTYPE html>' + iframeDoc.documentElement.outerHTML
+      }
+    } catch {}
     const res = await fetch(`${apiUrl || API_URL}/report/pptx`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ report_data: currentReportRef.current || reportData || {}, filename: '품질불량개선조치보고서.pptx' }),
+      body: JSON.stringify({
+        report_data: currentReportRef.current || reportData || {},
+        filename: '품질불량개선조치보고서.pptx',
+        current_html: liveHtml,
+      }),
     })
     if (!res.ok) { alert('PPTX 생성 실패'); return }
     const blob = await res.blob()
