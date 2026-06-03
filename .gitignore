@@ -23,6 +23,14 @@ _live_cache.json
 *.pptx
 *.tmp
 *.log
+*.datebak
+
+# 피처 히트맵 이미지 (SVG 렌더링으로 대체됨)
+data/processed/feat_heatmaps/
+Dashboard/public/feat_heatmaps/
+
+# 모델링 임시 디렉토리
+median_auto_robust/
 
 # IDE
 .vscode/
