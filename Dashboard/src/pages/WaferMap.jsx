@@ -83,7 +83,7 @@ export default function WaferMap() {
     // 날짜 목록 (val + 합성 lot만, train/test 제외)
     const dateMap = {}
     dies.forEach(d => {
-      const dateStr = lotToDate(Math.round(parseFloat(d.run_id)))
+      const dateStr = d.date || lotToDate(Math.round(parseFloat(d.run_id)))
       if (!dateMap[dateStr]) dateMap[dateStr] = { danger: 0, total: 0 }
       dateMap[dateStr].total++
       if (parseFloat(d.pred) > dangerThresh) dateMap[dateStr].danger++
@@ -109,7 +109,7 @@ export default function WaferMap() {
   // 선택 날짜의 로트별 위험 unit 수
   const lotBarOption = useMemo(() => {
     if (!selDate || !dies.length) return null
-    const dayDies = dies.filter(d => lotToDate(Math.round(parseFloat(d.run_id))) === selDate)
+    const dayDies = dies.filter(d => (d.date || lotToDate(Math.round(parseFloat(d.run_id)))) === selDate)
     const lotMap = {}
     dayDies.forEach(d => {
       const lot = Math.round(parseFloat(d.run_id))

@@ -672,16 +672,6 @@ function DieReport({ die, scale, onClose }) {
         </div>
       </div>
 
-      {/* 위험 판정 근거 */}
-      <div className="dd-section-box">
-        <div className="dd-section-title">판정 근거</div>
-        <div className="dd-section-desc">
-          {isRisk
-            ? `예측 PPM(${ppm.toLocaleString()})이 임계값(${thPpm.toLocaleString()} ppm)을 초과합니다. 이 Die가 속한 Unit(${die.ufs_serial})의 정밀 점검이 권장됩니다.`
-            : `예측 PPM(${ppm.toLocaleString()})이 임계값(${thPpm.toLocaleString()} ppm) 이하입니다. 현재 정상 범위입니다.`
-          }
-        </div>
-      </div>
     </div>
   )
 }
@@ -927,6 +917,45 @@ export default function DrilldownV2({ initialSelection }) {
       avgPred: lotAccumDies.reduce((s, d) => s + parseFloat(d.pred), 0) / lotAccumDies.length,
     }
   }, [selectedLot, scale, lotAccumDies])
+
+  // ── 기본 선택 ① 패턴 탭 진입 시 edge(Edge Ring) 자동 선택 ──
+  useEffect(() => {
+    if (lotPatternsAll.length && !selectedPattern) setSelectedPattern('edge')
+  }, [lotPatternsAll])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 기본 선택 ② 패턴 선택 시 위험률 최고 lot을 기본으로 슬라이드인 표시 ──
+  useEffect(() => {
+    if (!selectedPattern) { setZoomLot(null); return }
+    const bucket = lotPatternBuckets[selectedPattern]
+    if (bucket?.length) {
+      setZoomLot([...bucket].sort((a, b) => b.riskRatio - a.riskRatio)[0])
+    } else {
+      setZoomLot(null)
+    }
+  }, [selectedPattern, lotPatternBuckets])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 기본 선택 ③ 계층 탐색 탭: 위험률 최고 lot 자동 펼침/선택 ──
+  useEffect(() => {
+    if (activeTab !== 'default' || selectedLot || !lotTree.length) return
+    const top = lotTree[0]   // lotSort 기본 risk_desc → 위험률 최고
+    setSelectedLot(top.lot); setExpandedLot(top.lot); setLoadedLot(top.lot); setSelectedKey(null)
+  }, [activeTab, lotTree])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 기본 선택 ④ 선택된 lot의 위험률 최고 wafer 자동 선택 ──
+  useEffect(() => {
+    if (activeTab !== 'default' || !selectedLot || selectedKey || !dieData.length) return
+    const lot = lotTree.find(l => l.lot === selectedLot)
+    if (!lot?.waferList?.length) return
+    const topW = [...lot.waferList].sort((a, b) => (b.riskDies / b.dies) - (a.riskDies / a.dies))[0]
+    if (topW) setSelectedKey(topW.key)
+  }, [activeTab, selectedLot, dieData, lotTree])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 기본 선택 ⑤ wafer의 가장 위험한 unit 자동 진단 (우측 창) ──
+  useEffect(() => {
+    if (!selectedKey || !selectedDies.length || selectedUnit) return
+    const worst = selectedDies.reduce((b, d) => parseFloat(d.pred) > parseFloat(b.pred) ? d : b, selectedDies[0])
+    if (worst?.ufs_serial) setSelectedUnit(worst.ufs_serial)
+  }, [selectedKey, selectedDies])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
   // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%

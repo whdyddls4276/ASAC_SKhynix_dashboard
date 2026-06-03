@@ -44,7 +44,7 @@ function deltaColor(delta, absMax) {
   }
 }
 
-function DeltaWaferMap({ dies, baseline, absMax }) {
+function DeltaWaferMap({ dies, baseline = 0, absMax, periodMode }) {
   const D = 600, PAD = 12
   const VB = D + PAD * 2
   const cx = PAD + D / 2, cy = PAD + D / 2, radius = D / 2
@@ -72,16 +72,27 @@ function DeltaWaferMap({ dies, baseline, absMax }) {
         {ALL_DIE_POSITIONS.map(([dx, dy]) => {
           const die = dieMap.get(`${dx},${dy}`)
           if (!die) return null
-          const pred = parseFloat(die.pred)
-          if (!isFinite(pred)) return null
-          const delta = pred - baseline
+          let delta, tip
+          if (periodMode) {
+            delta = parseFloat(die.delta)
+            if (!isFinite(delta)) return null
+            tip = `(${dx}, ${dy})
+이전(6/6~8)=${Math.round(parseFloat(die.pred_a) * 1e6).toLocaleString()} ppm
+최근(6/9~10)=${Math.round(parseFloat(die.pred_b) * 1e6).toLocaleString()} ppm
+Δ=${(delta >= 0 ? '+' : '') + Math.round(delta * 1e6).toLocaleString()} ppm`
+          } else {
+            const pred = parseFloat(die.pred)
+            if (!isFinite(pred)) return null
+            delta = pred - baseline
+            tip = `(${dx}, ${dy})
+pred=${Math.round(pred * 1e6).toLocaleString()} ppm
+Δ=${(delta >= 0 ? '+' : '') + Math.round(delta * 1e6).toLocaleString()} ppm`
+          }
           const x = cx + (dx - centerX) * cellW - cellW / 2
           const y = cy + (dy - centerY) * cellH - cellH / 2
           return (
             <g key={`${dx}-${dy}`}>
-              <title>{`(${dx}, ${dy})
-pred=${Math.round(pred * 1e6).toLocaleString()} ppm
-Δ=${(delta >= 0 ? '+' : '') + Math.round(delta * 1e6).toLocaleString()} ppm`}</title>
+              <title>{tip}</title>
               <rect
                 x={x} y={y} width={cellW} height={cellH}
                 fill={deltaColor(delta, absMax)}
@@ -454,65 +465,21 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       .slice(0, 10)
   }, [units, q2, q3, upperFence])
 
-  const topRisk = useMemo(() => {
-    if (!lotRankData.length) return null
-    return lotRankData[0]
-  }, [lotRankData])
+  // 기간 비교 델타맵: 사전계산된 delta_period.csv (좌표별 6/9~10 vs 6/6~8 평균 차이)
+  const { data: deltaRaw } = useCSV('/delta_period.csv')
 
-  const { data: lotDies, loading: loadingDies } = useCSV(
-    topRisk ? `/wafer_map_lots/lot_${topRisk.lot}.csv` : null
-  )
-
-  const deltaWafer = useMemo(() => {
-    if (!lotDies.length || q3 === 0) return null
-    const thresholds = { q2, q3, upperFence }
-
-    const wmap = {}
-    lotDies.forEach(d => {
-      const wf = d.wafer_no
-      const pred = parseFloat(d.pred)
-      if (!isFinite(pred) || wf == null) return
-      if (!wmap[wf]) wmap[wf] = { wafer: wf, total: 0, risky: 0 }
-      wmap[wf].total++
-      const g = getGrade(pred, thresholds)
-      if (g === 'grade3' || g === 'grade4') wmap[wf].risky++
-    })
-    const wafers = Object.values(wmap)
-      .map(w => ({ ...w, riskRate: w.total ? w.risky / w.total : 0 }))
-      .sort((a, b) => b.riskRate - a.riskRate)
-    if (!wafers.length) return null
-    const topWafer = wafers[0]
-
-    const wDies = lotDies.filter(d => d.wafer_no == topWafer.wafer)
-
-    // baseline = Wafer 1 내 die들의 중앙값
-    // (해당 wafer 안에서 die 간 상대 비교 → 좁은 분포에서도 색 대비가 살아남)
-    const wPredsSorted = wDies
-      .map(d => parseFloat(d.pred))
-      .filter(v => isFinite(v))
-      .sort((a, b) => a - b)
-    const baseline = wPredsSorted.length
-      ? wPredsSorted[Math.floor(wPredsSorted.length / 2)]
-      : 0
-
-    // 정규화 기준: Wafer 1 내 |Δ| 최대값
-    // → 가장 큰 die가 가장 진한 색, 나머지는 비례적으로 옅어짐
+  const deltaPeriod = useMemo(() => {
+    if (!deltaRaw.length) return null
+    const dies = deltaRaw.map(r => ({
+      die_x: parseInt(r.die_x), die_y: parseInt(r.die_y),
+      delta: parseFloat(r.delta),
+      pred_a: parseFloat(r.pred_a), pred_b: parseFloat(r.pred_b),
+    })).filter(d => isFinite(d.delta) && isFinite(d.die_x) && isFinite(d.die_y))
+    if (!dies.length) return null
     let absMax = 0
-    wPredsSorted.forEach(p => {
-      absMax = Math.max(absMax, Math.abs(p - baseline))
-    })
-    if (absMax === 0) absMax = 1e-6
-
-    return {
-      wafer: topWafer.wafer,
-      riskRate: topWafer.riskRate,
-      dieCount: topWafer.total,
-      riskyCount: topWafer.risky,
-      baseline,
-      absMax,
-      dies: wDies,
-    }
-  }, [lotDies, q2, q3, upperFence])
+    dies.forEach(d => { absMax = Math.max(absMax, Math.abs(d.delta)) })
+    return { dies, absMax: absMax || 1e-6 }
+  }, [deltaRaw])
 
   if (loadingUnits || !kpi) {
     return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:13 }}>데이터 로딩 중…</div>
@@ -529,6 +496,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         <KpiCard
           label="고위험 유닛 (Grade 4)"
           value={`${gradeCount.grade4.toLocaleString()}개`}
+          sub="Q3 + 1.5×IQR 초과"
           color={gradeCount.grade4 > 0 ? '#DC2626' : '#16A34A'}
         />
         <KpiCard
@@ -565,7 +533,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
 
       {/* 위험 Lot 순위(좌) + Δ Q-map(우) */}
       <div className="ov2-mid-row">
-        <ChartCard title="위험 Lot 순위 (G3+G4 비율 기준 Top 10)" sub="행 클릭 시 상세 분석으로 이동">
+        <ChartCard title="위험 Lot 순위 (Top 10)" sub="행 클릭 시 상세 분석으로 이동">
           <table className="ov-lot-table ov2-lot-table">
             <thead>
               <tr>
@@ -608,30 +576,20 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         </ChartCard>
 
         <ChartCard
-          title={
-            topRisk && deltaWafer
-              ? `Δ Q-map · Lot ${topRisk.lot} / Wafer ${deltaWafer.wafer} (위험률 1위)`
-              : '최악 Wafer Δ Q-map'
-          }
-          sub={
-            deltaWafer
-              ? `wafer 내 die 불량률 중앙값(${Math.round(deltaWafer.baseline * 1e6).toLocaleString()} ppm) 대비 각 die의 편차 · 빨강: 불량 높음 · 파랑: 불량 낮음`
-              : 'die별 불량 예측 분포'
-          }
+          title="지난주 대비 Δ Q-map"
+          sub="die 좌표별 평균 예측 ppm 변화 · 빨강: 최근 불량 증가 · 파랑: 최근 불량 감소"
         >
-          {loadingDies
-            ? <div className="dummy-desc">웨이퍼 데이터 로딩 중…</div>
-            : deltaWafer
-              ? (
-                <div style={{ width: '100%', height: 380 }}>
-                  <DeltaWaferMap
-                    dies={deltaWafer.dies}
-                    baseline={deltaWafer.baseline}
-                    absMax={deltaWafer.absMax}
-                  />
-                </div>
-              )
-              : <div className="dummy-desc">표시할 위험 Wafer 없음</div>
+          {deltaPeriod
+            ? (
+              <div style={{ width: '100%', height: 380 }}>
+                <DeltaWaferMap
+                  dies={deltaPeriod.dies}
+                  absMax={deltaPeriod.absMax}
+                  periodMode
+                />
+              </div>
+            )
+            : <div className="dummy-desc">기간 비교 데이터 로딩 중…</div>
           }
         </ChartCard>
       </div>

@@ -81,7 +81,7 @@ export default function ProcessFactor() {
         data: ['개별 영향도', '누적 %'],
         textStyle: { fontSize: 12, color: '#475569' },
       },
-      grid: { top: 36, bottom: 60, left: 50, right: 60, containLabel: true },
+      grid: { top: 48, bottom: 60, left: 50, right: 60, containLabel: true },
       xAxis: {
         type: 'category',
         data: rows.map(r => r.feature),
@@ -98,7 +98,6 @@ export default function ProcessFactor() {
         },
         {
           type: 'value',
-          name: '누적 %', nameTextStyle: { fontSize: 11, color: '#94A3B8' },
           axisLabel: { fontSize: 10, color: '#94A3B8', formatter: v => v + '%' },
           splitLine: { show: false },
           min: 0, max: 100,
@@ -424,9 +423,6 @@ export default function ProcessFactor() {
       {/* ── 안내 배너 ── */}
       <div className="pf-banner">
         <div className="pf-banner-title">공정 인자 진단</div>
-        <div className="pf-banner-sub">
-          위험(G3·G4) Lot의 패턴을 만드는 공정 인자를 식별합니다. 임계값을 넘는 구간은 공정팀 관리 포인트로 활용하세요.
-        </div>
       </div>
 
       {/* ── Row 0: Feature Pareto (영향력 누적 기여도) ── */}
@@ -434,7 +430,7 @@ export default function ProcessFactor() {
         <span>공정 인자 영향도 — Pareto</span>
         <span className="pf-section-sub">
           {paretoData
-            ? `상위 ${paretoData.top80Count}개 인자가 전체 영향력의 ${paretoData.top80Pct}%를 설명합니다. 이 인자들부터 관리하세요.`
+            ? `상위 ${paretoData.top80Count}개 인자가 전체 영향력의 ${paretoData.top80Pct}%를 설명합니다.`
             : 'SHAP 데이터 기준 상위 20개 인자의 개별 영향도(막대)와 누적 기여도(선)'}
         </span>
       </div>
