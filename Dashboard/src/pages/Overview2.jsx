@@ -534,6 +534,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       {/* 위험 Lot 순위(좌) + Δ Q-map(우) */}
       <div className="ov2-mid-row">
         <ChartCard title="위험 Lot 순위 (Top 10)" sub="행 클릭 시 상세 분석으로 이동">
+          <div style={{ minHeight: 380 }}>
           <table className="ov-lot-table ov2-lot-table">
             <thead>
               <tr>
@@ -573,6 +574,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
               })}
             </tbody>
           </table>
+          </div>
         </ChartCard>
 
         <ChartCard

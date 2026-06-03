@@ -4,6 +4,8 @@ import { useCSV } from '../hooks/useCSV'
 import './ProcessFactor.css'
 
 const TOP_N = 5
+const BASELINE_RMSE = 0.005845
+const FIXED_DATE    = '2026-06-11'
 
 function quantile(sorted, q) {
   if (!sorted.length) return null
@@ -26,8 +28,38 @@ export default function ProcessFactor() {
   const { data: shapBeeswarmRaw } = useCSV('/shap_beeswarm.csv')
   const { data: unitsRaw }        = useCSV('/dashboard_units.csv')
   const { data: featDistRaw }     = useCSV('/feature_dist.csv')
+  const { data: fiRaw }           = useCSV('/feature_importance.csv')
+  const { data: metricsRaw }      = useCSV('/metrics.csv')
 
   const [selFeat, setSelFeat] = useState(null)
+
+  // ── RMSE ──────────────────────────────────────────────────
+  const bestVal = useMemo(() => {
+    if (!metricsRaw.length) return null
+    const get = (stage, model, split) => {
+      const row = metricsRaw.find(r => r.stage === stage && r.model === model && r.split === split && r.metric === 'rmse')
+      return row ? parseFloat(row.value) : null
+    }
+    return get('reg','stacking','val') ?? get('reg','ensemble','val') ?? get('reg','lgbm','val')
+  }, [metricsRaw])
+
+  // ── 피처 중요도 ───────────────────────────────────────────
+  const fiOption = useMemo(() => {
+    if (!fiRaw.length) return null
+    const totalGain = fiRaw.reduce((s, r) => s + parseFloat(r.lgbm_gain || 0), 0) || 1
+    const items = [...fiRaw]
+      .sort((a, b) => parseFloat(b.lgbm_gain) - parseFloat(a.lgbm_gain))
+      .slice(0, 20)
+      .map(r => ({ feature: r.feature, pct: parseFloat(r.lgbm_gain || 0) / totalGain * 100 }))
+      .reverse()
+    return {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: p => `<b>${p[0].name}</b><br/>중요도: ${parseFloat(p[0].value).toFixed(2)}%` },
+      grid: { top: 8, bottom: 8, left: 8, right: 70, containLabel: true },
+      xAxis: { type: 'value', axisLabel: { fontSize: 10, color: '#94A3B8', formatter: '{value}%' }, splitLine: { lineStyle: { color: '#F1F5F9' } } },
+      yAxis: { type: 'category', data: items.map(d => d.feature), axisLabel: { fontSize: 10, color: '#374151', fontFamily: 'monospace' }, axisTick: { show: false } },
+      series: [{ type: 'bar', data: items.map(d => ({ value: +d.pct.toFixed(2), itemStyle: { color: d.feature === selFeat ? '#7C3AED' : '#3B82F6', borderRadius: [0, 4, 4, 0] } })), barMaxWidth: 14, label: { show: true, position: 'right', fontSize: 10, color: '#64748B', formatter: p => `${parseFloat(p.value).toFixed(2)}%` } }],
+    }
+  }, [fiRaw, selFeat])
 
   const gradeMap = useMemo(() => {
     const m = {}
@@ -423,6 +455,12 @@ export default function ProcessFactor() {
       {/* ── 안내 배너 ── */}
       <div className="pf-banner">
         <div className="pf-banner-title">공정 인자 진단</div>
+        {bestVal != null && (
+          <div className="pf-banner-rmse">
+            <span className="pf-banner-rmse-label">RMSE</span>
+            <span className="pf-banner-rmse-val">{bestVal.toFixed(6)}</span>
+          </div>
+        )}
       </div>
 
       {/* ── Row 0: Feature Pareto (영향력 누적 기여도) ── */}
@@ -489,8 +527,8 @@ export default function ProcessFactor() {
           ))}
       </div>
 
-      {/* ── Row 2: 선택 피처 분포 비교 ── */}
-      <div className="pf-grid-2">
+      {/* ── Row 2: 정상위험분포 / 피처중요도 / SHAP 영향도 ── */}
+      <div className="pf-grid-3">
         <div className="pf-chart-card">
           <div className="pf-cc-header">
             <span className="pf-cc-title">정상 vs 위험 분포 — {activeFeat ?? '-'}</span>
@@ -500,6 +538,22 @@ export default function ProcessFactor() {
             {distOption
               ? <ReactECharts option={distOption} style={{ height: 340 }} />
               : <div className="pf-empty">분포 데이터 없음</div>}
+          </div>
+        </div>
+
+        <div className="pf-chart-card">
+          <div className="pf-cc-header">
+            <span className="pf-cc-title">피처 임포턴스</span>
+            <span className="pf-cc-sub">LGBM Gain 기준 상위 20개, 막대 클릭 시 분포 갱신</span>
+          </div>
+          <div className="pf-cc-body">
+            {fiOption
+              ? <ReactECharts
+                  option={fiOption}
+                  style={{ height: 340 }}
+                  onEvents={{ click: p => { if (p.name) setSelFeat(f => f === p.name ? null : p.name) } }}
+                />
+              : <div className="pf-empty">feature_importance.csv 없음</div>}
           </div>
         </div>
 

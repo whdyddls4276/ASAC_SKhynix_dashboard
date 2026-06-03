@@ -11,11 +11,38 @@
   border: 1px solid #BFDBFE;
   border-radius: 10px;
   padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .pf-banner-title {
   font-size: 16px;
   font-weight: 700;
   color: #1E40AF;
+}
+.pf-banner-rmse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #BFDBFE;
+  border-radius: 8px;
+  padding: 6px 14px;
+}
+.pf-banner-rmse-label {
+  font-size: 11px;
+  color: #64748B;
+  font-weight: 500;
+}
+.pf-banner-rmse-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1E40AF;
+  font-variant-numeric: tabular-nums;
+}
+.pf-banner-rmse-sub {
+  font-size: 10px;
+  color: #94A3B8;
 }
 .pf-banner-sub {
   font-size: 13px;
@@ -165,6 +192,11 @@
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
+.pf-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
 
 .pf-chart-card {
   background: var(--surface);
@@ -213,6 +245,9 @@
     grid-template-columns: 1fr 1fr;
   }
   .pf-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .pf-grid-3 {
     grid-template-columns: 1fr;
   }
 }

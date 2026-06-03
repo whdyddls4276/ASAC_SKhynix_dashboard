@@ -7,6 +7,7 @@ import WaferMap from './pages/WaferMap'
 import ModelPerformanceV2 from './pages/ModelPerformanceV2'
 import ProcessFactor from './pages/ProcessFactor'
 import DrilldownV2 from './pages/DrilldownV2'
+import ReportPage from './pages/ReportPage'
 import { useCSV } from './hooks/useCSV'
 import './App.css'
 
@@ -52,6 +53,8 @@ export default function App() {
         return <ProcessFactor />
       case 'drilldown-v2':
         return <DrilldownV2 initialSelection={pendingSelection} />
+      case 'report':
+        return <ReportPage />
       default:
         return <Overview onNavigateDrilldown={navigateToDrilldown} />
     }
@@ -71,11 +74,6 @@ export default function App() {
         <ChatBot open={chatOpen} onClose={() => setChatOpen(false)} />
       </div>
 
-      {!chatOpen && (
-        <button className="chatbot-fab" onClick={() => setChatOpen(true)} title="AI Agent (localhost:8000)">
-          💬
-        </button>
-      )}
 
       {notifOpen && <div className="overlay" onClick={() => setNotifOpen(false)} />}
       <div className={`notif-panel ${notifOpen ? 'open' : ''}`}>

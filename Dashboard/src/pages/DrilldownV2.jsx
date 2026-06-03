@@ -9,7 +9,7 @@
  *   - wafer_map.csv  : ufs_serial, run_id, wafer_no, die_x, die_y, pred, health, clf_proba, split, position
  *   - dashboard_units.csv : ufs_serial, run_id, wafer_no, split, health, reg_pred, risk
  */
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useCSV } from '../hooks/useCSV'
 import ALL_DIE_POSITIONS from './diePositions.js'
 import './DrilldownV2.css'
@@ -194,18 +194,25 @@ pred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`}</title>
   )
 }
 
-// ── SHAP 바 (shap_beeswarm.csv 기반 unit별 실제 SHAP, fallback: shap_bar.csv 전체 평균) ─
-function ShapBar({ shapData, shapBeeswarm, ufsSerial, selectedFeature, onSelectFeature }) {
+// ── SHAP 바 (shap_unit.json 기반 unit별 실제 SHAP, fallback: shap_bar.csv 전체 평균) ─
+function ShapBar({ shapData, shapUnitMap, ufsSerial, selectedFeature, onSelectFeature }) {
   const unitShap = useMemo(() => {
-    if (!shapBeeswarm?.length || !ufsSerial) return null
-    const rows = shapBeeswarm.filter(r => String(r.ufs_serial).trim() === String(ufsSerial).trim())
-    if (!rows.length) return null
+    if (!shapUnitMap || !ufsSerial) return null
+    const rows = shapUnitMap[ufsSerial]
+    console.log('[ShapBar] ufsSerial:', ufsSerial, '| rows:', rows?.length, '| sample:', rows?.[0])
+    if (!rows?.length) return null
     const mapped = rows.map(r => {
       const v = Number(r.shap_value)
       return { feature: String(r.feature), val: isNaN(v) ? 0 : v, magnitude: isNaN(v) ? 0 : Math.abs(v) }
     }).filter(r => r.magnitude > 0).sort((a, b) => b.magnitude - a.magnitude).slice(0, 10)
+    console.log('[ShapBar] mapped after filter:', mapped.length, mapped[0])
     return mapped.length ? mapped : null
-  }, [shapBeeswarm, ufsSerial])
+  }, [shapUnitMap, ufsSerial])
+
+  // shap_unit.json 로딩 중이면 로딩 표시
+  if (!shapUnitMap && ufsSerial) {
+    return <div style={{ fontSize: 11, color: '#94a3b8', padding: '8px 0' }}>SHAP 데이터 로딩 중…</div>
+  }
 
   const allBars = unitShap ?? (
     shapData?.length
@@ -339,7 +346,7 @@ function FeatureWaferMap({ feature, featNormData }) {
 }
 
 // ── Unit 진단 패널 (1팀 우측 패널 포팅) ──────────────
-function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm, unitData, featNormData }) {
+function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapUnitMap, unitData, featNormData }) {
   const [selectedFeature, setSelectedFeature] = useState(null)
   const dies = useMemo(() =>
     ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
@@ -404,7 +411,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapBeeswarm
       {/* 주요 기여 변수 (unit별 SHAP - shap_beeswarm.csv 기반) */}
       <div className="dd-section" style={{ padding: '6px 4px 4px' }}>
         <div className="dd-section-title">주요 기여 변수 Top 10 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>unit별 SHAP</span><span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginLeft: 6 }}>(ppm)</span></div>
-        <ShapBar shapData={shapData} shapBeeswarm={shapBeeswarm} ufsSerial={ufsSerial} selectedFeature={selectedFeature} onSelectFeature={setSelectedFeature} />
+        <ShapBar shapData={shapData} shapUnitMap={shapUnitMap} ufsSerial={ufsSerial} selectedFeature={selectedFeature} onSelectFeature={setSelectedFeature} />
         {/* 피처 웨이퍼 히트맵 (SHAP 막대 클릭 시 SHAP 바 바로 아래 표시) */}
         {selectedFeature && (
           <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
@@ -755,8 +762,13 @@ export default function DrilldownV2({ initialSelection }) {
   const [selectedLot, setSelectedLot]   = useState(null)
   const [selectedKey, setSelectedKey]   = useState(null)
   const [selectedUnit, setSelectedUnit] = useState(null)
-  const [shapBeeswarmEnabled, setShapBeeswarmEnabled] = useState(false)
-  const { data: shapBeeswarm } = useCSV(shapBeeswarmEnabled ? '/shap_beeswarm.csv' : null)
+  const [shapUnitMap, setShapUnitMap] = useState(null)
+  useEffect(() => {
+    fetch('/shap_unit.json')
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
+      .then(d => setShapUnitMap(d))
+      .catch(e => console.warn('[ShapUnit] 로드 실패:', e))
+  }, [])
   const [selectedDie,  setSelectedDie]  = useState(null)
   const [search, setSearch]             = useState('')
   const [expandedLot, setExpandedLot]   = useState(null)
@@ -857,7 +869,6 @@ export default function DrilldownV2({ initialSelection }) {
   }, [dieData, selectedLot, selectedKey])
 
   useEffect(() => { setSelectedUnit(null); setSelectedDie(null) }, [selectedKey])
-  useEffect(() => { if (selectedUnit) setShapBeeswarmEnabled(true) }, [selectedUnit])
 
   // ── 패턴 분류: 현재 로드된 lot의 wafer별 패턴 분류 ──
   const patternResult = useMemo(() => {
@@ -1305,11 +1316,12 @@ export default function DrilldownV2({ initialSelection }) {
           <div className="dd-right-unit-col">
             <div className="dd-right-panel-title">Unit 진단</div>
             <UnitReport
+              key={selectedUnit}
               ufsSerial={selectedUnit}
               allDies={selectedDies}
               scale={scale}
               shapData={shapData}
-              shapBeeswarm={shapBeeswarm}
+              shapUnitMap={shapUnitMap}
               unitData={unitData}
               featNormData={featNormData}
               onClose={selectedUnit ? () => { setSelectedUnit(null); setSelectedDie(null) } : undefined}

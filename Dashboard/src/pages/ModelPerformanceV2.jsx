@@ -430,46 +430,6 @@ export default function ModelPerformanceV2() {
       {/* ── 🆕 품질팀용 — 예측 신뢰도 섹션 (상단)              */}
       {/* ══════════════════════════════════════════════════════ */}
 
-      <ChartCard
-        title="예측 신뢰도 — 모델 알람을 얼마나 믿을 수 있는가"
-        tag={reliability ? `검증 대상 ${reliability.N.toLocaleString()}건 (val·test)` : null}
-      >
-        <div className="mp-kpi-row mp-kpi-row--2" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-          <KpiBox
-            label="적중률 (Recall)"
-            value={reliability ? pct(reliability.recall) : '-'}
-            sub="실제 위험 중 잡아낸 비율"
-          />
-          <KpiBox
-            label="오탐률 (False Positive)"
-            value={reliability ? pct(reliability.fpr) : '-'}
-            sub="정상을 위험으로 잘못 알람"
-          />
-          <KpiBox
-            label="미탐률 (Miss)"
-            value={reliability ? pct(reliability.fnr) : '-'}
-            sub="실제 위험인데 놓친 비율"
-          />
-          <KpiBox
-            label="평균 예측 오차"
-            value={reliability ? `${Math.round(reliability.mae_ppm).toLocaleString()} ppm` : '-'}
-            sub={reliability ? `RMSE ${Math.round(reliability.rmse_ppm).toLocaleString()} ppm` : ''}
-          />
-        </div>
-      </ChartCard>
-
-      <div className="mp-grid-2">
-        <ChartCard title="예측 vs 실측 산점도" tag="대각선 = 완벽 예측">
-          {scatterOption
-            ? <ReactECharts option={scatterOption} style={{ height: 360 }} />
-            : <div className="mp-empty">데이터 로딩 중…</div>}
-        </ChartCard>
-        <ChartCard title="Confusion Matrix" tag="위험 vs 정상 분류 결과">
-          {confusionOption
-            ? <ReactECharts option={confusionOption} style={{ height: 360 }} />
-            : <div className="mp-empty">데이터 로딩 중…</div>}
-        </ChartCard>
-      </div>
 
       {/* ══════════════════════════════════════════════════════ */}
       {/* ── DS팀용 — 기존 모델 분석 섹션                       */}
