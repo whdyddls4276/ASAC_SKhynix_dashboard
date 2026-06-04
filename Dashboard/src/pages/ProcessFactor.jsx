@@ -46,10 +46,13 @@ export default function ProcessFactor() {
   // ── 피처 중요도 ───────────────────────────────────────────
   const fiOption = useMemo(() => {
     if (!fiRaw.length) return null
-    const totalGain = fiRaw.reduce((s, r) => s + parseFloat(r.lgbm_gain || 0), 0) || 1
-    const items = [...fiRaw]
+    // die_x, die_y(위치 메타 피처)는 공정 인자가 아니므로 제외
+    const EXCLUDE = new Set(['die_x', 'die_y'])
+    const fiFiltered = fiRaw.filter(r => !EXCLUDE.has(String(r.feature).toLowerCase()))
+    const totalGain = fiFiltered.reduce((s, r) => s + parseFloat(r.lgbm_gain || 0), 0) || 1
+    const items = [...fiFiltered]
       .sort((a, b) => parseFloat(b.lgbm_gain) - parseFloat(a.lgbm_gain))
-      .slice(0, 20)
+      .slice(0, 15)
       .map(r => ({ feature: r.feature, pct: parseFloat(r.lgbm_gain || 0) / totalGain * 100 }))
       .reverse()
     return {
@@ -265,16 +268,19 @@ export default function ProcessFactor() {
     }
     if (!highVals.length && !lowVals.length) return null
 
-    const allVals = [...highVals, ...lowVals]
-    const minV = Math.min(...allVals)
-    const maxV = Math.max(...allVals)
+    // x축 범위를 P0.1~P99.9로 클립 (극단 outlier로 본체가 압축되는 것 방지)
+    // 범위 밖 값은 양 끝 bin에 모아서 표시
+    const allSorted = [...highVals, ...lowVals].sort((a, b) => a - b)
+    const minV = quantile(allSorted, 0.001)
+    const maxV = quantile(allSorted, 0.999)
     const BIN = 40
     const binSz = (maxV - minV) / BIN || 1
     const bins = Array.from({ length: BIN }, (_, i) => minV + i * binSz)
 
     const mkDensity = vals => bins.map((b, i) => {
-      const next = i === BIN - 1 ? Infinity : bins[i + 1]
-      const cnt = vals.filter(v => v >= b && v < next).length
+      const lo = i === 0 ? -Infinity : b                  // 첫 칸: 하한 밖 값 흡수
+      const hi = i === BIN - 1 ? Infinity : bins[i + 1]   // 끝 칸: 상한 밖 값 흡수
+      const cnt = vals.filter(v => v >= lo && v < hi).length
       return vals.length ? +(cnt / vals.length * 100).toFixed(2) : 0
     })
 
@@ -296,8 +302,8 @@ export default function ProcessFactor() {
       legend: {
         show: true, top: 4, right: 8,
         data: [
-          { name: '정상 (G1·2)', icon: 'rect', itemStyle: { color: '#3B82F6' } },
-          { name: '위험 (G3·4)', icon: 'rect', itemStyle: { color: '#EF4444' } },
+          { name: '안전', icon: 'rect', itemStyle: { color: '#3B82F6' } },
+          { name: '위험', icon: 'rect', itemStyle: { color: '#EF4444' } },
         ],
         textStyle: { fontSize: 12, color: '#475569' },
       },
@@ -305,7 +311,8 @@ export default function ProcessFactor() {
       xAxis: {
         type: 'category',
         data: xLabels,
-        axisLabel: { fontSize: 10, color: '#94A3B8', interval: 7, rotate: 30 },
+        axisLabel: { fontSize: 10, color: '#94A3B8', interval: 4, rotate: 30 },
+        axisTick: { show: true, alignWithLabel: true, interval: 0 },
         boundaryGap: false,
       },
       yAxis: {
@@ -315,13 +322,13 @@ export default function ProcessFactor() {
       },
       series: [
         {
-          name: '정상 (G1·2)', type: 'line', data: mkDensity(lowVals),
+          name: '안전', type: 'line', data: mkDensity(lowVals),
           smooth: true, symbol: 'none',
           lineStyle: { color: '#3B82F6', width: 2 },
           areaStyle: { color: 'rgba(59,130,246,0.12)' },
         },
         {
-          name: '위험 (G3·4)', type: 'line', data: mkDensity(highVals),
+          name: '위험', type: 'line', data: mkDensity(highVals),
           smooth: true, symbol: 'none',
           lineStyle: { color: '#EF4444', width: 2 },
           areaStyle: { color: 'rgba(239,68,68,0.12)' },
@@ -330,7 +337,8 @@ export default function ProcessFactor() {
             data: [{ xAxis: thrIdx, name: '임계값' }],
             lineStyle: { color: '#DC2626', type: 'solid', width: 2 },
             label: {
-              show: true, position: 'end',
+              show: true, position: 'insideEndBottom',
+              distance: [0, 6],
               formatter: `임계값 ${fmt(card.threshold)}`,
               fontSize: 11, color: '#DC2626', fontWeight: 600,
             },
@@ -492,7 +500,7 @@ export default function ProcessFactor() {
         <div className="pf-criteria-item">
           <span className="pf-criteria-key">위험 임계값</span>
           <span className="pf-criteria-desc">
-            정상 제품의 관리 한계(SPC) — 정상군 <b>99% 상한(P99)</b>을 넘거나 <b>1% 하한(P1)</b> 아래로 벗어나면 위험 신호
+            안전 제품의 관리 한계(SPC) — 안전군 <b>99% 상한(P99)</b>을 넘거나 <b>1% 하한(P1)</b> 아래로 벗어나면 위험 신호
           </span>
         </div>
         <div className="pf-criteria-item">
@@ -526,7 +534,7 @@ export default function ProcessFactor() {
               </div>
               <div className="pf-thr-range">
                 <div className="pf-thr-line">
-                  <span className="pf-thr-label">정상 범위</span>
+                  <span className="pf-thr-label">안전 범위</span>
                   <span className="pf-thr-val">{fmt(c.normalLow)} ~ {fmt(c.normalHigh)}</span>
                 </div>
                 <div className="pf-thr-line emphasis">
@@ -554,7 +562,7 @@ export default function ProcessFactor() {
       <div className="pf-grid-3">
         <div className="pf-chart-card">
           <div className="pf-cc-header">
-            <span className="pf-cc-title">정상 vs 위험 분포 — {activeFeat ?? '-'}</span>
+            <span className="pf-cc-title">안전 vs 위험 분포 — {activeFeat ?? '-'}</span>
             <span className="pf-cc-sub">임계값(빨간 실선) 이상에서 위험군 비중이 급증합니다.</span>
           </div>
           <div className="pf-cc-body">
