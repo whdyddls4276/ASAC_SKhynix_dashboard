@@ -23,15 +23,6 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
 
       <div className="topbar-right">
         <div className="date-pill">{FIXED_DATE} · {timeStr}</div>
-
-        <button
-          className="icon-btn"
-          onClick={() => setNotifOpen(v => !v)}
-          title="알림"
-        >
-          🔔
-          <span className="notif-dot" />
-        </button>
       </div>
     </header>
   )

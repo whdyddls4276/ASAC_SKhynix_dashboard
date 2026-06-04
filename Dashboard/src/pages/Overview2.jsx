@@ -1,13 +1,73 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useCSV } from '../hooks/useCSV'
 import ALL_DIE_POSITIONS from './diePositions.js'
 import './Overview.css'
 import './Overview2.css'
 
+// 트렌드 차트 — 배경 영역(파랑/빨강)을 차트 뒤 div로 깔아 정확히 컬럼에 맞춤
+function TrendChart({ option, lastTrueIdx = -1 }) {
+  const ref = useRef(null)
+  const [bands, setBands] = useState(null)  // [{ left, width, color }], top, height
+
+  const n = option?.xAxis?.data?.length ?? 0
+
+  useEffect(() => {
+    const compute = () => {
+      const inst = ref.current?.getEchartsInstance?.()
+      if (!inst || n < 2) return
+      try {
+        const x0 = inst.convertToPixel({ xAxisIndex: 0 }, 0)
+        const x1 = inst.convertToPixel({ xAxisIndex: 0 }, 1)
+        if ([x0, x1].some(v => v == null || isNaN(v))) return
+        const yTop = inst.convertToPixel({ yAxisIndex: 0 }, option.yAxis[0].max)
+        const yBot = inst.convertToPixel({ yAxisIndex: 0 }, option.yAxis[0].min)
+        if ([yTop, yBot].some(v => v == null || isNaN(v))) return
+        const half = (x1 - x0) / 2
+        const edge   = (i) => inst.convertToPixel({ xAxisIndex: 0 }, i) - half  // 컬럼 좌측 경계
+        const center = (i) => inst.convertToPixel({ xAxisIndex: 0 }, i)         // 컬럼 중심(점 위치)
+
+        // 3구간: 검증(초록)=0~실측마지막 점, 예측(파랑)=그 점~최신직전, 최신(빨강)=마지막 컬럼
+        const segs = []
+        const lt = Math.max(-1, Math.min(lastTrueIdx, n - 2))
+        const splitX = lt >= 0 ? center(lt) : edge(0)  // 실측 마지막 점 위치를 경계로
+        // 검증 구간 (실측+예측 겹침)
+        if (lt >= 0) {
+          segs.push({ left: edge(0), width: splitX - edge(0), color: 'rgba(16,185,129,0.10)' })
+        }
+        // 예측 구간
+        segs.push({ left: splitX, width: edge(n - 1) - splitX, color: 'rgba(59,130,246,0.08)' })
+        // 최신 주차
+        segs.push({ left: edge(n - 1), width: 2 * half, color: 'rgba(220,38,38,0.13)' })
+
+        setBands({ segs, top: yTop, height: yBot - yTop })
+      } catch { /* convert 실패 시 무시 */ }
+    }
+    const inst = ref.current?.getEchartsInstance?.()
+    inst?.on('finished', compute)
+    const t = setTimeout(compute, 60)
+    window.addEventListener('resize', compute)
+    return () => {
+      inst?.off('finished', compute)
+      clearTimeout(t)
+      window.removeEventListener('resize', compute)
+    }
+  }, [option, n, lastTrueIdx])
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {bands && bands.segs.map((s, i) => (
+        <div key={i} style={{ position: 'absolute', top: bands.top, height: bands.height, left: s.left, width: s.width,
+          background: s.color, pointerEvents: 'none', zIndex: 0 }} />
+      ))}
+      <ReactECharts ref={ref} option={option} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 1 }}
+        opts={{ renderer: 'svg' }} notMerge={true} />
+    </div>
+  )
+}
+
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
 const GLOBAL_DIE_Y_MIN = 11, GLOBAL_DIE_Y_MAX = 32
-const LAST_WW = 37
 
 export const GRADE_COLORS = {
   grade1: { bg: '#F0FDF4', border: '#86EFAC', text: '#166534', bar: '#22C55E', label: '정상 (G1)' },
@@ -184,28 +244,8 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       units.reduce((s, u) => s + parseFloat(u.reg_pred), 0) / total * 1e6
     )
 
-    let recent30AvgPpm = null
-    if (trendRaw.length) {
-      const rows = trendRaw
-        .map(r => {
-          const d = new Date(r.date)
-          const yp = r.y_pred !== '' && r.y_pred != null ? parseFloat(r.y_pred) : NaN
-          return { t: d.getTime(), yp }
-        })
-        .filter(r => !isNaN(r.t) && isFinite(r.yp))
-      if (rows.length) {
-        const maxT = Math.max(...rows.map(r => r.t))
-        const cutoff = maxT - 30 * 24 * 60 * 60 * 1000
-        const recent = rows.filter(r => r.t >= cutoff)
-        if (recent.length) {
-          const mean = recent.reduce((s, r) => s + r.yp, 0) / recent.length
-          recent30AvgPpm = Math.round(mean)
-        }
-      }
-    }
-
-    return { total, gradeCount, avgPpm, recent30AvgPpm }
-  }, [units, q2, q3, upperFence, trendRaw])
+    return { total, gradeCount, avgPpm }
+  }, [units, q2, q3, upperFence])
 
   // 주차별 불량 ppm 트렌드 (Overview1에서 이전)
   const trendResult = useMemo(() => {
@@ -235,8 +275,12 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     })
 
     const weeks = Object.entries(weekMap).sort(([a], [b]) => a.localeCompare(b))
-    const totalWeeks = weeks.length
-    const wwLabels = weeks.map((_, i) => `WW${LAST_WW - (totalWeeks - 1 - i)}`)
+    const wwLabels = weeks.map(([weekStart]) => {
+      const monday = new Date(weekStart)
+      const month = monday.getMonth() + 1
+      const week = Math.ceil(monday.getDate() / 7)
+      return `${month}M${week}W`
+    })
     const dateLabels = weeks.map(([, w]) => w.label)
 
     const prodSumRaw = weeks.map(([, w]) => w.days > 0 ? Math.round(w.prod / w.days * 7) : 0)
@@ -319,7 +363,10 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     })
     const lastData   = predAvg.map((v, i) => i >= n - 2 ? v : null)
 
-    return { option: {
+    // 배경 검증구간용: 실측 원본(trueAvgRaw)이 실제 존재하는 마지막 인덱스
+    const realLastTrueIdx = trueAvgRaw.reduce((acc, v, i) => (v != null ? i : acc), -1)
+
+    return { predAvg, lastTrueIdx: realLastTrueIdx, nWeeks: n, option: {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
@@ -335,26 +382,6 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
           return html
         },
       },
-      graphic: (() => {
-        const total = n
-        const rects = []
-        if (lastTrueIdx >= 0) {
-          const w = ((lastTrueIdx + 1) / total * 100).toFixed(2) + '%'
-          rects.push({ type: 'rect', left: '0%', top: '10%', width: w, height: '84%',
-            style: { fill: 'rgba(148,163,184,0.10)' }, z: 0, silent: true })
-        }
-        if (lastTrueIdx >= 0 && lastTrueIdx < n - 2) {
-          const l = ((lastTrueIdx + 1) / total * 100).toFixed(2) + '%'
-          const w = ((n - 2 - lastTrueIdx) / total * 100).toFixed(2) + '%'
-          rects.push({ type: 'rect', left: l, top: '10%', width: w, height: '84%',
-            style: { fill: 'rgba(59,130,246,0.08)' }, z: 0, silent: true })
-        }
-        const ll = ((n - 1) / total * 100).toFixed(2) + '%'
-        const lw = (1 / total * 100).toFixed(2) + '%'
-        rects.push({ type: 'rect', left: ll, top: '10%', width: lw, height: '84%',
-          style: { fill: 'rgba(220,38,38,0.10)' }, z: 0, silent: true })
-        return rects
-      })(),
       legend: {
         data: ['생산량', '실측 구간', '예측 구간', '최신 주차'],
         top: 4,
@@ -481,37 +508,40 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     return { dies, absMax: absMax || 1e-6 }
   }, [deltaRaw])
 
+  // 최근 한달 평균 PPM: 트렌드 차트 표시값(predAvg) 기준 마지막 4주 평균
+  const recent30AvgPpm = useMemo(() => {
+    if (!trendResult?.predAvg?.length) return null
+    const vals = trendResult.predAvg.filter(v => v != null)
+    if (!vals.length) return null
+    const last4 = vals.slice(-4)
+    return Math.round(last4.reduce((s, v) => s + v, 0) / last4.length)
+  }, [trendResult])
+
   if (loadingUnits || !kpi) {
     return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#94A3B8', fontSize:13 }}>데이터 로딩 중…</div>
   }
 
-  const { total, gradeCount, avgPpm, recent30AvgPpm } = kpi
+  const { total, gradeCount, avgPpm } = kpi
   const maxPpm = lotRankData.length ? Math.max(...lotRankData.map(r => r.avgPpm), 1) : 1
 
   return (
     <div className="overview">
 
-      {/* 상단 KPI 4개 */}
+      {/* 상단 KPI */}
       <div className="ov2-kpi-row">
         <KpiCard
-          label="고위험 유닛 (Grade 4)"
-          value={`${gradeCount.grade4.toLocaleString()}개`}
-          sub="Q3 + 1.5×IQR 초과"
-          color={gradeCount.grade4 > 0 ? '#DC2626' : '#16A34A'}
-        />
-        <KpiCard
-          label="이번주차 검사 완료 유닛"
-          value={total.toLocaleString()}
+          label="최근 한달 평균 PPM"
+          value={recent30AvgPpm != null ? recent30AvgPpm.toLocaleString() : '—'}
           color="#1E3A5F"
         />
         <KpiCard
-          label="평균 예측 PPM"
+          label="이번주 평균 예측 PPM"
           value={avgPpm.toLocaleString()}
           color="#1E3A5F"
         />
         <KpiCard
-          label="최근 한달 평균 PPM"
-          value={recent30AvgPpm != null ? recent30AvgPpm.toLocaleString() : '—'}
+          label="이번주차 검사 완료 유닛"
+          value={total.toLocaleString()}
           color="#1E3A5F"
         />
       </div>
@@ -521,11 +551,11 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         <div className="cc-header">
           <div className="cc-title">주차별 불량 ppm 트렌드</div>
         </div>
-        <div className="cc-body" style={{ height: 280, minHeight: 280, boxSizing: 'border-box' }}>
+        <div className="cc-body" style={{ height: 280, minHeight: 280, boxSizing: 'border-box', position: 'relative' }}>
           {loadingTrend
             ? <div className="dummy-desc">trend_data.csv 로딩 중…</div>
             : trendResult
-              ? <ReactECharts option={trendResult.option} style={{ width: '100%', height: '100%' }} opts={{ renderer: 'svg' }} notMerge={true} />
+              ? <TrendChart option={trendResult.option} lastTrueIdx={trendResult.lastTrueIdx} />
               : <div className="dummy-desc">trend_data.csv 데이터 없음</div>
           }
         </div>
@@ -541,10 +571,8 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
                 <th style={{ width: 24 }}>#</th>
                 <th style={{ width: 64 }}>LOT</th>
                 <th>위험 비율</th>
-                <th style={{ width: 40, textAlign: 'right' }}>G3</th>
-                <th style={{ width: 52, textAlign: 'right' }}>G4</th>
-                <th style={{ width: 80, textAlign: 'right' }}>avg PPM</th>
-                <th style={{ width: 56, textAlign: 'right' }}>전체</th>
+                <th style={{ width: 80, textAlign: 'right' }}>PPM</th>
+                <th style={{ width: 56, textAlign: 'right' }}>전체 UNIT수</th>
               </tr>
             </thead>
             <tbody>
@@ -565,8 +593,6 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
                       </span>
                       <span className={`ov-risk-badge ${rc}`}>{(row.riskRate * 100).toFixed(1)}%</span>
                     </td>
-                    <td className="ov-lot-count" style={{ textAlign: 'right' }}>{row.g3.toLocaleString()}</td>
-                    <td className="ov-lot-count" style={{ textAlign: 'right', color: row.g4 > 0 ? '#DC2626' : undefined, fontWeight: row.g4 > 0 ? 700 : undefined }}>{row.g4.toLocaleString()}</td>
                     <td className="ov-lot-ppm" style={{ color: ppmColor(row.avgPpm, maxPpm) }}>{row.avgPpm.toLocaleString()}</td>
                     <td className="ov-lot-count" style={{ textAlign: 'right' }}>{row.total.toLocaleString()}</td>
                   </tr>
