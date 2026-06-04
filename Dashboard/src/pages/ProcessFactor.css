@@ -67,6 +67,40 @@
   color: var(--text3);
 }
 
+/* 계산 기준 안내 박스 */
+.pf-criteria {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 12px 0;
+}
+.pf-criteria-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 18px;
+}
+.pf-criteria-item + .pf-criteria-item {
+  border-left: 1px solid #E2E8F0;
+}
+.pf-criteria-key {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1E40AF;
+  white-space: nowrap;
+}
+.pf-criteria-desc {
+  font-size: 11.5px;
+  color: #64748B;
+  line-height: 1.5;
+}
+.pf-criteria-desc b {
+  color: #334155;
+  font-weight: 600;
+}
+
 /* 임계값 카드 행 */
 .pf-card-row {
   display: grid;

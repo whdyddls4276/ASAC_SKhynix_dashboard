@@ -279,7 +279,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       const monday = new Date(weekStart)
       const month = monday.getMonth() + 1
       const week = Math.ceil(monday.getDate() / 7)
-      return `${month}M${week}W`
+      return `${month}월 ${week}주차`
     })
     const dateLabels = weeks.map(([, w]) => w.label)
 
@@ -387,11 +387,11 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         top: 4,
         textStyle: { fontSize: 11 },
       },
-      grid: { top: 40, bottom: 24, left: 8, right: 8, containLabel: true },
+      grid: { top: 40, bottom: 36, left: 8, right: 8, containLabel: true },
       xAxis: {
         type: 'category',
         data: wwLabels,
-        axisLabel: { fontSize: 11, rotate: 0, interval: 0, margin: 10 },
+        axisLabel: { fontSize: 11, rotate: 30, interval: 0, margin: 10 },
         axisTick: { alignWithLabel: true },
       },
       yAxis: [
@@ -407,10 +407,10 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         },
         {
           type: 'value',
-          name: '불량 ppm',
+          name: '불량 (ppm)',
           nameLocation: 'end',
           nameTextStyle: { fontSize: 11, align: 'right' },
-          axisLabel: { fontSize: 11, formatter: v => `${v} ppm` },
+          axisLabel: { fontSize: 11, formatter: v => `${v.toLocaleString()}` },
           splitLine: { show: false },
           min: ppmMin,
           max: ppmMax,

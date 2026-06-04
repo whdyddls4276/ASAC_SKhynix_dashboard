@@ -201,10 +201,11 @@ export default function ProcessFactor() {
       // 위험 그룹의 중앙값 방향 결정
       const direction = highMed > quantile(lowSorted, 0.5) ? 'up' : 'down'
 
-      // 임계값: 위험 그룹의 P25 (방향이 up일 때) 또는 P75 (down일 때)
+      // 임계값: 정상군의 관리 한계 (SPC) — 정상 분포의 P99 상한(up) / P1 하한(down)
+      // "정상 제품 99%가 들어오는 경계를 벗어나면 위험 신호"
       const threshold = direction === 'up'
-        ? quantile(highSorted, 0.25)
-        : quantile(highSorted, 0.75)
+        ? quantile(lowSorted, 0.99)
+        : quantile(lowSorted, 0.01)
 
       // 위험률 계산: threshold 넘는 unit 중 G3·4 비율 vs 전체 G3·4 비율
       let overThreshold = 0
@@ -484,6 +485,28 @@ export default function ProcessFactor() {
       <div className="pf-section-title">
         <span>관리 대상 공정 인자 Top {TOP_N}</span>
         <span className="pf-section-sub">SHAP 기준 영향력 순. 카드 클릭 시 아래 분포가 갱신됩니다.</span>
+      </div>
+
+      {/* 계산 기준 안내 */}
+      <div className="pf-criteria">
+        <div className="pf-criteria-item">
+          <span className="pf-criteria-key">위험 임계값</span>
+          <span className="pf-criteria-desc">
+            정상 제품의 관리 한계(SPC) — 정상군 <b>99% 상한(P99)</b>을 넘거나 <b>1% 하한(P1)</b> 아래로 벗어나면 위험 신호
+          </span>
+        </div>
+        <div className="pf-criteria-item">
+          <span className="pf-criteria-key">임계값 초과 위험률</span>
+          <span className="pf-criteria-desc">
+            임계값을 넘은 unit 중 실제 위험군(G3·G4)이 차지하는 비율
+          </span>
+        </div>
+        <div className="pf-criteria-item">
+          <span className="pf-criteria-key">평균 대비 배수</span>
+          <span className="pf-criteria-desc">
+            임계값 초과 위험률 ÷ 전체 평균 위험률 — <b>임계값을 넘으면 평균보다 몇 배 더 위험한가</b>
+          </span>
+        </div>
       </div>
 
       <div className="pf-card-row">
