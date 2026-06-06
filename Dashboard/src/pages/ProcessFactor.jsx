@@ -104,10 +104,15 @@ export default function ProcessFactor() {
     }
   }, [fiRaw, gainMap, fiChartFeats, selFeat])
 
-  const gradeMap = useMemo(() => {
+  // 위험/안전 구분 기준: grade 대신 reg_pred 연속 임계값(상위 10% = P90)
+  const regPredMap = useMemo(() => {
     const m = {}
-    unitsRaw.forEach(u => { m[u.ufs_serial] = u.grade })
+    unitsRaw.forEach(u => { const v = parseFloat(u.reg_pred); if (isFinite(v)) m[u.ufs_serial] = v })
     return m
+  }, [unitsRaw])
+  const riskThreshold = useMemo(() => {
+    const vals = unitsRaw.map(u => parseFloat(u.reg_pred)).filter(v => isFinite(v)).sort((a, b) => a - b)
+    return vals.length ? quantile(vals, 0.90) : null
   }, [unitsRaw])
 
   // SHAP top 피처 정렬
@@ -214,7 +219,7 @@ export default function ProcessFactor() {
 
   // 피처별 위험 임계값 카드 데이터 (Top N)
   const thresholdCards = useMemo(() => {
-    if (!shapSorted.length || !featDistRaw.length) return []
+    if (!shapSorted.length || !featDistRaw.length || riskThreshold == null) return []
     const cols = Object.keys(featDistRaw[0] || {})
       .filter(k => !['ufs_serial', 'health', 'is_defect'].includes(k))
 
@@ -229,9 +234,10 @@ export default function ProcessFactor() {
       for (const r of featDistRaw) {
         const x = parseFloat(r[feat])
         if (!isFinite(x)) continue
-        const g = gradeMap[r.ufs_serial]
-        if (g === 'grade3' || g === 'grade4') highVals.push(x)
-        else if (g === 'grade1' || g === 'grade2') lowVals.push(x)
+        const rp = regPredMap[r.ufs_serial]   // 위험 기준: 예측 ppm 상위 10%
+        if (rp == null) continue
+        if (rp >= riskThreshold) highVals.push(x)
+        else lowVals.push(x)
       }
       if (lowVals.length < 10 || highVals.length < 10) continue
 
@@ -251,9 +257,9 @@ export default function ProcessFactor() {
       for (const r of featDistRaw) {
         const x = parseFloat(r[feat])
         if (!isFinite(x)) continue
-        const g = gradeMap[r.ufs_serial]
-        if (!g) continue
-        const isHigh = (g === 'grade3' || g === 'grade4')
+        const rp = regPredMap[r.ufs_serial]
+        if (rp == null) continue
+        const isHigh = rp >= riskThreshold
         if (isHigh) totalHighAll++
         pts.push({ x, isHigh })
       }
@@ -298,7 +304,7 @@ export default function ProcessFactor() {
       })
     }
     return cards
-  }, [shapSorted, featDistRaw, gradeMap])
+  }, [shapSorted, featDistRaw, regPredMap, riskThreshold])
 
   // 피처 분포 비교 차트 (선택 피처)
   const activeFeat = useMemo(() => {
@@ -307,14 +313,15 @@ export default function ProcessFactor() {
   }, [selFeat, thresholdCards])
 
   const distOption = useMemo(() => {
-    if (!featDistRaw.length || !activeFeat) return null
+    if (!featDistRaw.length || !activeFeat || riskThreshold == null) return null
     const highVals = [], lowVals = []
     for (const r of featDistRaw) {
       const x = parseFloat(r[activeFeat])
       if (!isFinite(x)) continue
-      const g = gradeMap[r.ufs_serial]
-      if (g === 'grade3' || g === 'grade4') highVals.push(x)
-      else if (g === 'grade1' || g === 'grade2') lowVals.push(x)
+      const rp = regPredMap[r.ufs_serial]   // 위험 기준: 예측 ppm 상위 10%
+      if (rp == null) continue
+      if (rp >= riskThreshold) highVals.push(x)
+      else lowVals.push(x)
     }
     if (!highVals.length && !lowVals.length) return null
 
@@ -396,7 +403,7 @@ export default function ProcessFactor() {
         },
       ],
     }
-  }, [featDistRaw, activeFeat, gradeMap, thresholdCards])
+  }, [featDistRaw, activeFeat, regPredMap, riskThreshold, thresholdCards])
 
   // SHAP Beeswarm (참고용 작게)
   const normToColor = norm => {

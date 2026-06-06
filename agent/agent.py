@@ -14,7 +14,8 @@ from tools import (infer_period, scan_data, analyze_features, get_importance,
                    get_lot_trend_with_split, get_wafer_die_data, get_recent_lot_trend,
                    get_pred_ppm_trend, get_location_ppm_top, get_weekly_yield_trend,
                    get_anomaly_feature_stats, get_val_rmse, get_feat_vs_health_scatter,
-                   get_lot_grade_stack, get_pred_health_hist, get_feature_dist_compare)
+                   get_lot_grade_stack, get_pred_health_hist, get_feature_dist_compare,
+                   get_top_risk_units, get_lot_mean_ppm_top, get_wafer_risk_die_ratio_top)
 from report import build_html
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -1019,7 +1020,7 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
                 "labels": hh.get("labels", []), "height": 150,
                 "datasets": [
                     {"label": "전체 unit", "data": hh.get("counts",      []), "color": "#93C5FD"},
-                    {"label": "HIGH unit", "data": hh.get("high_counts", []), "color": "#EF4444"},
+                    {"label": "위험 unit (상위10%)", "data": hh.get("high_counts", []), "color": "#EF4444"},
                 ]}
 
     elif chart_type == "feat_vs_health":
@@ -1050,6 +1051,39 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
                 "datasets": [
                     {"label": "위험(G3+G4) 피처값", "data": high_data, "color": "#EF4444"},
                     {"label": "정상(G1+G2) 피처값", "data": med_data,  "color": "#22C55E"},
+                ]}
+
+    elif chart_type == "top_risk_units":
+        try:
+            tru = get_top_risk_units(top_n=10)
+        except Exception:
+            tru = {}
+        return {"title": "위험 Unit Top 10 (예측 ppm)", "chart_type": "bar", "position": position,
+                "labels": tru.get("labels", []), "horizontal": True, "height": 150,
+                "datasets": [
+                    {"label": "예측 ppm", "data": tru.get("ppm", []), "color": "#EF4444"},
+                ]}
+
+    elif chart_type == "lot_mean_ppm":
+        try:
+            lmp = get_lot_mean_ppm_top(top_n=10)
+        except Exception:
+            lmp = {}
+        return {"title": "LOT별 평균 예측 ppm Top 10", "chart_type": "bar", "position": position,
+                "labels": lmp.get("labels", []), "horizontal": True, "height": 150,
+                "datasets": [
+                    {"label": "평균 ppm", "data": lmp.get("ppm", []), "color": "#F59E0B"},
+                ]}
+
+    elif chart_type == "wafer_risk_ratio":
+        try:
+            wrr = get_wafer_risk_die_ratio_top(top_n=10)
+        except Exception:
+            wrr = {}
+        return {"title": "웨이퍼별 위험 die 비율 Top 10 (%)", "chart_type": "bar", "position": position,
+                "labels": wrr.get("labels", []), "horizontal": True, "height": 150,
+                "datasets": [
+                    {"label": "위험 die 비율(%)", "data": wrr.get("ratio", []), "color": "#EF4444"},
                 ]}
 
     return None

@@ -2151,18 +2151,17 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 </div>
 <div id="ia-chart-menu">
   <div class="chart-hdr">기존 차트</div>
-  <div class="chart-item" data-chart="importance">Feature Importance 바 차트</div>
-  <div class="chart-item" data-chart="anomaly">Anomaly Feature 비교</div>
-  <div class="chart-item" data-chart="lot_trend">LOT별 HIGH 건수 트렌드</div>
-  <div class="chart-item" data-chart="weekly_trend">주차별 수율 트렌드</div>
-  <div class="chart-item" data-chart="ppm_trend">LOT별 예측 ppm 트렌드</div>
-  <div class="chart-item" data-chart="pred_actual">예측 vs 실측 Scatter</div>
+  <div class="chart-item" data-chart="importance" title="모델이 예측에 중요하게 사용한 Feature 상위 막대 (LGBM Gain 기준)">Feature Importance 바 차트</div>
+  <div class="chart-item" data-chart="anomaly" title="위험 그룹과 정상 그룹 간 값 차이가 큰 이상 Feature 비교">Anomaly Feature 비교</div>
+  <div class="chart-item" data-chart="lot_trend" title="LOT별 위험(HIGH) 유닛 건수 추이 (LOT 순서)">LOT별 HIGH 건수 트렌드</div>
+  <div class="chart-item" data-chart="weekly_trend" title="주차별 예측 수율(불량률) 추이">주차별 수율 트렌드</div>
+  <div class="chart-item" data-chart="ppm_trend" title="LOT별 예측 ppm 추이 (평균/상위5%)">LOT별 예측 ppm 트렌드</div>
+  <div class="chart-item" data-chart="pred_actual" title="예측 health와 실측 health를 비교하는 산점도">예측 vs 실측 Scatter</div>
   <div class="chart-hdr">추가 차트</div>
-  <div class="chart-item" data-chart="grade_dist">Grade 분포 도넛</div>
-  <div class="chart-item" data-chart="weekly_grade_trend">주차별 Grade 비율 트렌드</div>
-  <div class="chart-item" data-chart="lot_grade_stack">LOT별 Grade 구성 스택 바</div>
-  <div class="chart-item" data-chart="health_hist">예측 Health 분포</div>
-  <div class="chart-item" data-chart="feat_scatter_lot">이상 피처 분포 (LOT 순서)</div>
+  <div class="chart-item" data-chart="health_hist" title="전체 유닛의 예측값 분포 히스토그램 (위험=예측 ppm 상위 10%)">예측 Health 분포</div>
+  <div class="chart-item" data-chart="top_risk_units" title="예측 ppm이 가장 높은 위험 unit Top 10 (개별 유닛 우선순위)">위험 Unit Top 10 (예측 ppm)</div>
+  <div class="chart-item" data-chart="lot_mean_ppm" title="LOT별 평균 예측 ppm 랭킹 Top 10 (먼저 봐야 할 위험 LOT)">LOT별 평균 예측 ppm Top 10</div>
+  <div class="chart-item" data-chart="wafer_risk_ratio" title="die 예측값이 상위 10% 임계값을 넘는 die 비율이 높은 웨이퍼 Top 10">웨이퍼별 위험 die 비율 Top 10</div>
 </div>
 
 <div class="s-footer">

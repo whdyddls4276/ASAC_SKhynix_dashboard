@@ -1261,12 +1261,14 @@ def get_feature_dist_compare(feature: str = None, bins: int = 40) -> dict:
 
 
 def get_pred_health_hist(bins: int = 10) -> dict:
-    """전체 unit reg_pred를 bins 구간으로 나눈 히스토그램 데이터."""
+    """전체 unit reg_pred를 bins 구간으로 나눈 히스토그램 데이터.
+    위험 구간은 grade가 아닌 연속 임계값(reg_pred 상위 10% = P90) 기준."""
     import numpy as _np
     units = _load("dashboard_units.csv")
     preds = units["reg_pred"].dropna().values
     counts, edges = _np.histogram(preds, bins=bins)
-    high_preds = units.loc[units["risk"] == "HIGH", "reg_pred"].dropna().values
+    thr = float(_np.quantile(preds, 0.90))  # 위험 임계값 = 예측 ppm 상위 10%
+    high_preds = preds[preds > thr]
     high_counts, _ = _np.histogram(high_preds, bins=edges)
     labels = [f"{edges[i]:.4f}~{edges[i+1]:.4f}" for i in range(bins)]
     return {
@@ -1289,3 +1291,44 @@ def get_location_ppm_top(top_n: int = 10) -> dict:
     labels = [f"({int(r.die_x)},{int(r.die_y)})" for r in top.itertuples()]
     ppm = [round(float(getattr(r, col)), 1) for r in top.itertuples()]
     return {"labels": labels, "ppm": ppm}
+
+
+def get_top_risk_units(top_n: int = 10) -> dict:
+    """
+    예측 ppm(reg_pred)이 가장 높은 위험 unit Top N. grade 미사용(연속값 기준).
+    반환: {labels: ['S00xxx', ...], ppm: [...]}
+    """
+    u = _load("dashboard_units.csv")
+    u = u.dropna(subset=["reg_pred"]).sort_values("reg_pred", ascending=False).head(top_n)
+    labels = [str(s) for s in u["ufs_serial"]]
+    ppm = [round(float(v) * 1e6, 1) for v in u["reg_pred"]]
+    return {"labels": labels, "ppm": ppm}
+
+
+def get_lot_mean_ppm_top(top_n: int = 10) -> dict:
+    """
+    LOT(run_id)별 평균 예측 ppm 랭킹 Top N. 어느 LOT을 먼저 봐야 하는지(위험 우선순위).
+    반환: {labels: ['LOT_x', ...], ppm: [...]}
+    """
+    u = _load("dashboard_units.csv").dropna(subset=["reg_pred"])
+    g = u.groupby("run_id")["reg_pred"].mean().sort_values(ascending=False).head(top_n)
+    labels = [f"LOT_{int(k)}" for k in g.index]
+    ppm = [round(float(v) * 1e6, 1) for v in g.values]
+    return {"labels": labels, "ppm": ppm}
+
+
+def get_wafer_risk_die_ratio_top(top_n: int = 10) -> dict:
+    """
+    웨이퍼별 위험 die 비율 Top N. die pred가 전역 P90 임계값을 넘는 die의 비율(%).
+    어느 웨이퍼에 위험 die가 몰렸는지 보여줌. 반환: {labels: ['LOTx-WFy',...], ratio: [...]}
+    """
+    w = _load("wafer_map.csv").copy()
+    w["pred"] = pd.to_numeric(w["pred"], errors="coerce")
+    w = w.dropna(subset=["pred"])
+    thr = float(w["pred"].quantile(0.90))  # die 위험 임계값 = die pred 상위 10%
+    w["is_risk"] = (w["pred"] > thr).astype(int)
+    g = (w.groupby(["run_id", "wafer_no"])["is_risk"]
+           .mean().mul(100).sort_values(ascending=False).head(top_n))
+    labels = [f"LOT{int(lot)}-WF{int(wf)}" for (lot, wf) in g.index]
+    ratio = [round(float(v), 1) for v in g.values]
+    return {"labels": labels, "ratio": ratio}
