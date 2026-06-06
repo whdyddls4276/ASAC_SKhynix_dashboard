@@ -664,7 +664,7 @@ function DieReport({ die, scale, onClose }) {
           </div>
           {clf !== null && (
             <div className="dd-detail-row">
-              <span className="dd-detail-key">불량 확률</span>
+              <span className="dd-detail-key">위험 확률</span>
               <span className="dd-detail-val mono">{(clf * 100).toFixed(1)}%</span>
             </div>
           )}
@@ -712,24 +712,23 @@ function classifyWaferPattern(dies, threshold) {
   const edgeAvg = edgeSum / edgeN
   const highRatio = highCount / dies.length
 
-  // 위험 die 비율이 낮으면 정상
-  if (highRatio < 0.05) return 'normal'
-
+  // 1) 공간 편중(Edge/Center)을 먼저 판정 — 위험 die가 외곽/중심에 몰리면 비율과 무관하게 패턴으로 분류
   // Edge Ring: 외곽이 중심 대비 1.6배 이상
   if (edgeAvg > centerAvg * 1.6 && edgeAvg > threshold * 0.3) return 'edge'
-
   // Center Cluster: 중심이 외곽 대비 1.6배 이상
   if (centerAvg > edgeAvg * 1.6 && centerAvg > threshold * 0.3) return 'center'
 
-  // 그 외 위험 die가 흩어진 경우
+  // 2) 공간 편중이 없으면 위험 die 비율로 구분 (P90 임계값 기준)
+  //    10% 미만이면 정상(위험 die가 적은 웨이퍼), 이상이면 위험 산발
+  if (highRatio < 0.10) return 'normal'
   return 'random'
 }
 
 const PATTERN_META = {
-  edge:   { label: 'Edge Ring',      color: '#EF4444', desc: '외곽 die 불량 집중 — 식각/세정 균일성 의심' },
-  center: { label: 'Center Cluster', color: '#F59E0B', desc: '중심 die 불량 집중 — CMP/Coater 중심 결함 의심' },
-  random: { label: 'Random Scatter', color: '#3B82F6', desc: '불량 산발 — 파티클/오염 가능성' },
-  normal: { label: 'Normal',         color: '#22C55E', desc: '뚜렷한 패턴 없음' },
+  edge:   { label: 'Edge Ring',      color: '#EF4444', desc: '외곽 die 위험 집중 — 식각/세정 균일성 의심' },
+  center: { label: 'Center Cluster', color: '#F59E0B', desc: '중심 die 위험 집중 — CMP/Coater 중심 결함 의심' },
+  random: { label: 'Random Scatter', color: '#3B82F6', desc: '위험 산발 — 파티클/오염 가능성' },
+  normal: { label: 'Normal',         color: '#22C55E', desc: '위험 die가 적은 웨이퍼' },
 }
 
 export default function DrilldownV2({ initialSelection }) {
@@ -808,6 +807,22 @@ export default function DrilldownV2({ initialSelection }) {
 
   const scale = useMemo(() => globalScale ?? computeScale(dieData), [globalScale, dieData])
 
+  // grade4(매우위험) unit이 있는 wafer / lot 집합 = 이상치
+  const outlierWaferKeys = useMemo(() => {
+    const s = new Set()
+    unitData.forEach(u => {
+      if (u.grade === 'grade4') s.add(`${u.run_id}_${u.wafer_no}`)
+    })
+    return s
+  }, [unitData])
+  const outlierLots = useMemo(() => {
+    const s = new Set()
+    unitData.forEach(u => {
+      if (u.grade === 'grade4') s.add(String(u.run_id))
+    })
+    return s
+  }, [unitData])
+
   const lotTree = useMemo(() => {
     if (!summaryData.length) return []
     const lotMap = {}
@@ -837,6 +852,9 @@ export default function DrilldownV2({ initialSelection }) {
       )
     }
     lots.sort((a, b) => {
+      // 이상치(매우위험 unit 포함) lot을 항상 맨 위로
+      const aOut = outlierLots.has(a.lot), bOut = outlierLots.has(b.lot)
+      if (aOut !== bOut) return aOut ? -1 : 1
       const rA = a.totalDies ? a.riskDies / a.totalDies : 0
       const rB = b.totalDies ? b.riskDies / b.totalDies : 0
       if (lotSort === 'risk_asc') return rA - rB
@@ -849,13 +867,14 @@ export default function DrilldownV2({ initialSelection }) {
       avgPpm: l.totalDies ? Math.round(l.ppmSum / l.totalDies) : 0,
       waferList: Object.values(l.wafers).sort((a, b) => parseInt(a.wno) - parseInt(b.wno)),
     }))
-  }, [summaryData, search, lotSort])
+  }, [summaryData, search, lotSort, outlierLots])
 
   const selectedDies = useMemo(() => {
     if (!selectedKey) return []
     const [lot, wno] = selectedKey.split('_')
     return dieData.filter(d => String(d.run_id) === lot && String(d.wafer_no) === wno)
   }, [dieData, selectedKey])
+
 
   const lotAccumDies = useMemo(() => {
     if (!selectedLot || selectedKey) return []
@@ -1141,9 +1160,9 @@ export default function DrilldownV2({ initialSelection }) {
           {/* 컬럼 헤더 */}
           <div className="dd-tree-col-header">
             <span className="dd-col-lot">LOT</span>
-            <span className="dd-col-bar">불량비율</span>
+            <span className="dd-col-bar">위험비율</span>
             <span className="dd-col-pct">%</span>
-            <span className="dd-col-ppm">avg PPM</span>
+            <span className="dd-col-ppm">PPM</span>
           </div>
 
           <div className="dd-tree-list">
@@ -1156,12 +1175,14 @@ export default function DrilldownV2({ initialSelection }) {
               const isLotSel   = selectedLot === lot
               const riskPct    = (riskRatio * 100).toFixed(1)
               const riskClass  = absClass(riskRatio)
+              const isLotOutlier = outlierLots.has(lot)
 
               return (
                 <div key={lot} className="dd-lot-group">
                   {/* Lot 행 */}
                   <button
                     className={`dd-lot-btn ${isLotSel ? 'selected' : ''}`}
+                    title={isLotOutlier ? '이상치 웨이퍼 포함 Lot (매우위험 unit)' : undefined}
                     onClick={() => {
                       const next = isExpanded ? null : lot
                       setExpandedLot(next)
@@ -1172,7 +1193,7 @@ export default function DrilldownV2({ initialSelection }) {
                     }}
                   >
                     <span className="dd-lot-arrow">{isExpanded ? '▾' : '▸'}</span>
-                    <span className="dd-lot-name">Lot {lot}</span>
+                    <span className="dd-lot-name">{isLotOutlier && <span className="dd-lot-warn">⚠</span>}Lot {lot}</span>
                     <div className="dd-lot-bar-wrap">
                       <div
                         className={`dd-lot-bar-fill ${riskClass}`}
@@ -1204,10 +1225,12 @@ export default function DrilldownV2({ initialSelection }) {
                         const wClass  = absClass(wRatio)
                         const wPpm    = w.avgPpm
                         const isSel   = selectedKey === w.key
+                        const isOutlier = outlierWaferKeys.has(w.key)
                         return (
                           <button
                             key={w.key}
-                            className={`dd-wafer-btn ${isSel ? 'selected' : ''}`}
+                            className={`dd-wafer-btn ${isSel ? 'selected' : ''} ${isOutlier ? 'outlier' : ''}`}
+                            title={isOutlier ? '이상치 웨이퍼 (매우위험 unit 포함)' : undefined}
                             onClick={() => {
                               setSelectedLot(lot)
                               setSelectedKey(isSel ? null : w.key)
@@ -1215,7 +1238,7 @@ export default function DrilldownV2({ initialSelection }) {
                               setLoadedLot(lot)
                             }}
                           >
-                            <span className="dd-wafer-no">#{w.wno}</span>
+                            <span className="dd-wafer-no">{isOutlier ? '⚠ ' : ''}#{w.wno}</span>
                             <div className="dd-lot-bar-wrap">
                               <div
                                 className={`dd-lot-bar-fill ${wClass}`}

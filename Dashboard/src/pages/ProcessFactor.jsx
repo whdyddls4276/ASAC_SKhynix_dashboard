@@ -7,6 +7,11 @@ const TOP_N = 5
 const BASELINE_RMSE = 0.005845
 const FIXED_DATE    = '2026-06-11'
 
+// X0~X1086 같은 WT 피처만 허용 (die_x, die_y, position 등 메타 제외)
+function isXFeature(f) {
+  return /^X\d+$/.test(String(f))
+}
+
 function quantile(sorted, q) {
   if (!sorted.length) return null
   const pos = (sorted.length - 1) * q
@@ -32,6 +37,38 @@ export default function ProcessFactor() {
   const { data: metricsRaw }      = useCSV('/metrics.csv')
 
   const [selFeat, setSelFeat] = useState(null)
+  // 정렬 기준 토글: 'default'(각 차트 자기 지표) | 'shap'(둘 다 |SHAP|) | 'fi'(둘 다 LGBM gain)
+  const [sortBy, setSortBy] = useState('default')
+
+  // 피처별 점수 맵 (X 피처만)
+  const gainMap = useMemo(() => {
+    const m = {}
+    fiRaw.forEach(r => { if (isXFeature(r.feature)) m[r.feature] = parseFloat(r.lgbm_gain || 0) })
+    return m
+  }, [fiRaw])
+  const shapMag = useMemo(() => {
+    const m = {}
+    shapBarRaw.forEach(r => { if (isXFeature(r.feature)) m[r.feature] = parseFloat(r.mean_abs_shap || 0) })
+    return m
+  }, [shapBarRaw])
+
+  // 각 지표별 상위 20개(높은 순) 피처
+  const fiOrder = useMemo(
+    () => Object.keys(gainMap).sort((a, b) => gainMap[b] - gainMap[a]).slice(0, 20),
+    [gainMap])
+  const shapOrder = useMemo(
+    () => Object.keys(shapMag).sort((a, b) => shapMag[b] - shapMag[a]).slice(0, 20),
+    [shapMag])
+
+  // 차트별 정렬 순서:
+  //  - 'default': 피처임포턴스 차트=gain순, SHAP 차트=SHAP순 (각자 자기 지표)
+  //  - 'fi'     : 둘 다 gain순 / 'shap': 둘 다 SHAP순
+  const fiChartFeats = useMemo(
+    () => (sortBy === 'shap' ? shapOrder : fiOrder),
+    [sortBy, fiOrder, shapOrder])
+  const beeswarmFeats = useMemo(
+    () => (sortBy === 'fi' ? fiOrder : shapOrder),
+    [sortBy, fiOrder, shapOrder])
 
   // ── RMSE ──────────────────────────────────────────────────
   const bestVal = useMemo(() => {
@@ -45,24 +82,27 @@ export default function ProcessFactor() {
 
   // ── 피처 중요도 ───────────────────────────────────────────
   const fiOption = useMemo(() => {
-    if (!fiRaw.length) return null
-    // die_x, die_y(위치 메타 피처)는 공정 인자가 아니므로 제외
-    const EXCLUDE = new Set(['die_x', 'die_y'])
-    const fiFiltered = fiRaw.filter(r => !EXCLUDE.has(String(r.feature).toLowerCase()))
+    if (!fiRaw.length || !fiChartFeats.length) return null
+    // 메타 피처(die_x, die_y, position)는 공정 인자가 아니므로 제외 — X 피처만
+    const fiFiltered = fiRaw.filter(r => isXFeature(r.feature))
     const totalGain = fiFiltered.reduce((s, r) => s + parseFloat(r.lgbm_gain || 0), 0) || 1
-    const items = [...fiFiltered]
-      .sort((a, b) => parseFloat(b.lgbm_gain) - parseFloat(a.lgbm_gain))
-      .slice(0, 15)
-      .map(r => ({ feature: r.feature, pct: parseFloat(r.lgbm_gain || 0) / totalGain * 100 }))
+    // 막대값은 LGBM Gain%, 정렬 순서는 선택한 기준(fiChartFeats)을 따름
+    const items = fiChartFeats
+      .map(f => ({ feature: f, pct: (gainMap[f] ?? 0) / totalGain * 100 }))
       .reverse()
+    // 20개 중 상위 10개(위쪽 50%)만 보이게 — 휠/슬라이더로 나머지 스크롤, 창 크기 50% 고정
     return {
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: p => `<b>${p[0].name}</b><br/>중요도: ${parseFloat(p[0].value).toFixed(2)}%` },
-      grid: { top: 8, bottom: 8, left: 8, right: 70, containLabel: true },
+      grid: { top: 8, bottom: 8, left: 8, right: 78, containLabel: true },
+      dataZoom: [
+        { type: 'inside', yAxisIndex: 0, start: 50, end: 100, minSpan: 50, maxSpan: 50, zoomOnMouseWheel: false, moveOnMouseWheel: true, moveOnMouseMove: true },
+        { type: 'slider', yAxisIndex: 0, start: 50, end: 100, minSpan: 50, maxSpan: 50, right: 6, width: 12, handleSize: 0, showDetail: false, brushSelect: false, fillerColor: 'rgba(59,130,246,0.18)', borderColor: 'transparent', backgroundColor: '#F1F5F9' },
+      ],
       xAxis: { type: 'value', axisLabel: { fontSize: 10, color: '#94A3B8', formatter: '{value}%' }, splitLine: { lineStyle: { color: '#F1F5F9' } } },
       yAxis: { type: 'category', data: items.map(d => d.feature), axisLabel: { fontSize: 10, color: '#374151', fontFamily: 'monospace' }, axisTick: { show: false } },
-      series: [{ type: 'bar', data: items.map(d => ({ value: +d.pct.toFixed(2), itemStyle: { color: d.feature === selFeat ? '#7C3AED' : '#3B82F6', borderRadius: [0, 4, 4, 0] } })), barMaxWidth: 14, label: { show: true, position: 'right', fontSize: 10, color: '#64748B', formatter: p => `${parseFloat(p.value).toFixed(2)}%` } }],
+      series: [{ type: 'bar', data: items.map(d => ({ value: +d.pct.toFixed(2), itemStyle: { color: d.feature === selFeat ? '#7C3AED' : '#3B82F6', borderRadius: [0, 4, 4, 0] } })), barMaxWidth: 26, label: { show: true, position: 'right', fontSize: 10, color: '#64748B', formatter: p => `${parseFloat(p.value).toFixed(2)}%` } }],
     }
-  }, [fiRaw, selFeat])
+  }, [fiRaw, gainMap, fiChartFeats, selFeat])
 
   const gradeMap = useMemo(() => {
     const m = {}
@@ -73,8 +113,9 @@ export default function ProcessFactor() {
   // SHAP top 피처 정렬
   const shapSorted = useMemo(() => {
     if (!shapBarRaw.length) return []
-    return [...shapBarRaw].sort((a, b) =>
-      parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap))
+    return [...shapBarRaw]
+      .filter(r => isXFeature(r.feature))   // die_x/die_y/position 등 메타 제외
+      .sort((a, b) => parseFloat(b.mean_abs_shap) - parseFloat(a.mean_abs_shap))
   }, [shapBarRaw])
 
   // Feature Pareto (SHAP 기준 누적 기여도)
@@ -161,8 +202,8 @@ export default function ProcessFactor() {
             data: [{ yAxis: 80, name: '80% 기준선' }],
             lineStyle: { color: '#94A3B8', type: 'dashed', width: 1.5 },
             label: {
-              show: true, position: 'end',
-              formatter: '80%',
+              show: true, position: 'insideStartTop',
+              formatter: '80% 기준선',
               fontSize: 10, color: '#94A3B8',
             },
           },
@@ -204,34 +245,43 @@ export default function ProcessFactor() {
       // 위험 그룹의 중앙값 방향 결정
       const direction = highMed > quantile(lowSorted, 0.5) ? 'up' : 'down'
 
-      // 임계값: 정상군의 관리 한계 (SPC) — 정상 분포의 P99 상한(up) / P1 하한(down)
-      // "정상 제품 99%가 들어오는 경계를 벗어나면 위험 신호"
-      const threshold = direction === 'up'
-        ? quantile(lowSorted, 0.99)
-        : quantile(lowSorted, 0.01)
-
-      // 위험률 계산: threshold 넘는 unit 중 G3·4 비율 vs 전체 G3·4 비율
-      let overThreshold = 0
-      let overAndHigh = 0
-      let total = 0
-      let totalHigh = 0
+      // 전체 unit의 (값, 위험여부) 수집
+      const pts = []
+      let totalHighAll = 0
       for (const r of featDistRaw) {
         const x = parseFloat(r[feat])
         if (!isFinite(x)) continue
         const g = gradeMap[r.ufs_serial]
         if (!g) continue
-        total++
         const isHigh = (g === 'grade3' || g === 'grade4')
-        if (isHigh) totalHigh++
-        const cond = direction === 'up' ? x >= threshold : x <= threshold
-        if (cond) {
-          overThreshold++
-          if (isHigh) overAndHigh++
-        }
+        if (isHigh) totalHighAll++
+        pts.push({ x, isHigh })
       }
-      const baseRate = total ? totalHigh / total : 0
-      const condRate = overThreshold ? overAndHigh / overThreshold : 0
-      const liftRatio = baseRate ? condRate / baseRate : 0
+      const total = pts.length
+      const baseRate = total ? totalHighAll / total : 0
+      const minOver = Math.max(10, Math.floor(total * 0.02))   // 최소 2% 샘플(과적합 방지)
+
+      // 임계값 = "위험군 농축(lift)을 최대화하는 지점" 그리드서치
+      // 후보: 전체 분포의 분위수(방향에 맞춰 위험 쪽) 50%~99.9%
+      const allSorted = pts.map(p => p.x).sort((a, b) => a - b)
+      const cands = []
+      for (let i = 0; i <= 60; i++) {
+        const q = direction === 'up' ? 0.5 + i / 60 * 0.499 : 0.5 - i / 60 * 0.499
+        cands.push(quantile(allSorted, q))
+      }
+      let threshold = direction === 'up' ? quantile(allSorted, 0.9) : quantile(allSorted, 0.1)
+      let condRate = 0, overThreshold = 0, liftRatio = 0
+      for (const t of [...new Set(cands)]) {
+        let over = 0, overHigh = 0
+        for (const p of pts) {
+          const cond = direction === 'up' ? p.x >= t : p.x <= t
+          if (cond) { over++; if (p.isHigh) overHigh++ }
+        }
+        if (over < minOver) continue
+        const cr = overHigh / over
+        const lift = baseRate ? cr / baseRate : 0
+        if (lift > liftRatio) { liftRatio = lift; condRate = cr; overThreshold = over; threshold = t }
+      }
 
       cards.push({
         feature: feat,
@@ -349,8 +399,6 @@ export default function ProcessFactor() {
   }, [featDistRaw, activeFeat, gradeMap, thresholdCards])
 
   // SHAP Beeswarm (참고용 작게)
-  const beeswarmFeats = useMemo(() => shapSorted.slice(0, 15).map(d => d.feature), [shapSorted])
-
   const normToColor = norm => {
     const t = Math.max(0, Math.min(1, norm))
     const r = Math.round(59 + (239 - 59) * t)
@@ -393,7 +441,12 @@ export default function ProcessFactor() {
           return `<b>${feat}</b><br/>SHAP: ${sv >= 0 ? '+' : ''}${sv.toFixed(6)}<br/>${sv >= 0 ? '▲ 불량 증가 방향' : '▼ 불량 감소 방향'}`
         },
       },
-      grid: { top: 8, bottom: 32, left: 8, right: 80, containLabel: true },
+      grid: { top: 8, bottom: 32, left: 22, right: 80, containLabel: true },
+      dataZoom: [
+        // 20개 중 상위 10개(위쪽 50%)만 보이게 — 휠/슬라이더로 나머지 스크롤, 창 크기 50% 고정
+        { type: 'inside', yAxisIndex: 0, start: 50, end: 100, minSpan: 50, maxSpan: 50, zoomOnMouseWheel: false, moveOnMouseWheel: true, moveOnMouseMove: true },
+        { type: 'slider', yAxisIndex: 0, start: 50, end: 100, minSpan: 50, maxSpan: 50, left: 2, width: 12, handleSize: 0, showDetail: false, brushSelect: false, fillerColor: 'rgba(59,130,246,0.18)', borderColor: 'transparent', backgroundColor: '#F1F5F9' },
+      ],
       xAxis: {
         type: 'value', min: -xBound, max: xBound,
         axisLabel: { fontSize: 10, color: '#94A3B8', formatter: v => v.toFixed(4) },
@@ -500,13 +553,13 @@ export default function ProcessFactor() {
         <div className="pf-criteria-item">
           <span className="pf-criteria-key">위험 임계값</span>
           <span className="pf-criteria-desc">
-            안전 제품의 관리 한계(SPC) — 안전군 <b>99% 상한(P99)</b>을 넘거나 <b>1% 하한(P1)</b> 아래로 벗어나면 위험 신호
+위험군 비율이 가장 높아지는(농축되는) 경계값 — 이 값을 넘으면 위험 유닛 밀도가 최대가 되는 지점
           </span>
         </div>
         <div className="pf-criteria-item">
           <span className="pf-criteria-key">임계값 초과 위험률</span>
           <span className="pf-criteria-desc">
-            임계값을 넘은 unit 중 실제 위험군(G3·G4)이 차지하는 비율
+            임계값을 넘은 unit 중 실제 위험군이 차지하는 비율
           </span>
         </div>
         <div className="pf-criteria-item">
@@ -559,6 +612,15 @@ export default function ProcessFactor() {
       </div>
 
       {/* ── Row 2: 정상위험분포 / 피처중요도 / SHAP 영향도 ── */}
+      <div className="pf-section-title">
+        <span>피처 영향도 — 분포 · 중요도 · SHAP</span>
+        <span className="pf-sort-toggle">
+          <span className="pf-sort-toggle-label">정렬 기준</span>
+          <button className={sortBy === 'default' ? 'active' : ''} onClick={() => setSortBy('default')}>기본</button>
+          <button className={sortBy === 'shap' ? 'active' : ''} onClick={() => setSortBy('shap')}>SHAP</button>
+          <button className={sortBy === 'fi' ? 'active' : ''} onClick={() => setSortBy('fi')}>피처임포턴스</button>
+        </span>
+      </div>
       <div className="pf-grid-3">
         <div className="pf-chart-card">
           <div className="pf-cc-header">
@@ -575,7 +637,7 @@ export default function ProcessFactor() {
         <div className="pf-chart-card">
           <div className="pf-cc-header">
             <span className="pf-cc-title">피처 임포턴스</span>
-            <span className="pf-cc-sub">LGBM Gain 기준 상위 20개, 막대 클릭 시 분포 갱신</span>
+            <span className="pf-cc-sub">막대=LGBM Gain% · {sortBy === 'shap' ? 'SHAP' : '임포턴스'} 순 정렬 · 막대 클릭 시 분포 갱신</span>
           </div>
           <div className="pf-cc-body">
             {fiOption
@@ -591,13 +653,13 @@ export default function ProcessFactor() {
         <div className="pf-chart-card">
           <div className="pf-cc-header">
             <span className="pf-cc-title">SHAP 영향도 (전역)</span>
-            <span className="pf-cc-sub">색상 = 피처 값 (빨강↑ / 파랑↓), 가로 위치 = 불량 기여 방향</span>
+            <span className="pf-cc-sub">색상 = 피처 값 (빨강↑ / 파랑↓) · {sortBy === 'fi' ? '임포턴스' : 'SHAP'} 순 정렬</span>
           </div>
           <div className="pf-cc-body">
             {beeswarmOption
               ? <ReactECharts
                   option={beeswarmOption}
-                  style={{ height: Math.max(340, beeswarmFeats.length * 24) }}
+                  style={{ height: 360 }}
                   onEvents={{
                     click: p => {
                       if (p.componentType === 'series') {

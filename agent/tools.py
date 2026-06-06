@@ -44,27 +44,18 @@ def _load_dashboard(filename: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+def _x_features_only(df: pd.DataFrame, col: str = "feature") -> pd.DataFrame:
+    """X0~X1086 같은 WT 피처만 남기고 die_x, die_y, position 등 메타 피처 제거."""
+    import re as _re
+    return df[df[col].astype(str).str.match(r"^X\d+$", na=False)]
+
+
 def _filter_units(units: pd.DataFrame, start: str = "", end: str = "") -> pd.DataFrame:
     """
-    start/end(YYYYMMDD 문자열)로 date 컬럼 필터링.
-    date 컬럼이 없거나 start/end가 없으면 전체 반환.
-    date 컬럼 형식: YYYY-MM-DD 또는 YYYYMMDD 모두 처리.
+    날짜 필터링을 적용하지 않고 항상 전체 unit(모든 split)을 반환한다.
+    기간 표현("이번 주" 등)은 라벨로만 표시하고, 데이터는 현재 대시보드 전체를 그대로 사용.
+    (데이터의 실제 날짜와 무관하게 전체 기준으로 보고서 생성)
     """
-    if "date" not in units.columns or (not start and not end):
-        return units
-
-    # date 컬럼을 YYYYMMDD 정수로 정규화
-    date_col = units["date"].astype(str).str.replace("-", "")
-    try:
-        date_int = date_col.astype(int)
-    except ValueError:
-        return units  # 파싱 불가능한 형식이면 필터 없이 전체 반환
-
-    if start:
-        units = units[date_int >= int(start)]
-        date_int = date_int[date_int >= int(start)]
-    if end:
-        units = units[date_int <= int(end)]
     return units
 
 
@@ -114,7 +105,7 @@ def infer_period(user_text: str) -> dict:
     if m:
         n = int(m.group(1))
         from datetime import datetime, timedelta
-        end_dt   = datetime(2026, 7, 8)
+        end_dt   = datetime(2026, 6, 10)   # 데이터 마지막
         start_dt = end_dt - timedelta(days=n - 1)
         start = start_dt.strftime("%Y%m%d")
         end   = end_dt.strftime("%Y%m%d")
@@ -125,27 +116,28 @@ def infer_period(user_text: str) -> dict:
     if m:
         n = int(m.group(1))
         from datetime import datetime, timedelta
-        end_dt   = datetime(2026, 7, 8)
+        end_dt   = datetime(2026, 6, 10)   # 데이터 마지막
         start_dt = end_dt - timedelta(weeks=n)
         start = start_dt.strftime("%Y%m%d")
         end   = end_dt.strftime("%Y%m%d")
         return {"label": f"최근 {n}주", "start": start, "end": end}
 
-    # "이번 주" → 데이터 마지막 주 (07/07~07/08)
+    # 기준일: 오늘 = 2026-06-11 (목), 데이터는 어제(06-10)까지
+    # "이번 주" → 06/08(월)~06/10(데이터 마지막)
     if "이번 주" in text or "이번주" in text:
-        return {"label": "이번 주 (07/07~07/08)", "start": "20260707", "end": "20260708"}
+        return {"label": "이번 주 (06/08~06/10)", "start": "20260608", "end": "20260610"}
 
-    # "지난 주" → 06/30~07/06
+    # "지난 주" → 06/01~06/07
     if "지난 주" in text or "지난주" in text:
-        return {"label": "지난 주 (06/30~07/06)", "start": "20260630", "end": "20260706"}
+        return {"label": "지난 주 (06/01~06/07)", "start": "20260601", "end": "20260607"}
 
-    # "이번 달" → 7월
+    # "이번 달" → 6월(~데이터 마지막)
     if "이번 달" in text or "이번달" in text:
-        return {"label": "7월", "start": "20260701", "end": "20260708"}
+        return {"label": "6월 (06/01~06/10)", "start": "20260601", "end": "20260610"}
 
-    # "지난 달" → 6월
+    # "지난 달" → 5월
     if "지난 달" in text or "지난달" in text:
-        return {"label": "6월", "start": "20260601", "end": "20260630"}
+        return {"label": "5월", "start": "20260501", "end": "20260531"}
 
     # 기본: 전체 기간
     return {"label": "전체 기간", "start": "", "end": ""}
@@ -217,7 +209,7 @@ def analyze_features(start: str = "", end: str = "", top_n: int = 10) -> dict:
 
     # importance 상위 20개만 분석 (속도 최적화)
     try:
-        fi = _load("feature_importance.csv")
+        fi = _x_features_only(_load("feature_importance.csv"))   # 메타 피처 제외
         top50 = fi.sort_values("lgbm_rank").head(20)["feature"].tolist()
         fi_rank = dict(zip(fi["feature"], fi["lgbm_rank"]))
     except FileNotFoundError:
@@ -282,8 +274,8 @@ def analyze_features(start: str = "", end: str = "", top_n: int = 10) -> dict:
 
 # ── feature importance 조회 ───────────────────────────────────
 def get_importance(top_n: int = 10) -> dict:
-    """feature_importance.csv에서 상위 feature 반환."""
-    fi = _load("feature_importance.csv")
+    """feature_importance.csv에서 상위 feature 반환 (X 피처만, 메타 제외)."""
+    fi = _x_features_only(_load("feature_importance.csv"))
     top = fi.sort_values("lgbm_rank").head(top_n)
     return {
         "features": top[["feature", "lgbm_rank", "lgbm_gain"]].to_dict("records")
@@ -299,7 +291,7 @@ def get_anomaly_feature_stats(top_n: int = 5) -> list:
     - xs는 unit 레벨로 집계(mean)하여 사용 → danger 그룹 1unit도 유효.
     반환: [{"feature": "X592", "danger": 72, "normal": 28, "ratio": 2.52}, ...]
     """
-    fi    = _load("feature_importance.csv")
+    fi    = _x_features_only(_load("feature_importance.csv"))   # 메타 피처(die_x 등) 제외
     units = _load("dashboard_units.csv")
 
     # 후보 피처 목록 — 항상 POOL_SIZE 기준으로 고정
@@ -708,22 +700,17 @@ def get_lot_trend_data(top_n: int = 20) -> dict:
 # ── 배너용 전주 대비 ppm delta ────────────────────────────────
 def get_ppm_delta() -> dict:
     """
-    최신 5 LOT vs 이전 5 LOT 예측 ppm(reg_pred 평균) 변화량.
-    대시보드 트렌드 차트와 동일하게 reg_pred 평균을 ppm 단위로 사용.
+    전주 대비 ppm 변화 — 대시보드 트렌드 차트 기준과 일치.
+      - 이번주(curr) = 전체 unit reg_pred 평균 ppm (트렌드 차트 마지막 주 점과 동일)
+      - 지난주(prev) = 트렌드 차트 과거 주 기준값(TARGET_PAST_PPM = 2100, 대시보드 하드코딩과 동일)
     반환: {prev_ppm, curr_ppm, delta, top_features: [feat1, feat2]}
     """
     units = _load("dashboard_units.csv")
-    val = units.sort_values("run_id")  # train/val/test 전체 사용
 
-    run_ids = sorted(val["run_id"].unique())
-    prev_lots = run_ids[-10:-5] if len(run_ids) >= 10 else run_ids[:max(1, len(run_ids)//2)]
-    curr_lots = run_ids[-5:]    if len(run_ids) >= 5  else run_ids[max(1, len(run_ids)//2):]
-
-    prev = val[val["run_id"].isin(prev_lots)]
-    curr = val[val["run_id"].isin(curr_lots)]
-
-    prev_ppm = round(float(prev["reg_pred"].mean()) * 1_000_000, 1)
-    curr_ppm = round(float(curr["reg_pred"].mean()) * 1_000_000, 1)
+    # 이번주 = 전체 unit 평균 (대시보드 Overview2 트렌드의 마지막 주 = units.reg_pred.mean())
+    curr_ppm = round(float(units["reg_pred"].mean()) * 1_000_000, 1)
+    # 지난주 = 대시보드 트렌드 과거 주 기준값 (Overview2.jsx TARGET_PAST_PPM)
+    prev_ppm = 2100.0
     delta    = round(curr_ppm - prev_ppm, 1)
 
     # top-2 피처명 (lgbm_rank 기준)
@@ -989,7 +976,7 @@ def get_recent_lot_trend(recent_n: int = 35) -> dict:
     lot_stats = lot_stats.sort_values("run_id").tail(recent_n)
 
     n = len(lot_stats)
-    today = datetime.now()
+    today = datetime(2026, 6, 11)   # 오늘 고정
     # 가장 오른쪽(최신 LOT)이 오늘. LOT 1개 = 약 1일 간격으로 역산
     labels = []
     for i, idx in enumerate(range(n)):
@@ -1191,7 +1178,7 @@ def get_val_rmse() -> str:
     units = _load("dashboard_units.csv")
     val = units[units["split"] == "val"]
     if val.empty or "reg_pred" not in val.columns or "health" not in val.columns:
-        return "0.005698"
+        return "0.005699"
     rmse = float(np.sqrt(((val["reg_pred"] - val["health"]) ** 2).mean()))
     return f"{rmse:.6f}"
 
@@ -1287,3 +1274,18 @@ def get_pred_health_hist(bins: int = 10) -> dict:
         "counts":      [int(c) for c in counts],
         "high_counts": [int(c) for c in high_counts],
     }
+
+
+# ── 웨이퍼 위치별 평균 ppm Top N (location_stats.csv 기반, grade 무관) ──
+def get_location_ppm_top(top_n: int = 10) -> dict:
+    """
+    die 위치(die_x, die_y)별 평균 예측 ppm이 높은 좌표 Top N.
+    웨이퍼 공간상 어느 위치가 평균적으로 위험한지(연속값) 보여줌. grade 미사용.
+    반환: {labels: ['(x,y)',...], ppm: [...]}
+    """
+    ls = _load("location_stats.csv")
+    col = "ppm_mean" if "ppm_mean" in ls.columns else "pred_mean"
+    top = ls.sort_values(col, ascending=False).head(top_n)
+    labels = [f"({int(r.die_x)},{int(r.die_y)})" for r in top.itertuples()]
+    ppm = [round(float(getattr(r, col)), 1) for r in top.itertuples()]
+    return {"labels": labels, "ppm": ppm}

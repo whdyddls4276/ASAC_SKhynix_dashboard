@@ -26,7 +26,7 @@
 
 .dd-left-panel   { border-right: 1px solid var(--border); }
 .dd-right-panel  { border-left: 1px solid var(--border); }
-.dd-center-panel { overflow: visible; }
+.dd-center-panel { overflow-y: auto; overflow-x: hidden; }
 
 .dd-panel-title{
   font-size: var(--dd-font-lg);
@@ -250,6 +250,12 @@
   margin-bottom: 2px;
 }
 
+.dd-lot-warn {
+  color: #DC2626;
+  font-weight: 700;
+  margin-right: 3px;
+}
+
 .dd-wafer-btn {
   display: flex;
   align-items: center;
@@ -266,6 +272,12 @@
 }
 .dd-wafer-btn:hover    { background: var(--surface2); }
 .dd-wafer-btn.selected { background: var(--accent-pale); color: var(--accent); }
+.dd-wafer-btn.outlier {
+  border: 1.5px solid #EF4444;
+  background: #FEF2F2;
+}
+.dd-wafer-btn.outlier .dd-wafer-no { color: #DC2626; font-weight: 700; }
+.dd-wafer-btn.outlier.selected { background: #FEE2E2; }
 
 .dd-wafer-no {
   font-size: 11px;

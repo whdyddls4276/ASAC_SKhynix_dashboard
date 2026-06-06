@@ -12,7 +12,7 @@ from tools import (infer_period, scan_data, analyze_features, get_importance,
                    get_pred_actual_data, get_trend_top1_data, get_top_unit_data,
                    get_position_defect_rate, get_ppm_delta, get_feature_scatter_data,
                    get_lot_trend_with_split, get_wafer_die_data, get_recent_lot_trend,
-                   get_pred_ppm_trend, get_weekly_grade_trend, get_weekly_yield_trend,
+                   get_pred_ppm_trend, get_location_ppm_top, get_weekly_yield_trend,
                    get_anomaly_feature_stats, get_val_rmse, get_feat_vs_health_scatter,
                    get_lot_grade_stack, get_pred_health_hist, get_feature_dist_compare)
 from report import build_html
@@ -150,7 +150,7 @@ PI에게 선택을 요청할 때는 반드시 아래 태그를 텍스트 끝에 
 
 ## 날짜 필터 규칙
 
-데이터 날짜 범위: **20260327 ~ 20260708** (2026년 3월~7월). 사용자가 명시한 표현이 있을 때만 `infer_period` 도구로 변환해 start/end를 도출.
+오늘 날짜: **2026-06-11**. "이번 주"는 06/08~06/11. 데이터 날짜 범위: **20260327 ~ 20260708** (2026년 3월~7월). 사용자가 명시한 표현이 있을 때만 `infer_period` 도구로 변환해 start/end를 도출.
 
 ## 기타 주의사항
 - 수치는 구체적으로 (예: "2.3배 높음", "HIGH 그룹 평균 0.082")
@@ -398,7 +398,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         if _period_pattern.search(user_message):
             period = infer_period(user_message)
         else:
-            period = {"label": "이번 주 WW37 (20260327~20260708)", "start": "", "end": ""}
+            period = {"label": "이번 주 (06/08~06/10)", "start": "20260608", "end": "20260610"}
         tool_cache["infer_period"] = period
         print(f"[TIMING] 기간 shortcut 진입 {_time.time()-_t0:.2f}s")
         yield {"type": "tool_result", "tool": "infer_period", "result": period}
@@ -426,7 +426,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
     # "기간 확인" shortcut — "확인" 메시지이고 분석이 안 됐으면 바로 실행
     _analysis_done = "scan_data" in tool_cache and "analyze_features" in tool_cache
     if user_message.strip() == "확인" and not _analysis_done:
-        period = tool_cache.get("infer_period", {"label": "이번 주 WW37", "start": "", "end": ""})
+        period = tool_cache.get("infer_period", {"label": "이번 주 (06/08~06/10)", "start": "20260608", "end": "20260610"})
         start = period.get("start", "")
         end = period.get("end", "")
 
@@ -985,18 +985,15 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
                                "color": "#22C55E",
                                "colors": ["#22C55E", "#EAB308", "#F59E0B", "#EF4444"]}]}
 
-    elif chart_type == "weekly_grade_trend":
+    elif chart_type == "location_ppm":
         try:
-            wgt = get_weekly_grade_trend()
+            lp = get_location_ppm_top(top_n=10)
         except Exception:
-            wgt = {}
-        return {"title": "주차별 Grade 비율", "chart_type": "line", "position": position,
-                "labels": wgt.get("labels", []), "height": 150, "stacked": True,
+            lp = {}
+        return {"title": "위치별 평균 예측 ppm Top 10", "chart_type": "bar", "position": position,
+                "labels": lp.get("labels", []), "horizontal": True, "height": 150,
                 "datasets": [
-                    {"label": "정상 (G1)",    "data": wgt.get("g1", []), "color": "#22C55E"},
-                    {"label": "조심 (G2)",    "data": wgt.get("g2", []), "color": "#EAB308"},
-                    {"label": "위험 (G3)",    "data": wgt.get("g3", []), "color": "#F59E0B"},
-                    {"label": "매우위험 (G4)","data": wgt.get("g4", []), "color": "#EF4444"},
+                    {"label": "평균 ppm", "data": lp.get("ppm", []), "color": "#EF4444"},
                 ]}
 
     elif chart_type == "lot_grade_stack":
@@ -1267,7 +1264,7 @@ def _try_direct_action(message: str, d: dict):
                     "importance": "Feature Importance", "anomaly": "Anomaly Feature",
                     "lot_trend": "LOT 트렌드", "weekly_trend": "주차별 수율",
                     "ppm_trend": "LOT ppm", "pos_defect": "포지션별 불량률",
-                    "pred_actual": "예측 vs 실측",
+                    "pred_actual": "예측 vs 실측", "location_ppm": "위치별 평균 ppm",
                 }
                 name = chart_names.get(chart_type, chart_type)
                 return {"action": "change_section", "target_sid": target_sid,

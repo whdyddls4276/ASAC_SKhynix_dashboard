@@ -572,7 +572,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
                 <th style={{ width: 64 }}>LOT</th>
                 <th>위험 비율</th>
                 <th style={{ width: 80, textAlign: 'right' }}>PPM</th>
-                <th style={{ width: 56, textAlign: 'right' }}>전체 UNIT수</th>
+                <th style={{ width: 56, textAlign: 'right' }}>UNIT수</th>
               </tr>
             </thead>
             <tbody>
@@ -609,12 +609,23 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         >
           {deltaPeriod
             ? (
-              <div style={{ width: '100%', height: 380 }}>
-                <DeltaWaferMap
-                  dies={deltaPeriod.dies}
-                  absMax={deltaPeriod.absMax}
-                  periodMode
-                />
+              <div style={{ width: '100%', height: 380, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, height: '100%' }}>
+                  <DeltaWaferMap
+                    dies={deltaPeriod.dies}
+                    absMax={deltaPeriod.absMax}
+                    periodMode
+                  />
+                </div>
+                {/* 컬러바 범례 */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: 300, flexShrink: 0, fontSize: 10, color: '#64748b' }}>
+                  <span style={{ marginBottom: 4, color: '#DC2626', fontWeight: 600 }}>증가</span>
+                  <div style={{
+                    width: 14, flex: 1, borderRadius: 3, border: '1px solid #e2e8f0',
+                    background: 'linear-gradient(to bottom, #DC2626 0%, #f8d7da 45%, #f1f5f9 50%, #d7e3f8 55%, #2563EB 100%)',
+                  }} />
+                  <span style={{ marginTop: 4, color: '#2563EB', fontWeight: 600 }}>감소</span>
+                </div>
               </div>
             )
             : <div className="dummy-desc">기간 비교 데이터 로딩 중…</div>

@@ -63,7 +63,7 @@ const INJECT_SCRIPT = `
 
 const INIT_MSG = {
   role: 'bot',
-  text: '안녕하세요! SK Hynix 보고서 AI Agent입니다.\n\n"이번 주 보고서 만들어줘" 처럼 요청하면 좌측에 보고서가 생성됩니다.\n생성 후에는 이 채팅창에서 바로 수정 요청도 할 수 있어요.',
+  text: '안녕하세요! SK Hynix 보고서 AI Agent입니다.\n\n보고서 생성 버튼을 클릭하면 좌측에 보고서가 생성됩니다.\n생성 후에는 이 채팅창에서 바로 수정 요청도 할 수 있어요.',
 }
 
 export default function ReportPage() {
@@ -72,6 +72,9 @@ export default function ReportPage() {
   const [buttons, setButtons]   = useState([])
   const historyRef   = useRef([])
   const toolCacheRef = useRef({})
+  // 보고서 생성 버튼: 확인 단계들을 자동으로 진행
+  const autoGenRef     = useRef(false)
+  const pendingAutoRef = useRef(null)
 
   // ── 보고서 상태 ────────────────────────────────────
   const [currentHtml, setCurrentHtml]             = useState(null)
@@ -96,6 +99,23 @@ export default function ReportPage() {
 
   const iframeRef = useRef(null)
   const bottomRef = useRef(null)
+  const previewRef = useRef(null)
+  const [fitScale, setFitScale] = useState(1)
+
+  // 보고서(1280×720 고정)를 미리보기 영역 너비에 맞춰 축소
+  const REPORT_W = 1280, REPORT_H = 720
+  useEffect(() => {
+    const compute = () => {
+      const el = previewRef.current
+      if (!el) return
+      const pad = 24
+      const s = Math.min(1, (el.clientWidth - pad) / REPORT_W)
+      setFitScale(s > 0 ? s : 1)
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => window.removeEventListener('resize', compute)
+  }, [blobUrl])
 
   // ref 동기화
   useEffect(() => { currentHtmlRef.current = currentHtml }, [currentHtml])
@@ -316,7 +336,15 @@ export default function ReportPage() {
         onText: updateStreamMsg,
         onToolStart: (tool) => addMsg('bot', TOOL_LABELS[tool] || `⚙️ ${tool}...`, { status: true }),
         onToolResult: (tool, result) => { toolCacheRef.current = { ...toolCacheRef.current, [tool]: result } },
-        onConfirm: (btns) => setButtons(btns),
+        onConfirm: (btns) => {
+          // 보고서 생성 버튼으로 시작된 경우: 확인 단계의 첫 버튼으로 자동 진행
+          if (autoGenRef.current && btns?.length) {
+            pendingAutoRef.current = btns[0]
+            setButtons([])
+          } else {
+            setButtons(btns)
+          }
+        },
         onReportReady: (html, data) => {
           if (isEdit) {
             // 수정: undo 스택에 현재 상태 저장 후 교체
@@ -333,10 +361,25 @@ export default function ReportPage() {
             setCurrentHtml(html)
             if (data) setCurrentReportData(data)
             setButtons([])
+            // 자동 생성 완료
+            autoGenRef.current = false
+            pendingAutoRef.current = null
           }
         },
-        onDone: () => setLoading(false),
-        onError: (m) => { addMsg('bot', `⚠️ ${m}`); setLoading(false) },
+        onDone: () => {
+          setLoading(false)
+          // 자동 진행 중이면 다음 확인 단계로 이어서 진행
+          if (autoGenRef.current && pendingAutoRef.current) {
+            const next = pendingAutoRef.current
+            pendingAutoRef.current = null
+            setButtons([])
+            setTimeout(() => sendMsg(next), 50)
+          }
+        },
+        onError: (m) => {
+          addMsg('bot', `⚠️ ${m}`); setLoading(false)
+          autoGenRef.current = false; pendingAutoRef.current = null
+        },
       })
       await consume(res.body.getReader())
     } catch {
@@ -406,6 +449,14 @@ export default function ReportPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
+  // 보고서 생성 버튼 — 기간 확인/생성 확인 단계를 자동으로 진행
+  function handleAutoGenerate() {
+    if (loading || currentHtml) return
+    autoGenRef.current = true
+    pendingAutoRef.current = null
+    send('이번 주 보고서 만들어줘')
+  }
+
   function handleNewReport() {
     setMessages([INIT_MSG])
     setButtons([])
@@ -440,9 +491,28 @@ export default function ReportPage() {
           </div>
         )}
 
-        <div className={`rp-preview ${selectMode ? 'select-mode' : ''}`}>
+        <div ref={previewRef} className={`rp-preview ${selectMode ? 'select-mode' : ''}`}>
           {blobUrl ? (
-            <iframe ref={iframeRef} src={blobUrl} title="보고서 미리보기" className="rp-iframe" />
+            <div
+              className="rp-scale-wrap"
+              style={{
+                width: REPORT_W * fitScale,
+                height: REPORT_H * fitScale,
+              }}
+            >
+              <iframe
+                ref={iframeRef}
+                src={blobUrl}
+                title="보고서 미리보기"
+                className="rp-iframe"
+                style={{
+                  width: REPORT_W,
+                  height: REPORT_H,
+                  transform: `scale(${fitScale})`,
+                  transformOrigin: 'top left',
+                }}
+              />
+            </div>
           ) : (
             <div className="rp-empty">
               <div className="rp-empty-icon">📄</div>
@@ -456,14 +526,14 @@ export default function ReportPage() {
       {/* 우: 채팅 */}
       <div className="rp-chat-panel">
         <div className="rp-chat-header">
-          <span>🤖 보고서 AI Agent</span>
+          <span>보고서 수정 툴</span>
         </div>
 
         <div className="rp-chat-messages">
           {messages.map((m, i) => (
             <div key={i} className={`rp-msg ${m.role}`}>
               {m.role === 'bot' && <div className="rp-avatar">AI</div>}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div className="rp-msg-col">
                 <div className={`rp-bubble ${m.status || m.tool ? 'status' : ''} ${m.streaming ? 'streaming' : ''}`}>
                   {m.role === 'bot' && !m.status && !m.tool
                     ? <ReactMarkdown>{m.text}</ReactMarkdown>
@@ -512,6 +582,12 @@ export default function ReportPage() {
           />
           <button className="rp-send" onClick={() => send()} disabled={loading}>전송</button>
         </div>
+
+        {!currentHtml && (
+          <button className="rp-generate-btn" onClick={handleAutoGenerate} disabled={loading}>
+            📄 보고서 생성
+          </button>
+        )}
       </div>
     </div>
   )

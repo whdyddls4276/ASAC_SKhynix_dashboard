@@ -14,8 +14,8 @@
 .topbar-left { display: flex; align-items: center; gap: 14px; }
 
 .topbar-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   color: var(--text);
   letter-spacing: 0.3px;
 }

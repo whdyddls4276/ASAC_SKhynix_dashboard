@@ -846,9 +846,9 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     features     = importance.get("features", [])
     top_features = analysis.get("top_features", [])
 
-    val_rmse  = meta.get("val_rmse",  "0.005698")
+    val_rmse  = meta.get("val_rmse",  "0.005699")
     model_nm  = meta.get("model",     "Stacking Ensemble")
-    today     = datetime.now()
+    today     = datetime(2026, 6, 11)   # 오늘 고정
     today_str = today.strftime("%Y. %m. %d")
     scan_total = scan.get("total_units", "-")
     scan_high  = scan.get("grade1_count", scan.get("high_count", "-"))
@@ -1391,11 +1391,11 @@ def build_html(report_data: dict) -> str:
     custom_sections = report_data.get("custom_sections", [])
     commentary_list = report_data.get("commentary", [])
 
-    val_rmse   = meta.get("val_rmse",  "0.005698")
+    val_rmse   = meta.get("val_rmse",  "0.005699")
     test_rmse  = meta.get("test_rmse", "0.008427")
     model_nm   = meta.get("model",     "Stacking Ensemble")
     title      = meta.get("title",     "품질불량예측보고서")
-    today      = datetime.now()
+    today      = datetime(2026, 6, 11)   # 오늘 고정
     today_str  = today.strftime("%Y. %m. %d")
     scan_total  = scan.get("total_units",   "-")
     scan_high   = scan.get("grade1_count", scan.get("high_count",  "-"))

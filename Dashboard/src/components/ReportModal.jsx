@@ -726,7 +726,7 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
           {/* 우: AI 수정 에이전트 */}
           <div className="rm-chat">
             <div className="rm-chat-header">
-              <span>🤖 AI 수정 에이전트</span>
+              <span>보고서 수정 툴</span>
             </div>
 
             <div className="rm-chat-messages">
