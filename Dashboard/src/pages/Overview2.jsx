@@ -69,6 +69,40 @@ function TrendChart({ option, lastTrueIdx = -1 }) {
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
 const GLOBAL_DIE_Y_MIN = 11, GLOBAL_DIE_Y_MAX = 32
 
+// ── die 색상 로직 (계층탐색 DrilldownV2와 동일) ───────────────
+const NORMAL_STOPS = [
+  [0.0, [243, 244, 246]],
+  [0.5, [219, 234, 254]],
+  [1.0, [165, 215, 220]],
+]
+const RISK_STOPS = [
+  [0.0,  [254, 240, 138]],
+  [0.75, [251, 146, 60]],
+  [1.0,  [220, 38, 38]],
+]
+function interpStops(stops, t) {
+  const tt = Math.max(0, Math.min(1, t))
+  for (let i = 1; i < stops.length; i++) {
+    const [t1, c1] = stops[i]
+    const [t0, c0] = stops[i - 1]
+    if (tt <= t1) {
+      const k = (tt - t0) / (t1 - t0 || 1)
+      return `rgb(${Math.round(c0[0] + (c1[0] - c0[0]) * k)},${Math.round(c0[1] + (c1[1] - c0[1]) * k)},${Math.round(c0[2] + (c1[2] - c0[2]) * k)})`
+    }
+  }
+  const last = stops[stops.length - 1][1]
+  return `rgb(${last.join(',')})`
+}
+function predColor(pred, predMin, predMax, threshold) {
+  if (!isFinite(pred)) return '#f1f5f9'
+  if (pred <= threshold) {
+    return interpStops(NORMAL_STOPS, (pred - predMin) / Math.max(1e-9, threshold - predMin))
+  }
+  return interpStops(RISK_STOPS, (pred - threshold) / Math.max(1e-9, predMax - threshold))
+}
+const COLOR_LEGEND_GRADIENT =
+  'linear-gradient(to top, #f3f4f6, #dbeafe, #a5d7dc, #fef08a, #fef08a, #fb923c, #dc2626)'
+
 export const GRADE_COLORS = {
   grade1: { bg: '#F0FDF4', border: '#86EFAC', text: '#166534', bar: '#22C55E', label: '정상 (G1)' },
   grade2: { bg: '#FEF9C3', border: '#EAB308', text: '#713F12', bar: '#EAB308', label: '조심 (G2)' },
@@ -161,6 +195,69 @@ pred=${Math.round(pred * 1e6).toLocaleString()} ppm
             </g>
           )
         })}
+      </g>
+      <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#94a3b8" strokeWidth={1.5} />
+      <rect x={cx - 14} y={cy + radius - 5} width={28} height={6} fill="#fff" stroke="#94a3b8" strokeWidth={1} />
+    </svg>
+  )
+}
+
+// 이상치 유닛 웨이퍼맵 — 계층탐색과 동일한 predColor로 색칠, 이상치 유닛 die는 강조. 클릭 시 계층탐색 이동
+function OutlierWaferMap({ dies, unitDies, scale }) {
+  const D = 600, PAD = 12
+  const VB = D + PAD * 2
+  const cx = PAD + D / 2, cy = PAD + D / 2, radius = D / 2
+  const refXRange = GLOBAL_DIE_X_MAX - GLOBAL_DIE_X_MIN + 1
+  const refYRange = GLOBAL_DIE_Y_MAX - GLOBAL_DIE_Y_MIN + 1
+  const centerX = (GLOBAL_DIE_X_MIN + GLOBAL_DIE_X_MAX) / 2
+  const centerY = (GLOBAL_DIE_Y_MIN + GLOBAL_DIE_Y_MAX) / 2
+  const SCALE = 0.9
+  const cellW = (D / refXRange) * SCALE
+  const cellH = (D / refYRange) * SCALE
+  const unitSet = new Set((unitDies || []).map(([x, y]) => `${x},${y}`))
+
+  // 격자선 (계층탐색 웨이퍼맵과 동일 — 전체 좌표 범위 기준)
+  const gridXs = []
+  for (let xi = GLOBAL_DIE_X_MIN; xi <= GLOBAL_DIE_X_MAX + 1; xi++) {
+    gridXs.push(cx + (xi - centerX) * cellW - cellW / 2)
+  }
+  const gridYs = []
+  for (let yi = GLOBAL_DIE_Y_MIN; yi <= GLOBAL_DIE_Y_MAX + 1; yi++) {
+    gridYs.push(cy + (yi - centerY) * cellH - cellH / 2)
+  }
+
+  return (
+    <svg viewBox={`0 0 ${VB} ${VB}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%' }}>
+      <defs>
+        <clipPath id="ov2OutlierClip"><circle cx={cx} cy={cy} r={radius} /></clipPath>
+      </defs>
+      <circle cx={cx} cy={cy} r={radius} fill="#fafafa" stroke="#cbd5e1" strokeWidth={1.5} />
+      <g clipPath="url(#ov2OutlierClip)">
+        {dies.map(([dx, dy, pred]) => {
+          const x = cx + (dx - centerX) * cellW - cellW / 2
+          const y = cy + (dy - centerY) * cellH - cellH / 2
+          const isUnit = unitSet.has(`${dx},${dy}`)
+          return (
+            <g key={`${dx}-${dy}`}>
+              <title>{`(${dx}, ${dy})\npred=${Math.round(pred * 1e6).toLocaleString()} ppm${isUnit ? '\n← 이상치 유닛' : ''}`}</title>
+              <rect
+                x={x} y={y} width={cellW} height={cellH}
+                fill={predColor(pred, scale.predMin, scale.predMax, scale.threshold)}
+                stroke={isUnit ? '#7C3AED' : 'rgba(15,23,42,0.10)'}
+                strokeWidth={isUnit ? 3 : 0.6}
+              />
+            </g>
+          )
+        })}
+        {/* 격자선 (die 위에 오버레이) */}
+        {gridXs.map((gx, i) => (
+          <line key={`gx-${i}`} x1={gx} y1={cy - radius} x2={gx} y2={cy + radius}
+            stroke="rgba(100,116,139,0.18)" strokeWidth={0.8} />
+        ))}
+        {gridYs.map((gy, i) => (
+          <line key={`gy-${i}`} x1={cx - radius} y1={gy} x2={cx + radius} y2={gy}
+            stroke="rgba(100,116,139,0.18)" strokeWidth={0.8} />
+        ))}
       </g>
       <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#94a3b8" strokeWidth={1.5} />
       <rect x={cx - 14} y={cy + radius - 5} width={28} height={6} fill="#fff" stroke="#94a3b8" strokeWidth={1} />
@@ -275,13 +372,22 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     })
 
     const weeks = Object.entries(weekMap).sort(([a], [b]) => a.localeCompare(b))
-    const wwLabels = weeks.map(([weekStart]) => {
-      const monday = new Date(weekStart)
-      const month = monday.getMonth() + 1
-      const week = Math.ceil(monday.getDate() / 7)
-      return `${month}월 ${week}주차`
+
+    // x축 라벨 재매핑: 실측(y_true)이 있는 마지막 주 = '이번주(6월 2주차)'로 앵커링
+    //  → 실측 끝이 오늘, 그 다음 주(예측)는 6월 3주차부터 채워짐. (차트 데이터는 그대로)
+    const lastTrueWeekIdx = weeks.reduce((acc, [, w], i) => (w.trues.length ? i : acc), -1)
+    const ANCHOR_MONDAY = new Date(2026, 5, 8)  // 2026-06-08 = 6월 2주차
+    const anchoredMondays = weeks.map((_, i) => {
+      const d = new Date(ANCHOR_MONDAY)
+      d.setDate(ANCHOR_MONDAY.getDate() + (i - (lastTrueWeekIdx < 0 ? weeks.length - 1 : lastTrueWeekIdx)) * 7)
+      return d
     })
-    const dateLabels = weeks.map(([, w]) => w.label)
+    const _md = (dt) => `${(dt.getMonth()+1).toString().padStart(2,'0')}/${dt.getDate().toString().padStart(2,'0')}`
+    const wwLabels = anchoredMondays.map(m => `${m.getMonth() + 1}월 ${Math.ceil(m.getDate() / 7)}주차`)
+    const dateLabels = anchoredMondays.map(m => {
+      const sun = new Date(m); sun.setDate(m.getDate() + 6)
+      return `${_md(m)}~${_md(sun)}`
+    })
 
     const prodSumRaw = weeks.map(([, w]) => w.days > 0 ? Math.round(w.prod / w.days * 7) : 0)
     const totalUnits = units.length
@@ -492,21 +598,15 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       .slice(0, 10)
   }, [units, q2, q3, upperFence])
 
-  // 기간 비교 델타맵: 사전계산된 delta_period.csv (좌표별 6/9~10 vs 6/6~8 평균 차이)
-  const { data: deltaRaw } = useCSV('/delta_period.csv')
-
-  const deltaPeriod = useMemo(() => {
-    if (!deltaRaw.length) return null
-    const dies = deltaRaw.map(r => ({
-      die_x: parseInt(r.die_x), die_y: parseInt(r.die_y),
-      delta: parseFloat(r.delta),
-      pred_a: parseFloat(r.pred_a), pred_b: parseFloat(r.pred_b),
-    })).filter(d => isFinite(d.delta) && isFinite(d.die_x) && isFinite(d.die_y))
-    if (!dies.length) return null
-    let absMax = 0
-    dies.forEach(d => { absMax = Math.max(absMax, Math.abs(d.delta)) })
-    return { dies, absMax: absMax || 1e-6 }
-  }, [deltaRaw])
+  // 이상치 유닛 웨이퍼맵: outlier_wafer.json + wafer_scale.json (계층탐색과 동일 색상 기준)
+  const [outlierWafer, setOutlierWafer] = useState(null)
+  const [waferScale, setWaferScale] = useState(null)
+  useEffect(() => {
+    fetch('/outlier_wafer.json').then(r => r.json()).then(setOutlierWafer).catch(() => setOutlierWafer(null))
+    fetch('/wafer_scale.json').then(r => r.json())
+      .then(s => setWaferScale({ predMin: s.pred_min, predMax: s.pred_max, threshold: s.threshold }))
+      .catch(() => setWaferScale(null))
+  }, [])
 
   // 최근 한달 평균 PPM: 트렌드 차트 표시값(predAvg) 기준 마지막 4주 평균
   const recent30AvgPpm = useMemo(() => {
@@ -530,7 +630,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       {/* 상단 KPI */}
       <div className="ov2-kpi-row">
         <KpiCard
-          label="최근 한달 평균 PPM"
+          label="최근 한달 평균 예측 PPM"
           value={recent30AvgPpm != null ? recent30AvgPpm.toLocaleString() : '—'}
           color="#1E3A5F"
         />
@@ -549,7 +649,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       {/* 주차별 불량 ppm 트렌드 */}
       <div className="chart-card" style={{ flexShrink: 0 }}>
         <div className="cc-header">
-          <div className="cc-title">주차별 불량 ppm 트렌드</div>
+          <div className="cc-title">주차별 위험 ppm 트렌드</div>
         </div>
         <div className="cc-body" style={{ height: 280, minHeight: 280, boxSizing: 'border-box', position: 'relative' }}>
           {loadingTrend
@@ -604,31 +704,34 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         </ChartCard>
 
         <ChartCard
-          title="지난주 대비 Δ Q-map"
-          sub="die 좌표별 평균 예측 ppm 변화 · 빨강: 최근 불량 증가 · 파랑: 최근 불량 감소"
+          title="이상치 유닛 웨이퍼맵"
+          sub={outlierWafer
+            ? `LOT${outlierWafer.lot}-WF${outlierWafer.wafer}-${outlierWafer.serial} · ${Math.round(outlierWafer.ppm).toLocaleString()} ppm · 클릭 시 계층탐색 이동`
+            : 'die 예측값(빨강=위험) · 보라 테두리 = 이상치 유닛 · 클릭 시 계층탐색 이동'}
         >
-          {deltaPeriod
+          {outlierWafer && waferScale
             ? (
-              <div style={{ width: '100%', height: 380, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ flex: 1, height: '100%' }}>
-                  <DeltaWaferMap
-                    dies={deltaPeriod.dies}
-                    absMax={deltaPeriod.absMax}
-                    periodMode
+              <div style={{ width: '100%', height: 380, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  onClick={() => onNavigateDrilldown?.({ lot: outlierWafer.lot, wafer: outlierWafer.wafer, unit: outlierWafer.serial })}
+                  title="클릭하면 이 웨이퍼의 계층탐색으로 이동합니다"
+                  style={{ flex: 1, height: '100%', cursor: 'pointer' }}
+                >
+                  <OutlierWaferMap
+                    dies={outlierWafer.dies}
+                    unitDies={outlierWafer.unit_dies}
+                    scale={waferScale}
                   />
                 </div>
-                {/* 컬러바 범례 */}
+                {/* 컬러바 범례 (계층탐색과 동일 색상) */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: 300, flexShrink: 0, fontSize: 10, color: '#64748b' }}>
-                  <span style={{ marginBottom: 4, color: '#DC2626', fontWeight: 600 }}>증가</span>
-                  <div style={{
-                    width: 14, flex: 1, borderRadius: 3, border: '1px solid #e2e8f0',
-                    background: 'linear-gradient(to bottom, #DC2626 0%, #f8d7da 45%, #f1f5f9 50%, #d7e3f8 55%, #2563EB 100%)',
-                  }} />
-                  <span style={{ marginTop: 4, color: '#2563EB', fontWeight: 600 }}>감소</span>
+                  <span style={{ marginBottom: 4, color: '#DC2626', fontWeight: 600 }}>위험</span>
+                  <div style={{ width: 14, flex: 1, borderRadius: 3, border: '1px solid #e2e8f0', background: COLOR_LEGEND_GRADIENT }} />
+                  <span style={{ marginTop: 4, color: '#64748b', fontWeight: 600 }}>정상</span>
                 </div>
               </div>
             )
-            : <div className="dummy-desc">기간 비교 데이터 로딩 중…</div>
+            : <div className="dummy-desc">이상치 웨이퍼 데이터 로딩 중…</div>
           }
         </ChartCard>
       </div>

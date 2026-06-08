@@ -685,7 +685,7 @@ function DieReport({ die, scale, onClose }) {
 
 // ── 메인 ─────────────────────────────────────────────
 // ── Wafer 패턴 휴리스틱 분류 ──
-// die 위치 + pred를 받아 Edge Ring / Center Cluster / Random / Normal 분류
+// die 위치 + pred를 받아 Edge Ring / NearFull / Random / Normal 분류
 function classifyWaferPattern(dies, threshold) {
   if (!dies.length) return 'normal'
   const xs = dies.map(d => d.die_x), ys = dies.map(d => d.die_y)
@@ -707,26 +707,26 @@ function classifyWaferPattern(dies, threshold) {
     if (r > 0.75) { edgeSum += p; edgeN++ }
   })
 
-  if (centerN === 0 || edgeN === 0) return 'normal'
-  const centerAvg = centerSum / centerN
-  const edgeAvg = edgeSum / edgeN
   const highRatio = highCount / dies.length
 
-  // 1) 공간 편중(Edge/Center)을 먼저 판정 — 위험 die가 외곽/중심에 몰리면 비율과 무관하게 패턴으로 분류
-  // Edge Ring: 외곽이 중심 대비 1.6배 이상
-  if (edgeAvg > centerAvg * 1.6 && edgeAvg > threshold * 0.3) return 'edge'
-  // Center Cluster: 중심이 외곽 대비 1.6배 이상
-  if (centerAvg > edgeAvg * 1.6 && centerAvg > threshold * 0.3) return 'center'
+  // 1) NearFull: 위험 die 비율 55% 이상 — 웨이퍼 광역 불량 (공간 편중보다 우선)
+  if (highRatio >= 0.55) return 'nearfull'
 
-  // 2) 공간 편중이 없으면 위험 die 비율로 구분 (P90 임계값 기준)
-  //    10% 미만이면 정상(위험 die가 적은 웨이퍼), 이상이면 위험 산발
+  // 2) 공간 편중(Edge Ring): 외곽이 중심 대비 1.6배 이상
+  if (centerN === 0 || edgeN === 0) return highRatio < 0.10 ? 'normal' : 'random'
+  const centerAvg = centerSum / centerN
+  const edgeAvg = edgeSum / edgeN
+  if (edgeAvg > centerAvg * 1.6 && edgeAvg > threshold * 0.3) return 'edge'
+
+  // 3) 공간 편중이 없으면 위험 die 비율로 구분 (P90 임계값 기준)
+  //    10% 미만이면 정상, 이상이면 위험 산발
   if (highRatio < 0.10) return 'normal'
   return 'random'
 }
 
 const PATTERN_META = {
   edge:   { label: 'Edge Ring',      color: '#EF4444', desc: '외곽 die 위험 집중 — 식각/세정 균일성 의심' },
-  center: { label: 'Center Cluster', color: '#F59E0B', desc: '중심 die 위험 집중 — CMP/Coater 중심 결함 의심' },
+  nearfull: { label: 'Near Full',      color: '#991B1B', desc: '웨이퍼 광역 불량' },
   random: { label: 'Random Scatter', color: '#3B82F6', desc: '위험 산발 — 파티클/오염 가능성' },
   normal: { label: 'Normal',         color: '#22C55E', desc: '위험 die가 적은 웨이퍼' },
 }
@@ -802,7 +802,7 @@ export default function DrilldownV2({ initialSelection }) {
   const [waferSort, setWaferSort]       = useState('default') // 'default' | 'risk_desc' | 'risk_asc'
   const [lotSort, setLotSort]           = useState('risk_desc') // 'risk_desc' | 'risk_asc' | 'default'
   const [activeTab, setActiveTab]       = useState('pattern')   // 'pattern' | 'default'
-  const [selectedPattern, setSelectedPattern] = useState(null)  // 'edge' | 'center' | 'random' | 'normal'
+  const [selectedPattern, setSelectedPattern] = useState(null)  // 'edge' | 'nearfull' | 'random' | 'normal'
   const [zoomLot, setZoomLot] = useState(null)
 
   const scale = useMemo(() => globalScale ?? computeScale(dieData), [globalScale, dieData])
@@ -852,9 +852,6 @@ export default function DrilldownV2({ initialSelection }) {
       )
     }
     lots.sort((a, b) => {
-      // 이상치(매우위험 unit 포함) lot을 항상 맨 위로
-      const aOut = outlierLots.has(a.lot), bOut = outlierLots.has(b.lot)
-      if (aOut !== bOut) return aOut ? -1 : 1
       const rA = a.totalDies ? a.riskDies / a.totalDies : 0
       const rB = b.totalDies ? b.riskDies / b.totalDies : 0
       if (lotSort === 'risk_asc') return rA - rB
@@ -867,7 +864,7 @@ export default function DrilldownV2({ initialSelection }) {
       avgPpm: l.totalDies ? Math.round(l.ppmSum / l.totalDies) : 0,
       waferList: Object.values(l.wafers).sort((a, b) => parseInt(a.wno) - parseInt(b.wno)),
     }))
-  }, [summaryData, search, lotSort, outlierLots])
+  }, [summaryData, search, lotSort])
 
   const selectedDies = useMemo(() => {
     if (!selectedKey) return []
@@ -913,14 +910,14 @@ export default function DrilldownV2({ initialSelection }) {
     }))
 
     // 카테고리별 집계
-    const buckets = { edge: [], center: [], random: [], normal: [] }
-    classified.forEach(w => buckets[w.pattern].push(w))
+    const buckets = { edge: [], nearfull: [], random: [], normal: [] }
+    classified.forEach(w => { if (buckets[w.pattern]) buckets[w.pattern].push(w) })
     return { wafers: classified, buckets }
   }, [dieData, scale])
 
   // ── 전체 Lot 패턴 집계 (사전 계산 파일 기반) ──
   const lotPatternBuckets = useMemo(() => {
-    const buckets = { edge: [], center: [], random: [], normal: [] }
+    const buckets = { edge: [], nearfull: [], random: [], normal: [] }
     lotPatternsAll.forEach(r => {
       const p = String(r.pattern)
       if (buckets[p]) buckets[p].push({
@@ -964,21 +961,10 @@ export default function DrilldownV2({ initialSelection }) {
     }
   }, [selectedPattern, lotPatternBuckets])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 기본 선택 ③ 계층 탐색 탭: 위험률 최고 lot 자동 펼침/선택 ──
-  useEffect(() => {
-    if (activeTab !== 'default' || selectedLot || !lotTree.length) return
-    const top = lotTree[0]   // lotSort 기본 risk_desc → 위험률 최고
-    setSelectedLot(top.lot); setExpandedLot(top.lot); setLoadedLot(top.lot); setSelectedKey(null)
-  }, [activeTab, lotTree])  // eslint-disable-line react-hooks/exhaustive-deps
+  // ── 기본 선택 ③ (제거됨): 계층탐색 진입 시 lot 자동 선택 안 함 → 로트 리스트만 표시 ──
+  //    (사용자가 직접 lot을 클릭해야 wafer/맵이 보임)
 
-  // ── 기본 선택 ④ 선택된 lot의 위험률 최고 wafer 자동 선택 ──
-  useEffect(() => {
-    if (activeTab !== 'default' || !selectedLot || selectedKey || !dieData.length) return
-    const lot = lotTree.find(l => l.lot === selectedLot)
-    if (!lot?.waferList?.length) return
-    const topW = [...lot.waferList].sort((a, b) => (b.riskDies / b.dies) - (a.riskDies / a.dies))[0]
-    if (topW) setSelectedKey(topW.key)
-  }, [activeTab, selectedLot, dieData, lotTree])  // eslint-disable-line react-hooks/exhaustive-deps
+  // ── 기본 선택 ④ (제거됨): 위험률 최고 wafer 자동 선택 안 함 ──
 
   // ── 기본 선택 ⑤ wafer의 가장 위험한 unit 자동 진단 (우측 창) ──
   useEffect(() => {
@@ -1024,7 +1010,7 @@ export default function DrilldownV2({ initialSelection }) {
           {/* 전체 Lot 패턴 요약 카드 4개 */}
           {lotPatternsAll.length > 0 && (
             <div className="dd-pattern-cards">
-              {['edge', 'center', 'random', 'normal'].map(pat => {
+              {['edge', 'nearfull', 'random', 'normal'].map(pat => {
                 const meta = PATTERN_META[pat]
                 const lots = lotPatternBuckets[pat]
                 const pct = lotPatternsAll.length

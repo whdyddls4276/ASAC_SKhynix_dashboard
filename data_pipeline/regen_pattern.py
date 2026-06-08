@@ -29,19 +29,22 @@ def classify_wafer_pattern(dies, threshold):
         return 'normal'
     rn = r / r_max
     high_count = int((ps > threshold).sum())
+    high_ratio = high_count / len(dies)
+    # 1) NearFull: 위험 die 비율 55% 이상 — 웨이퍼 광역 불량 (우선)
+    if high_ratio >= 0.55:
+        return 'nearfull'
+    # 2) 공간 편중(Edge Ring)
     center_mask = rn < 0.45
     edge_mask   = rn > 0.75
     if center_mask.sum() == 0 or edge_mask.sum() == 0:
-        return 'normal'
+        return 'normal' if high_ratio < 0.10 else 'random'
     center_avg = ps[center_mask].mean()
     edge_avg   = ps[edge_mask].mean()
-    high_ratio = high_count / len(dies)
-    # 1) 공간 편중(Edge/Center)을 먼저 판정
     if edge_avg > center_avg * 1.6 and edge_avg > threshold * 0.3:
         return 'edge'
     if center_avg > edge_avg * 1.6 and center_avg > threshold * 0.3:
         return 'center'
-    # 2) 편중 없으면 위험 die 비율 10% 기준으로 normal/random
+    # 3) 편중 없으면 위험 die 비율 10% 기준으로 normal/random
     if high_ratio < 0.10:
         return 'normal'
     return 'random'

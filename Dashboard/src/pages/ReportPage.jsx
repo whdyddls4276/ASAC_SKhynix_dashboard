@@ -63,7 +63,7 @@ const INJECT_SCRIPT = `
 
 const INIT_MSG = {
   role: 'bot',
-  text: '안녕하세요! SK Hynix 보고서 AI Agent입니다.\n\n보고서 생성 버튼을 클릭하면 좌측에 보고서가 생성됩니다.\n생성 후에는 이 채팅창에서 바로 수정 요청도 할 수 있어요.',
+  text: '안녕하세요! SK Hynix 보고서 AI Agent입니다.\n\n"이번 주 보고서 만들어줘" 처럼 요청하면 좌측에 보고서가 생성됩니다.\n생성 후에는 이 채팅창에서 바로 수정 요청도 할 수 있어요.',
 }
 
 export default function ReportPage() {
@@ -449,14 +449,6 @@ export default function ReportPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  // 보고서 생성 버튼 — 기간 확인/생성 확인 단계를 자동으로 진행
-  function handleAutoGenerate() {
-    if (loading || currentHtml) return
-    autoGenRef.current = true
-    pendingAutoRef.current = null
-    send('이번 주 보고서 만들어줘')
-  }
-
   function handleNewReport() {
     setMessages([INIT_MSG])
     setButtons([])
@@ -526,7 +518,7 @@ export default function ReportPage() {
       {/* 우: 채팅 */}
       <div className="rp-chat-panel">
         <div className="rp-chat-header">
-          <span>보고서 수정 툴</span>
+          <span>보고서 AI Agent</span>
         </div>
 
         <div className="rp-chat-messages">
@@ -582,12 +574,6 @@ export default function ReportPage() {
           />
           <button className="rp-send" onClick={() => send()} disabled={loading}>전송</button>
         </div>
-
-        {!currentHtml && (
-          <button className="rp-generate-btn" onClick={handleAutoGenerate} disabled={loading}>
-            📄 보고서 생성
-          </button>
-        )}
       </div>
     </div>
   )

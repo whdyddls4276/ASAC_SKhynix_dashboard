@@ -112,15 +112,27 @@ beeswarm = pd.concat(rows, ignore_index=True)
 beeswarm.to_csv(PUBLIC / 'shap_beeswarm.csv', index=False)
 print(f"  저장: shap_beeswarm.csv ({len(beeswarm):,}행, {beeswarm['ufs_serial'].nunique():,} unit)")
 
-# ── 7. shap_unit.json (non-zero top10) ───────────────────
+# ── 7. shap_unit.json (전체 X피처에서 unit별 non-zero top10) ──
+# 프론트 '주요 기여 변수 Top 10'은 X피처만 표시 → beeswarm(32개)이 아니라
+# 전체 X피처(~530개)에서 unit별 |SHAP| 상위 10개를 뽑아 항상 10개가 채워지게 함
+xcols = [i for i, f in enumerate(feat_names) if _isx(f)]
+xnames = np.array([feat_names[i] for i in xcols])
+um = pd.DataFrame(shap_values[:, xcols], columns=xnames).groupby(serials).mean()
+arr = um.values                      # (unit, X피처)
+abs_arr = np.abs(arr)
+unit_serials = um.index.values
+k = min(10, arr.shape[1])
+part = np.argpartition(-abs_arr, k - 1, axis=1)[:, :k]   # 상위 k 후보(미정렬)
 result = {}
-for serial, grp in beeswarm.groupby('ufs_serial'):
-    nz = grp[grp['shap_value'] != 0].copy()
-    if nz.empty: continue
-    nz['mag'] = nz['shap_value'].abs()
-    top10 = nz.nlargest(10, 'mag')[['feature', 'shap_value']]
-    result[serial] = [{'feature': r['feature'], 'shap_value': round(float(r['shap_value']), 8)} for _, r in top10.iterrows()]
+for r in range(arr.shape[0]):
+    cand = part[r]
+    cand = cand[np.argsort(-abs_arr[r, cand])]           # |SHAP| 내림차순 정렬
+    items = [{'feature': str(xnames[j]), 'shap_value': round(float(arr[r, j]), 8)}
+             for j in cand if arr[r, j] != 0][:10]
+    if items:
+        result[str(unit_serials[r])] = items
 json.dump(result, open(PUBLIC / 'shap_unit.json', 'w'), separators=(',', ':'))
-print(f"  저장: shap_unit.json ({len(result):,} unit)")
+n_full = sum(1 for v in result.values() if len(v) == 10)
+print(f"  저장: shap_unit.json ({len(result):,} unit, 10개 채움 {n_full:,})")
 
 print("\n완료!")

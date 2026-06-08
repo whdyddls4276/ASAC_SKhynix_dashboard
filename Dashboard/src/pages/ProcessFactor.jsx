@@ -114,6 +114,11 @@ export default function ProcessFactor() {
     const vals = unitsRaw.map(u => parseFloat(u.reg_pred)).filter(v => isFinite(v)).sort((a, b) => a - b)
     return vals.length ? quantile(vals, 0.90) : null
   }, [unitsRaw])
+  // 안전 그룹 경계: 하위 10% (P10) — 극단군 비교(안전10% vs 위험10%)용
+  const safeThreshold = useMemo(() => {
+    const vals = unitsRaw.map(u => parseFloat(u.reg_pred)).filter(v => isFinite(v)).sort((a, b) => a - b)
+    return vals.length ? quantile(vals, 0.10) : null
+  }, [unitsRaw])
 
   // SHAP top 피처 정렬
   const shapSorted = useMemo(() => {
@@ -219,7 +224,7 @@ export default function ProcessFactor() {
 
   // 피처별 위험 임계값 카드 데이터 (Top N)
   const thresholdCards = useMemo(() => {
-    if (!shapSorted.length || !featDistRaw.length || riskThreshold == null) return []
+    if (!shapSorted.length || !featDistRaw.length || riskThreshold == null || safeThreshold == null) return []
     const cols = Object.keys(featDistRaw[0] || {})
       .filter(k => !['ufs_serial', 'health', 'is_defect'].includes(k))
 
@@ -231,13 +236,14 @@ export default function ProcessFactor() {
 
       const lowVals = []
       const highVals = []
+      // 극단군 비교: 위험=상위10%(≥P90) vs 안전=하위10%(≤P10), 중간 80%는 제외
       for (const r of featDistRaw) {
         const x = parseFloat(r[feat])
         if (!isFinite(x)) continue
-        const rp = regPredMap[r.ufs_serial]   // 위험 기준: 예측 ppm 상위 10%
+        const rp = regPredMap[r.ufs_serial]
         if (rp == null) continue
         if (rp >= riskThreshold) highVals.push(x)
-        else lowVals.push(x)
+        else if (rp <= safeThreshold) lowVals.push(x)
       }
       if (lowVals.length < 10 || highVals.length < 10) continue
 
@@ -259,35 +265,65 @@ export default function ProcessFactor() {
         if (!isFinite(x)) continue
         const rp = regPredMap[r.ufs_serial]
         if (rp == null) continue
-        const isHigh = rp >= riskThreshold
+        // 극단군(위험 상위10% + 안전 하위10%)만 사용, 중간 80% 제외
+        let isHigh
+        if (rp >= riskThreshold) isHigh = true
+        else if (rp <= safeThreshold) isHigh = false
+        else continue
         if (isHigh) totalHighAll++
         pts.push({ x, isHigh })
       }
       const total = pts.length
       const baseRate = total ? totalHighAll / total : 0
-      const minOver = Math.max(10, Math.floor(total * 0.02))   // 최소 2% 샘플(과적합 방지)
 
-      // 임계값 = "위험군 농축(lift)을 최대화하는 지점" 그리드서치
-      // 후보: 전체 분포의 분위수(방향에 맞춰 위험 쪽) 50%~99.9%
+      // 임계값 = "위험(빨강) 밀도가 안전(파랑) 밀도를 추월하는 교차점"
+      // 분포 차트(distOption)와 동일한 binning(P1~P99, 40구간)으로 밀도 계산 → 차트 선과 정렬
       const allSorted = pts.map(p => p.x).sort((a, b) => a - b)
-      const cands = []
-      for (let i = 0; i <= 60; i++) {
-        const q = direction === 'up' ? 0.5 + i / 60 * 0.499 : 0.5 - i / 60 * 0.499
-        cands.push(quantile(allSorted, q))
-      }
-      let threshold = direction === 'up' ? quantile(allSorted, 0.9) : quantile(allSorted, 0.1)
-      let condRate = 0, overThreshold = 0, liftRatio = 0
-      for (const t of [...new Set(cands)]) {
-        let over = 0, overHigh = 0
-        for (const p of pts) {
-          const cond = direction === 'up' ? p.x >= t : p.x <= t
-          if (cond) { over++; if (p.isHigh) overHigh++ }
+      const minV = quantile(allSorted, 0.01)
+      const maxV = quantile(allSorted, 0.99)
+      const NB = 40
+      const bw = (maxV - minV) / NB || 1
+      const centerX = i => minV + (i + 0.5) * bw
+      const density = vals => {
+        const arr = new Array(NB).fill(0)
+        for (const v of vals) {
+          let idx = Math.floor((v - minV) / bw)
+          if (idx < 0) idx = 0
+          if (idx >= NB) idx = NB - 1
+          arr[idx]++
         }
-        if (over < minOver) continue
-        const cr = overHigh / over
-        const lift = baseRate ? cr / baseRate : 0
-        if (lift > liftRatio) { liftRatio = lift; condRate = cr; overThreshold = over; threshold = t }
+        const n = vals.length || 1
+        return arr.map(c => c / n)   // 그룹 내 비율
       }
+      const dHigh = density(highVals)
+      const dLow = density(lowVals)
+      const loMed = quantile(lowSorted, 0.5)
+      const lo = Math.min(loMed, highMed), hi = Math.max(loMed, highMed)
+
+      // 두 그룹 중앙값 사이에서 밀도 부호 전환(교차) 지점 탐색
+      let threshold = direction === 'up' ? highMed : loMed
+      let found = false
+      for (let i = 1; i < NB; i++) {
+        const xc = centerX(i)
+        if (xc < lo || xc > hi) continue
+        const prev = dHigh[i - 1] - dLow[i - 1]
+        const cur = dHigh[i] - dLow[i]
+        if (direction === 'up') {
+          if (prev < 0 && cur >= 0) { threshold = xc; found = true; break }  // 파랑→빨강 우세 전환
+        } else {
+          if (prev >= 0 && cur < 0) { threshold = xc; found = true; break }  // 빨강→파랑 우세 전환
+        }
+      }
+      if (!found) threshold = (loMed + highMed) / 2   // 교차점 없으면 두 중앙값 중간
+
+      // 선택된 임계값 기준 지표(초과 위험률·lift) 계산
+      let overThreshold = 0, overHigh = 0
+      for (const p of pts) {
+        const cond = direction === 'up' ? p.x >= threshold : p.x <= threshold
+        if (cond) { overThreshold++; if (p.isHigh) overHigh++ }
+      }
+      const condRate = overThreshold ? overHigh / overThreshold : 0
+      const liftRatio = baseRate ? condRate / baseRate : 0
 
       cards.push({
         feature: feat,
@@ -304,7 +340,7 @@ export default function ProcessFactor() {
       })
     }
     return cards
-  }, [shapSorted, featDistRaw, regPredMap, riskThreshold])
+  }, [shapSorted, featDistRaw, regPredMap, riskThreshold, safeThreshold])
 
   // 피처 분포 비교 차트 (선택 피처)
   const activeFeat = useMemo(() => {
@@ -313,23 +349,23 @@ export default function ProcessFactor() {
   }, [selFeat, thresholdCards])
 
   const distOption = useMemo(() => {
-    if (!featDistRaw.length || !activeFeat || riskThreshold == null) return null
+    if (!featDistRaw.length || !activeFeat || riskThreshold == null || safeThreshold == null) return null
     const highVals = [], lowVals = []
     for (const r of featDistRaw) {
       const x = parseFloat(r[activeFeat])
       if (!isFinite(x)) continue
-      const rp = regPredMap[r.ufs_serial]   // 위험 기준: 예측 ppm 상위 10%
+      const rp = regPredMap[r.ufs_serial]   // 극단군 비교: 위험=상위10%(≥P90), 안전=하위10%(≤P10)
       if (rp == null) continue
       if (rp >= riskThreshold) highVals.push(x)
-      else lowVals.push(x)
+      else if (rp <= safeThreshold) lowVals.push(x)
     }
     if (!highVals.length && !lowVals.length) return null
 
-    // x축 범위를 P0.1~P99.9로 클립 (극단 outlier로 본체가 압축되는 것 방지)
+    // x축 범위를 P1~P99로 클립 (극단값으로 본체가 압축되는 것 방지)
     // 범위 밖 값은 양 끝 bin에 모아서 표시
     const allSorted = [...highVals, ...lowVals].sort((a, b) => a - b)
-    const minV = quantile(allSorted, 0.001)
-    const maxV = quantile(allSorted, 0.999)
+    const minV = quantile(allSorted, 0.01)
+    const maxV = quantile(allSorted, 0.99)
     const BIN = 40
     const binSz = (maxV - minV) / BIN || 1
     const bins = Array.from({ length: BIN }, (_, i) => minV + i * binSz)
@@ -343,8 +379,25 @@ export default function ProcessFactor() {
 
     const xLabels = bins.map(b => fmt(b))
 
-    const card = thresholdCards.find(c => c.feature === activeFeat)
-    const thrIdx = card ? bins.findIndex((b, i) => card.threshold < (i === BIN - 1 ? Infinity : bins[i + 1])) : -1
+    // 위험 임계값(교차점) — activeFeat에 대해 직접 계산해 모든 피처에 선 표시
+    let threshold = null
+    if (highVals.length >= 10 && lowVals.length >= 10) {
+      const hiS = [...highVals].sort((a, b) => a - b)
+      const loS = [...lowVals].sort((a, b) => a - b)
+      const hiMed = quantile(hiS, 0.5), loMed = quantile(loS, 0.5)
+      const direction = hiMed > loMed ? 'up' : 'down'
+      const dHigh = mkDensity(highVals), dLow = mkDensity(lowVals)
+      const c0 = Math.min(loMed, hiMed), c1 = Math.max(loMed, hiMed)
+      threshold = direction === 'up' ? hiMed : loMed
+      for (let i = 1; i < BIN; i++) {
+        const xc = bins[i] + binSz / 2
+        if (xc < c0 || xc > c1) continue
+        const prev = dHigh[i - 1] - dLow[i - 1], cur = dHigh[i] - dLow[i]
+        if (direction === 'up' && prev < 0 && cur >= 0) { threshold = xc; break }
+        if (direction === 'down' && prev >= 0 && cur < 0) { threshold = xc; break }
+      }
+    }
+    const thrIdx = threshold != null ? bins.findIndex((b, i) => threshold < (i === BIN - 1 ? Infinity : bins[i + 1])) : -1
 
     return {
       tooltip: {
@@ -359,8 +412,8 @@ export default function ProcessFactor() {
       legend: {
         show: true, top: 4, right: 8,
         data: [
-          { name: '안전', icon: 'rect', itemStyle: { color: '#3B82F6' } },
-          { name: '위험', icon: 'rect', itemStyle: { color: '#EF4444' } },
+          { name: '안전(하위10%)', icon: 'rect', itemStyle: { color: '#3B82F6' } },
+          { name: '위험(상위10%)', icon: 'rect', itemStyle: { color: '#EF4444' } },
         ],
         textStyle: { fontSize: 12, color: '#475569' },
       },
@@ -379,13 +432,13 @@ export default function ProcessFactor() {
       },
       series: [
         {
-          name: '안전', type: 'line', data: mkDensity(lowVals),
+          name: '안전(하위10%)', type: 'line', data: mkDensity(lowVals),
           smooth: true, symbol: 'none',
           lineStyle: { color: '#3B82F6', width: 2 },
           areaStyle: { color: 'rgba(59,130,246,0.12)' },
         },
         {
-          name: '위험', type: 'line', data: mkDensity(highVals),
+          name: '위험(상위10%)', type: 'line', data: mkDensity(highVals),
           smooth: true, symbol: 'none',
           lineStyle: { color: '#EF4444', width: 2 },
           areaStyle: { color: 'rgba(239,68,68,0.12)' },
@@ -396,14 +449,14 @@ export default function ProcessFactor() {
             label: {
               show: true, position: 'insideEndBottom',
               distance: [0, 6],
-              formatter: `임계값 ${fmt(card.threshold)}`,
+              formatter: `임계값 ${fmt(threshold)}`,
               fontSize: 11, color: '#DC2626', fontWeight: 600,
             },
           } : undefined,
         },
       ],
     }
-  }, [featDistRaw, activeFeat, regPredMap, riskThreshold, thresholdCards])
+  }, [featDistRaw, activeFeat, regPredMap, riskThreshold, safeThreshold])
 
   // SHAP Beeswarm (참고용 작게)
   const normToColor = norm => {
@@ -560,19 +613,19 @@ export default function ProcessFactor() {
         <div className="pf-criteria-item">
           <span className="pf-criteria-key">위험 임계값</span>
           <span className="pf-criteria-desc">
-위험군 비율이 가장 높아지는(농축되는) 경계값 — 이 값을 넘으면 위험 유닛 밀도가 최대가 되는 지점
+위험(빨강) 분포가 안전(파랑) 분포를 추월하는 교차점 — 비교군(위험 상위10% vs 안전 하위10%) 기준
           </span>
         </div>
         <div className="pf-criteria-item">
           <span className="pf-criteria-key">임계값 초과 위험률</span>
           <span className="pf-criteria-desc">
-            임계값을 넘은 unit 중 실제 위험군이 차지하는 비율
+            비교군 중 임계값을 넘은 unit에서 위험군(상위10%)이 차지하는 비율
           </span>
         </div>
         <div className="pf-criteria-item">
           <span className="pf-criteria-key">평균 대비 배수</span>
           <span className="pf-criteria-desc">
-            임계값 초과 위험률 ÷ 전체 평균 위험률 — <b>임계값을 넘으면 평균보다 몇 배 더 위험한가</b>
+            임계값 초과 위험률 ÷ 비교군 평균 위험률 — <b>임계값을 넘으면 평균보다 몇 배 더 위험한가</b>
           </span>
         </div>
       </div>
@@ -632,7 +685,7 @@ export default function ProcessFactor() {
         <div className="pf-chart-card">
           <div className="pf-cc-header">
             <span className="pf-cc-title">안전 vs 위험 분포 — {activeFeat ?? '-'}</span>
-            <span className="pf-cc-sub">임계값(빨간 실선) 이상에서 위험군 비중이 급증합니다.</span>
+            <span className="pf-cc-sub">위험(상위10%) vs 안전(하위10%) 분포 비교 · 빨간 선 = 위험 임계값</span>
           </div>
           <div className="pf-cc-body">
             {distOption
