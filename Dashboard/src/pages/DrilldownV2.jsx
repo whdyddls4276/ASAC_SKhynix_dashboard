@@ -437,7 +437,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapUnitMap,
 }
 
 // ── 보고서 생성 버튼 ─────────────────────────────────
-const AI_AGENT_URL = 'http://localhost:8000'
+const AI_AGENT_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function ReportButton({ ufsSerial, ppm, isRisk, worstDie, grade }) {
   const [status, setStatus] = useState('idle')  // idle | loading | done | error

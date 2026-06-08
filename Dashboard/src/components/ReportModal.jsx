@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import './ReportModal.css'
 
-const API_URL = 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 // HTML 보고서에 주입할 인터랙티브 스크립트
 //  - 차트 편집 모드: report.py가 자체 구현. 부모는 'SET_CHART_EDIT_MODE'를 직접 전송.
