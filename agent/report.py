@@ -436,6 +436,120 @@ def _chart_custom_png(sec: dict, w_px: int, h_px: int) -> bytes:
     plt.close(fig); buf.seek(0); return buf.read()
 
 
+def _proc_path(fname):
+    import os
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", fname))
+
+
+def _load_shap_bar_top(n=8):
+    """shap_bar.csv에서 X피처 상위 N개 (대시보드 SHAP 영향도 기준). [{feature, mag, signed}]"""
+    import pandas as pd
+    df = pd.read_csv(_proc_path("shap_bar.csv"))
+    df = df[df["feature"].astype(str).str.match(r"^X\d+$")]
+    df = df.sort_values("mean_abs_shap", ascending=False).head(n)
+    out = []
+    for _, r in df.iterrows():
+        out.append({"feature": str(r["feature"]),
+                    "mag": float(r["mean_abs_shap"]),
+                    "signed": float(r.get("mean_shap", 0) or 0)})
+    return out
+
+
+def _dashboard_feat_dist(feature=None, bins=40):
+    """대시보드 '안전 vs 위험 분포'와 동일 — 최상위 SHAP 피처의
+    위험(reg_pred 상위10%) vs 안전(하위10%) 값 분포 + 교차점 임계값."""
+    import pandas as pd, numpy as np
+    fd = pd.read_csv(_proc_path("feature_dist.csv"))
+    u = pd.read_csv(_proc_path("dashboard_units.csv"), usecols=["ufs_serial", "reg_pred"])
+    u["reg_pred"] = pd.to_numeric(u["reg_pred"], errors="coerce")
+    reg = u.dropna(subset=["reg_pred"]).set_index("ufs_serial")["reg_pred"]
+    if reg.empty:
+        return None
+    p90, p10 = float(reg.quantile(0.90)), float(reg.quantile(0.10))
+    if feature is None:
+        sb = pd.read_csv(_proc_path("shap_bar.csv"))
+        sb = sb[sb["feature"].astype(str).str.match(r"^X\d+$")].sort_values("mean_abs_shap", ascending=False)
+        for f in sb["feature"]:
+            if f in fd.columns:
+                feature = f
+                break
+    if feature is None or feature not in fd.columns:
+        return None
+    m = fd[["ufs_serial", feature]].copy()
+    m["rp"] = m["ufs_serial"].map(reg)
+    m = m.dropna(subset=[feature, "rp"])
+    hi = m[m["rp"] >= p90][feature].values
+    lo = m[m["rp"] <= p10][feature].values
+    if len(hi) < 10 or len(lo) < 10:
+        return None
+    allv = np.concatenate([hi, lo])
+    mn, mx = np.quantile(allv, 0.01), np.quantile(allv, 0.99)
+    if not (mx > mn):
+        return None
+    edges = np.linspace(mn, mx, bins + 1)
+    centers = ((edges[:-1] + edges[1:]) / 2)
+
+    def dens(v):
+        idx = np.clip(np.digitize(v, edges) - 1, 0, bins - 1)
+        c = np.bincount(idx, minlength=bins).astype(float)
+        return c / max(len(v), 1) * 100
+
+    dHi, dLo = dens(hi), dens(lo)
+    hiMed, loMed = float(np.median(hi)), float(np.median(lo))
+    direction = "up" if hiMed > loMed else "down"
+    c0, c1 = min(loMed, hiMed), max(loMed, hiMed)
+    thr = hiMed if direction == "up" else loMed
+    for i in range(1, bins):
+        xc = centers[i]
+        if xc < c0 or xc > c1:
+            continue
+        prev = dHi[i - 1] - dLo[i - 1]
+        cur = dHi[i] - dLo[i]
+        if direction == "up" and prev < 0 and cur >= 0:
+            thr = xc; break
+        if direction == "down" and prev >= 0 and cur < 0:
+            thr = xc; break
+    return {"feature": feature, "labels": centers.tolist(),
+            "danger": dHi.tolist(), "normal": dLo.tolist(), "threshold": float(thr)}
+
+
+def _chart_shap_bar_png(items, w_px=300, h_px=240) -> bytes:
+    """대시보드 'SHAP 영향도' 핵심 — 피처별 평균 |SHAP| 수평 바 (ppm), 방향=색."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    _try_set_font()
+    dpi = 96
+    fig, ax = plt.subplots(figsize=(w_px / dpi, h_px / dpi), dpi=dpi)
+    fig.patch.set_facecolor("white"); ax.set_facecolor("white")
+
+    if not items:
+        ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
+                transform=ax.transAxes, fontsize=10, color="#9ca3af")
+    else:
+        labels = [it["feature"] for it in items]
+        vals = [it["mag"] * 1e6 for it in items]            # ppm
+        colors = ["#EF4444" if it.get("signed", 0) >= 0 else "#3B82F6" for it in items]
+        ys = np.arange(len(labels))
+        ax.barh(ys, vals, color=colors, height=0.6)
+        ax.set_yticks(ys)
+        ax.set_yticklabels(labels, fontsize=10, color="#111827", fontweight="bold")
+        ax.invert_yaxis()
+        ax.set_xlim(0, (max(vals) if vals else 1) * 1.15)
+        ax.set_xlabel("평균 |SHAP| (ppm)", fontsize=10.5, color="#4b5563", labelpad=2)
+        ax.tick_params(axis="x", labelsize=10, colors="#6b7280")
+        ax.tick_params(axis="y", length=0)
+        for sp in ax.spines.values(): sp.set_visible(False)
+        ax.grid(axis="x", color="#eef0f2", linewidth=0.5, zorder=0)
+        ax.set_axisbelow(True)
+
+    fig.tight_layout(pad=0.3)
+    buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi)
+    plt.close(fig); buf.seek(0); return buf.read()
+
+
 def _chart_fi_bar_png(features, w_px=580, h_px=200) -> bytes:
     """L2 Feature Importance Top N 수평 바 차트 (HTML c-fi-top와 동일)."""
     import matplotlib
@@ -498,9 +612,9 @@ def _chart_fdc_line_png(labels, normal, danger, threshold, feature_name, w_px=30
     else:
         xs = np.array(labels, dtype=float)
         ax.fill_between(xs, normal, color="#3B82F6", alpha=0.12)
-        ax.plot(xs, normal, color="#3B82F6", linewidth=1.5, label="정상 (G1+G2)")
+        ax.plot(xs, normal, color="#3B82F6", linewidth=1.5, label="정상")
         ax.fill_between(xs, danger, color="#EF4444", alpha=0.12)
-        ax.plot(xs, danger, color="#EF4444", linewidth=1.5, label="위험 (G3+G4)")
+        ax.plot(xs, danger, color="#EF4444", linewidth=1.5, label="위험")
         if threshold is not None:
             ax.axvline(x=float(threshold), color="#dc2626", linewidth=1.2, linestyle="--")
             ax.text(float(threshold), ax.get_ylim()[1]*0.95,
@@ -1461,23 +1575,7 @@ def build_html(report_data: dict) -> str:
         )
 
     # ── 어노멀리 피처 (정상/불량 바, grade1 vs grade4 실데이터)
-    anomaly_stats = report_data.get("anomaly_stats", [])
-    # anomaly_stats 없으면 importance 상위 3개로 gain 기반 fallback
-    if not anomaly_stats:
-        _top_feat_map = {f.get("feature",""): f for f in top_features}
-        for f in features[:3]:
-            fname = f.get("feature","")
-            _af   = _top_feat_map.get(fname, {})
-            ratio = _af.get("ratio") if _af.get("ratio") else None
-            if ratio is None:
-                gain = f.get("lgbm_gain", 0) or 0
-                total_gain_all = sum(x.get("lgbm_gain",0) or 0 for x in features) or 1
-                danger = min(int(gain / total_gain_all * 1000), 90)
-            else:
-                danger = min(int(abs(ratio - 1.0) / 3.0 * 100), 95)
-            anomaly_stats.append({
-                "feature": fname, "danger": danger, "normal": 100 - danger,
-            })
+    # (anomaly_stats 계산 제거됨 — R2 패널은 SHAP 영향도로 대체)
     def _short_val(v):
         try:
             n = float(v)
@@ -1486,63 +1584,28 @@ def build_html(report_data: dict) -> str:
         a = abs(n)
         return f"{n:.0f}" if a >= 1000 else f"{n:.2f}" if a >= 1 else f"{n:.4f}"
 
+    # ── 3a: anomaly 패널을 대시보드 'SHAP 영향도'(평균 |SHAP|)로 대체 ──
+    try:
+        _shap_items = _load_shap_bar_top(8)
+    except Exception:
+        _shap_items = []
+    _shap_n = len(_shap_items)
     anomaly_rows = ""
-    for s in anomaly_stats:
-        fname       = s.get("feature", "")
-        danger      = s.get("danger", 0)
-        normal_pct  = s.get("normal", 100 - danger)
-        grade1_mean = s.get("grade1_mean", None)
-        grade4_mean = s.get("grade4_mean", None)
-        z_score     = s.get("z_score", None)
-
-        # 실제 mean값 기반 바 길이 (1팀 방식: axisMin~axisMax 정규화)
-        if grade1_mean is not None and grade4_mean is not None:
-            try:
-                g1 = float(grade1_mean); g4 = float(grade4_mean)
-                min_v = min(g1, g4); max_v = max(g1, g4)
-                rng = max(abs(max_v - min_v), abs(max_v) * 0.1, 1e-9)
-                axis_min = min_v - rng * 0.15
-                axis_max = max_v + rng * 0.15
-                span = axis_max - axis_min or 1
-                g4_len = f"{min(100, max(0, (g4 - axis_min) / span * 100)):.1f}"
-                g1_len = f"{min(100, max(0, (g1 - axis_min) / span * 100)):.1f}"
-                normal_val_str = _short_val(g4)
-                unit_val_str   = _short_val(g1)
-                higher = g1 >= g4
-            except Exception:
-                g4_len = str(normal_pct); g1_len = str(danger)
-                normal_val_str = "-"; unit_val_str = "-"; higher = True
-        else:
-            g4_len = str(normal_pct); g1_len = str(danger)
-            normal_val_str = f"{normal_pct}%"; unit_val_str = f"{danger}%"
-            higher = danger > 50
-
-        z_str = ""
-        if z_score is not None:
-            try:
-                z_f = float(z_score)
-                z_color = "#8a1f1f" if z_f >= 3 else "#9a5b14" if z_f >= 2 else "#5d4936"
-                z_str = f'<span style="color:{z_color};font-size:11px;font-weight:900">{"▲" if higher else "▼"} z={z_f:.1f}</span>'
-            except Exception:
-                z_str = ""
-
-        _arrow = "▲" if higher else "▼"
-        _fallback_pct = f'<div class="anom-pct">{_arrow} {danger}%</div>'
+    _smax = max((it["mag"] for it in _shap_items), default=1e-9) or 1e-9
+    for it in _shap_items:
+        _w = min(100, max(2, it["mag"] / _smax * 100))
+        _ppm = it["mag"] * 1e6
+        _cls = "danger" if it.get("signed", 0) >= 0 else "normal"
+        _dir = "▲ 불량↑" if it.get("signed", 0) >= 0 else "▼ 불량↓"
+        _dclr = "#b91c1c" if it.get("signed", 0) >= 0 else "#1d4ed8"
         anomaly_rows += (
             f'<div class="anom-card">'
             f'<div class="anom-top">'
-            f'<div class="anom-name" title="{fname}">{fname}</div>'
-            + (z_str if z_str else _fallback_pct) +
-            '</div>'
-            f'<div class="anom-row">'
-            f'<div class="anom-lbl">정상</div>'
-            f'<div class="anom-track"><div class="anom-fill normal" style="width:{g4_len}%"></div></div>'
-            f'<div class="anom-val" style="color:#166534;font-weight:900">{normal_val_str}</div>'
+            f'<div class="anom-name" title="{it["feature"]}">{it["feature"]}</div>'
+            f'<span style="color:{_dclr};font-size:11px;font-weight:900">{_dir} {_ppm:,.0f}ppm</span>'
             f'</div>'
             f'<div class="anom-row">'
-            f'<div class="anom-lbl unit">불량</div>'
-            f'<div class="anom-track"><div class="anom-fill danger" style="width:{g1_len}%"></div></div>'
-            f'<div class="anom-val" style="color:#b91c1c;font-weight:900;font-size:12px">{unit_val_str}</div>'
+            f'<div class="anom-track"><div class="anom-fill {_cls}" style="width:{_w:.1f}%"></div></div>'
             f'</div>'
             f'</div>'
         )
@@ -1598,10 +1661,9 @@ def build_html(report_data: dict) -> str:
     _run_id_int = int(_run_id) if isinstance(_run_id, (int,float)) and str(_run_id) != "-" else 53
     _val_lots_sorted = sorted(range(29, 57))  # val: run_id 29~56
     _lot_idx = _val_lots_sorted.index(_run_id_int) if _run_id_int in _val_lots_sorted else 0
-    _prod_days_ago = max(0, (len(_val_lots_sorted) - 1 - _lot_idx) + 7)  # 검사보다 7일 전
-    _prod_date = (today - timedelta(days=_prod_days_ago)).strftime("%Y. %m. %d")
-    _insp_days_ago = max(0, len(_val_lots_sorted) - 1 - _lot_idx)
-    _insp_date = (today - timedelta(days=_insp_days_ago)).strftime("%Y. %m. %d")
+    # 생산일자·예측일자 모두 오늘(6/11)로 고정
+    _prod_date = today_str
+    _insp_date = today_str
     _pred_health_raw = _tu.get("pred_health", _tu.get("pred_ppm", 0))
     try:
         _pred_health_f = float(_pred_health_raw)
@@ -1906,8 +1968,8 @@ def build_html(report_data: dict) -> str:
     j_r3_labels      = _json.dumps(r3_labels, ensure_ascii=False)
     j_r3_high        = _json.dumps(r3_high)
     j_r3_med         = _json.dumps(r3_med)
-    # Feature Importance Top4 용
-    _fi_top4 = features[:5]
+    # Feature Importance — 대시보드 기준(X피처, gain 순) Top 8
+    _fi_top4 = features[:8]
     j_fi_top4_labels = _json.dumps([f.get("feature","") for f in _fi_top4], ensure_ascii=False)
     _fi_total = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
     j_fi_top4_values = _json.dumps([round((f.get("lgbm_gain", 0) or 0) / _fi_total * 100, 2) for f in _fi_top4])
@@ -1915,8 +1977,13 @@ def build_html(report_data: dict) -> str:
     _j_feat_scatter_high = _json.dumps(fs1_high)
     _j_feat_scatter_med  = _json.dumps(fs1_med)
 
-    # R3: 피처 정상/위험 분포 비교 히스토그램
-    fdc = report_data.get("feat_dist_compare", {})
+    # R3: 피처 정상/위험 분포 — 대시보드 '안전 vs 위험 분포'와 동일(상위10%/하위10%)
+    #   사용자가 분포 피처를 바꾸면 report_data['feat_dist_compare']['feature']가 갱신됨 → 그 피처로 계산
+    _user_fdc = report_data.get("feat_dist_compare") or {}
+    try:
+        fdc = _dashboard_feat_dist(feature=_user_fdc.get("feature")) or _user_fdc
+    except Exception:
+        fdc = _user_fdc
     j_fdc_feature   = _json.dumps(fdc.get("feature", ""))
     j_fdc_labels    = _json.dumps(fdc.get("labels", []))
     j_fdc_normal    = _json.dumps(fdc.get("normal", []))
@@ -2118,8 +2185,8 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:stretch;height:260px;flex-shrink:0;overflow:hidden">
-        <div class="anom-panel ia-target" data-sid="R2_anomaly" data-section="Anomaly Feature" style="position:relative">
-          <div class="anom-hdr">Anomaly Feature Top {len(anomaly_stats) if anomaly_stats else 5}</div>
+        <div class="anom-panel ia-target" data-sid="R2_anomaly" data-section="SHAP 영향도" style="position:relative">
+          <div class="anom-hdr">SHAP 영향도 Top {_shap_n}</div>
           <div class="anom-list">{anomaly_rows}</div>
         </div>
         <div class="fi-panel ia-target" data-sid="R3_scatter" data-section="피처 정상/불량 분포" style="position:relative;display:flex;flex-direction:column">
@@ -2128,8 +2195,8 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
             <canvas id="c-feat-dist" style="position:absolute;top:4px;left:4px;right:4px;bottom:4px;width:calc(100% - 8px);height:calc(100% - 8px)"></canvas>
           </div>
           <div style="display:flex;gap:8px;font-size:10px;color:#4b5563;padding:3px 6px;flex-shrink:0">
-            <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#3B82F6;margin-right:2px"></i>정상 (G1+G2)</span>
-            <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#EF4444;margin-right:2px"></i>위험 (G3+G4)</span>
+            <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#3B82F6;margin-right:2px"></i>안전(하위10%)</span>
+            <span><i style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#EF4444;margin-right:2px"></i>위험(상위10%)</span>
             <span style="margin-left:auto;font-family:Consolas,monospace;font-size:10px">X=피처값 · Y=비율%</span>
           </div>
         </div>
@@ -2152,7 +2219,6 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 <div id="ia-chart-menu">
   <div class="chart-hdr">기존 차트</div>
   <div class="chart-item" data-chart="importance" title="모델이 예측에 중요하게 사용한 Feature 상위 막대 (LGBM Gain 기준)">Feature Importance 바 차트</div>
-  <div class="chart-item" data-chart="anomaly" title="위험 그룹과 정상 그룹 간 값 차이가 큰 이상 Feature 비교">Anomaly Feature 비교</div>
   <div class="chart-item" data-chart="lot_trend" title="LOT별 위험(HIGH) 유닛 건수 추이 (LOT 순서)">LOT별 HIGH 건수 트렌드</div>
   <div class="chart-item" data-chart="weekly_trend" title="주차별 예측 수율(불량률) 추이">주차별 수율 트렌드</div>
   <div class="chart-item" data-chart="ppm_trend" title="LOT별 예측 ppm 추이 (평균/상위5%)">LOT별 예측 ppm 트렌드</div>
@@ -2201,10 +2267,18 @@ Chart.defaults.color       = '#202832';
   // 보고서에는 실측 라인이 없음 → 전부 '예측 구간', 마지막만 '최신 주차'
   var futureData = predPpm.map(function(v,i){{ return i<=n-2 ? v : null; }});
   var lastData   = predPpm.map(function(v,i){{ return i>=n-2 ? v : null; }});
-  // X축: WW 번호 (마지막=WW37, 역산)
-  var LAST_WW = 37;
-  var wwLabels = rawLabels.map(function(_,i){{ return 'WW'+(LAST_WW-(n-1-i)); }});
-  var dateLabels = rawLabels;
+  // X축: 대시보드와 동일 'N월 N주차' — 6월 2주차부터 (2026-06-08 기준)
+  var _anchor = new Date(2026, 5, 8);
+  var wwLabels = rawLabels.map(function(_,i){{
+    var d = new Date(_anchor); d.setDate(_anchor.getDate()+i*7);
+    return (d.getMonth()+1)+'월 '+Math.ceil(d.getDate()/7)+'주차';
+  }});
+  var dateLabels = rawLabels.map(function(_,i){{
+    var d = new Date(_anchor); d.setDate(_anchor.getDate()+i*7);
+    var e = new Date(d); e.setDate(d.getDate()+6);
+    function _md(x){{ return (x.getMonth()+1)+'/'+x.getDate(); }}
+    return _md(d)+'~'+_md(e);
+  }});
   // 생산량 막대를 위쪽으로 작게 보이게 — y1 max 100k 고정 (대시보드 동일)
   var y1Max = 100000;
 
@@ -2377,7 +2451,7 @@ Chart.defaults.color       = '#202832';
         }},
         y: {{
           grid: {{display: false}},
-          ticks: {{font:{{size:13,weight:'700'}}, color:'#111827'}}
+          ticks: {{font:{{size:11,weight:'700'}}, color:'#111827', autoSkip:false}}
         }}
       }}
     }}
@@ -2420,9 +2494,9 @@ Chart.defaults.color       = '#202832';
     data: {{
       labels: labels,
       datasets: [
-        {{label:'정상 (G1+G2)', data:normal, borderColor:'#3B82F6', backgroundColor:'rgba(59,130,246,0.12)',
+        {{label:'안전(하위10%)', data:normal, borderColor:'#3B82F6', backgroundColor:'rgba(59,130,246,0.12)',
           borderWidth:2, tension:0.35, pointRadius:0, fill:true}},
-        {{label:'위험 (G3+G4)', data:danger, borderColor:'#EF4444', backgroundColor:'rgba(239,68,68,0.12)',
+        {{label:'위험(상위10%)', data:danger, borderColor:'#EF4444', backgroundColor:'rgba(239,68,68,0.12)',
           borderWidth:2, tension:0.35, pointRadius:0, fill:true}},
       ]
     }},

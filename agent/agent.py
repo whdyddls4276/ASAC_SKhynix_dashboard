@@ -228,7 +228,7 @@ def _build_report_data(tool_cache: dict) -> dict:
     # L2 보고서용 주차별 수율 트렌드 (trend_data.csv, 최근 5주)
     weekly_yield_trend = {}
     try:
-        weekly_yield_trend = get_weekly_yield_trend(recent_weeks=7)
+        weekly_yield_trend = get_weekly_yield_trend(recent_weeks=10)
     except Exception:
         pass
 
@@ -1436,7 +1436,7 @@ async def run_report_editor(user_message: str, history: list,
             try: d["lot_trend_split"] = get_lot_trend_with_split()
             except Exception: d["lot_trend_split"] = {}
         if not d.get("weekly_yield_trend"):
-            try: d["weekly_yield_trend"] = get_weekly_yield_trend(recent_weeks=7)
+            try: d["weekly_yield_trend"] = get_weekly_yield_trend(recent_weeks=10)
             except Exception: d["weekly_yield_trend"] = {}
         if not d.get("recent_lot_trend"):
             try: d["recent_lot_trend"] = get_recent_lot_trend(recent_n=35)
