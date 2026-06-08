@@ -1225,11 +1225,18 @@ def get_feature_dist_compare(feature: str = None, bins: int = 40) -> dict:
     units = _load("dashboard_units.csv")[["ufs_serial", "grade"]]
 
     if not feature:
+        # 기본값: SHAP 영향도 최상위 X피처 (대시보드 SHAP 차트 1위와 동일)
         try:
-            fi = _load("feature_importance.csv")
-            feature = fi.sort_values("lgbm_rank").iloc[0]["feature"]
+            import re as _re
+            sb = _load("shap_bar.csv")
+            sb = sb[sb["feature"].astype(str).str.match(r"^X\d+$")]
+            feature = sb.sort_values("mean_abs_shap", ascending=False).iloc[0]["feature"]
         except Exception:
-            feature = "X592"
+            try:
+                fi = _load("feature_importance.csv")
+                feature = fi.sort_values("lgbm_rank").iloc[0]["feature"]
+            except Exception:
+                feature = "X592"
 
     if feature not in fd.columns:
         return {"feature": feature, "labels": [], "normal": [], "danger": [], "threshold": None}

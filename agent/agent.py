@@ -86,7 +86,7 @@ PI(Process Integration 엔지니어)의 요청에 따라 데이터를 분석하�
 
 **오른쪽 — 불량 유닛 분석**
 - 대표 Unit 정보 (실데이터)
-- Anomaly Feature / 이상 피처 분포 (실데이터)
+- SHAP 영향도 / 피처 정상·불량 분포 (실데이터)
 - 위치별 불량률 (실데이터)
 
 ## 흐름 (반드시 순서대로, tool 1개 실행 후 반드시 텍스트 출력, 그 다음 tool 실행)
@@ -687,16 +687,16 @@ REPORT_EDITOR_SYSTEM = """당신은 SK Hynix 반도체 보고서 수정 전문 A
 |------|-----|------|--------|------|
 | R1. 웨이퍼맵 + 대표 Unit | R1_unit | 웨이퍼맵(grade 색상) + 시리얼/LOT/WAFER/예측health/생산일자 | d["top_unit"], d["wafer_die"] | ✅ 실데이터 |
 | R1b. 포지션별 예측 health | (R1 내부) | P1~P4 예측 health값 | d["top_unit"]["pos_health"] | ✅ 실데이터 |
-| R2. Anomaly Feature | R2_anomaly | 피처별 정상/불량 바 비교 (grade1 vs grade4) | d["anomaly_stats"] | ✅ 실데이터 |
-| R2. Feature Importance | R2_importance | 피처 중요도 비율 막대 | d["importance"]["features"] | ✅ 실데이터 |
+| R2. SHAP 영향도 | R2_anomaly | 평균 SHAP 절댓값 상위 5개 피처 막대 (자동 생성, 편집 불가) | (자동) | ✅ 실데이터 |
+| R3. 피처 정상/불량 분포 | R3_scatter | 선택 피처의 위험(상위10%) vs 안전(하위10%) 분포 | d["feat_dist_compare"] | ✅ 실데이터 |
 
 ## 더미 섹션 처리 규칙 (절대 원칙)
 현재 보고서에서 더미인 섹션은 **없습니다**. 모든 섹션에 실데이터가 연결되어 있습니다.
 절대로 실데이터 섹션을 "더미"라고 말하지 마세요.
 
-## Anomaly Feature / Feature Importance 수정 가능
-- Anomaly Feature 피처 수 변경: d["anomaly_stats"] = d.get("anomaly_stats", [])[:N]
-- 특정 피처만: d["anomaly_stats"] = [s for s in d.get("anomaly_stats",[]) if s["feature"] in ["X1064","X592"]]
+## 수정 가능 항목
+- **SHAP 영향도(R2)**: 자동 생성(SHAP 상위 5개)이라 피처 변경/필터 불가. 바꿔달라는 요청이 와도 변경하지 말고 안내만 하세요.
+- **피처 정상/불량 분포(R3) 피처 변경**: 사용자가 "분포를 X831로 바꿔줘" 등으로 요청하면 그 피처로 분포를 갱신하세요. ("Anomaly"라는 표현은 절대 쓰지 마세요)
 - Feature Importance 개수 변경: d.setdefault("importance",{})["features"] = d.get("importance",{}).get("features",[])[:N]
 
 ## 공간 제약
@@ -740,7 +740,7 @@ REPORT_EDITOR_SYSTEM = """당신은 SK Hynix 반도체 보고서 수정 전문 A
 
 ## 모델 정책 (고정)
 - 예측에 사용되는 확정 모델: **Stacking Ensemble** (이 이름을 유지, 임의로 다른 모델명으로 바꾸지 말 것)
-- SHAP / Feature Importance / Anomaly Feature 출처: **ZIT_only** (zit 단일 모델 기반)
+- SHAP 영향도 / Feature Importance 출처: **ZIT_only** (zit 단일 모델 기반)
 - 사용자가 모델명을 묻거나 출처를 묻는 경우 위 사실을 답변
 
 ## 보고서 데이터 구조 (d) — 완전 명세 (키 이름 오타 절대 금지)
@@ -751,10 +751,10 @@ d["scan"]               - grade별 unit 수, 집중 LOT/웨이퍼
 d["importance"]         - Feature Importance  ← d["importances"] 아님
 d["analysis"]           - grade4 vs grade1 분포 비교
 d["top_unit"]           - 대표 Unit 정보 (R1)
-d["anomaly_stats"]      - Anomaly Feature 리스트 (R2, 리스트 직접 접근)  ← d["anomaly"] 아님
+d["feat_dist_compare"]  - 피처 정상/불량 분포 (R3_scatter, 표시 피처는 ["feature"])
 d["weekly_yield_trend"] - 주차별 불량 트렌드 (L2)
 d["pred_ppm_trend"]     - LOT별 예측 ppm 트렌드 (L3)
-d["feat_scatter"]       - 이상 피처 분포 scatter (R3)
+d["feat_scatter"]       - 피처 분포 scatter (보조)
 d["wafer_die"]          - 웨이퍼맵 die 좌표
 d["ppm_delta"]          - 전주 대비 ppm 변화 (배너용)
 d["pos_defect"]         - 포지션별 불량률
@@ -789,13 +789,13 @@ d["meta"]          → {report_title:str, model:str, val_rmse:str, summary_title
 d["chart_params"] = {"chart": "shap", "top_n": "5"}   # SHAP 막대 상위 N개
 d["chart_params"] = {"chart": "lot",  "top_n": "10"}  # 불량률 트렌드 상위 N개
 
-## Anomaly Feature (R2) — 표시 피처 수 변경
-# d["anomaly_stats"]는 실데이터 리스트: [{feature, danger, normal, grade1_mean, grade4_mean, z_score}, ...]
-# 절대 더미라고 하지 말 것 — 실데이터가 연결된 실제 섹션임
-# 상위 N개로 줄이기:
-d["anomaly_stats"] = d.get("anomaly_stats", [])[:3]   # 상위 3개만
-# 특정 피처만 보이기:
-# d["anomaly_stats"] = [s for s in d.get("anomaly_stats", []) if s.get("feature") in ["X1064","X592","X1066"]]
+## 피처 정상/불량 분포 (R3) — 표시 피처 변경
+# 사용자가 "분포를 X831로 바꿔줘" 처럼 요청하면 그 피처로 분포를 갱신:
+d["feat_dist_compare"] = {"feature": "X831"}   # 대시보드가 위험(상위10%)/안전(하위10%) 분포를 자동 계산
+# 응답은 "피처 정상/불량 분포를 X831로 변경했습니다" 처럼. ("Anomaly"라는 표현 금지)
+#
+## SHAP 영향도 (R2) — 편집 불가
+# SHAP 상위 5개로 자동 생성됨. 피처 변경/개수 변경 요청이 와도 코드로 바꾸지 말고 안내만.
 
 ## Feature Importance (R2) — 표시 피처 수 변경
 # d["importance"]는 {"features": [{feature, lgbm_rank, lgbm_gain}, ...]} 구조
@@ -867,11 +867,10 @@ d.setdefault("custom_sections", []).append({
 
 | 요청 유형 | action JSON 형식 |
 |----------|----------------|
-| importance/anomaly top-N 변경 | `{"action":"set_top_n","section":"importance","n":5,"response":"..."}` |
+| importance top-N 변경 | `{"action":"set_top_n","section":"importance","n":5,"response":"..."}` |
 | 불량 트렌드 기간/주수 변경 (L3) | `{"action":"set_top_n","section":"trend_weeks","n":4,"response":"..."}` |
-| LOT ppm 트렌드 기간 변경 (R3) | `{"action":"set_top_n","section":"trend_lots","n":10,"response":"..."}` |
-| anomaly 특정 피처만 표시 | `{"action":"filter_anomaly","features":["X1064","X592"],"response":"..."}` |
-| scatter 피처 변경 (R3) | `{"action":"change_scatter","feat1":"X1064","feat2":"X592","response":"..."}` |
+| LOT ppm 트렌드 기간 변경 | `{"action":"set_top_n","section":"trend_lots","n":10,"response":"..."}` |
+| 피처 정상/불량 분포(R3) 피처 변경 | `code`로 `d["feat_dist_compare"] = {"feature": "X831"}` (action 아님, 코드 사용) |
 | 보고서 제목 변경 | `{"action":"set_text","key":"report_title","value":"새 제목","response":"..."}` |
 | 배너 피처명 변경 | `{"action":"set_text","key":"alert_features","value":"X1064, X592","response":"..."}` |
 | 섹션 소제목 변경 | `{"action":"set_text","key":"section_label_L3","value":"새 소제목","response":"..."}` |
@@ -881,7 +880,7 @@ d.setdefault("custom_sections", []).append({
 | 섹션 복원 | `{"action":"toggle_section","sid":"R2_anomaly","hide":false,"response":"..."}` |
 | 대표 유닛 변경 | `{"action":"change_unit","serial":"S38369","response":"..."}` |
 
-section 값: `"importance"` | `"anomaly"` | `"trend_weeks"` | `"trend_lots"`
+section 값: `"importance"` | `"trend_weeks"` | `"trend_lots"`
 sid 값: `"L1_kpi"` | `"L2_fi"` | `"L3_trend"` | `"R1_unit"` | `"R2_anomaly"` | `"R3_scatter"`
 section_label key 예시: `"section_label_L1"` | `"section_label_L2"` | `"section_label_L3"` | `"section_label_R1"`
 
@@ -1165,6 +1164,17 @@ def _handle_command(cmd: dict, d: dict):
             return False, str(e)
         return True, None
 
+    elif action == "set_dist_feature":
+        # 피처 정상/불량 분포(R3) 표시 피처 변경
+        feature = cmd.get("feature", "")
+        if not feature:
+            return False, "변경할 피처명(X숫자 형식)을 알려주세요."
+        try:
+            d["feat_dist_compare"] = get_feature_dist_compare(feature=feature)
+        except Exception as e:
+            return False, str(e)
+        return True, None
+
     elif action == "set_text":
         key = cmd.get("key", "")
         value = str(cmd.get("value", ""))
@@ -1311,8 +1321,7 @@ def _try_direct_action(message: str, d: dict):
     n = nums[0] if nums else None
 
     # ── 섹션 판별 키워드
-    is_anomaly    = bool(_re.search(r'anomaly|어노말리|이상\s*(피처|feature|탐지|감지)|Anomaly', msg, _re.IGNORECASE))
-    is_importance = bool(_re.search(r'importance|중요도|feature\s*importance|shap|SHAP', msg, _re.IGNORECASE))
+    is_importance = bool(_re.search(r'importance|중요도|feature\s*importance', msg, _re.IGNORECASE))
     is_trend_lot  = bool(_re.search(r'lot\s*수|로트\s*수|pred_ppm|R3|trend_lot', msg, _re.IGNORECASE))
     is_trend_week = bool(_re.search(r'주\s*수|주차\s*수|L2|L3|trend_week|주간|불량\s*트렌드|트렌드\s*(차트|기간|수정|변경|주)', msg, _re.IGNORECASE))
     is_period_chg = bool(_re.search(r'기간|날짜|범위|주로|주\s*로|주\s*만|주\s*보|최근\s*\d', msg, _re.IGNORECASE))
@@ -1339,10 +1348,8 @@ def _try_direct_action(message: str, d: dict):
 
     # ── set_top_n 감지
     if is_topn and n is not None:
-        section_count = sum([is_anomaly, is_importance, is_trend_lot, is_trend_week])
+        section_count = sum([is_importance, is_trend_lot, is_trend_week])
         if section_count == 1:
-            if is_anomaly:
-                return {"action": "set_top_n", "section": "anomaly",      "n": n, "response": f"Anomaly Feature를 {n}개로 변경했습니다."}, None
             if is_importance:
                 return {"action": "set_top_n", "section": "importance",   "n": n, "response": f"Feature Importance를 {n}개로 변경했습니다."}, None
             if is_trend_lot:
@@ -1350,27 +1357,15 @@ def _try_direct_action(message: str, d: dict):
             if is_trend_week:
                 return {"action": "set_top_n", "section": "trend_weeks",  "n": n, "response": f"트렌드를 최근 {n}주로 변경했습니다."}, None
         elif section_count == 0:
-            return None, f"{n}개로 변경할 섹션을 알려주세요. Feature Importance, Anomaly Feature, 트렌드 주수 중 어느 쪽인가요?"
+            return None, f"{n}개로 변경할 섹션을 알려주세요. Feature Importance, 트렌드 주수 중 어느 쪽인가요?"
         else:
-            return None, f"Feature Importance와 Anomaly Feature 중 {n}개로 변경할 섹션을 선택해 주세요."
+            return None, f"어느 섹션을 {n}개로 변경할지 선택해 주세요."
 
-    # ── change_scatter 직접 감지 (피처명 + feat1/feat2 위치 명시)
-    is_scatter = bool(_re.search(r'scatter|분포\s*(차트|그래프)|이상\s*피처\s*분포|산점도', msg, _re.IGNORECASE))
-    if feats and is_scatter:
-        has_feat1 = bool(_re.search(r'feat\s*1|1번|첫\s*번째', msg, _re.IGNORECASE))
-        has_feat2 = bool(_re.search(r'feat\s*2|2번|두\s*번째', msg, _re.IGNORECASE))
-        if has_feat1 and not has_feat2:
-            return {"action": "change_scatter", "feat1": feats[0], "response": f"이상 피처 분포 feat1을 {feats[0]}로 변경했습니다."}, None
-        if has_feat2 and not has_feat1:
-            return {"action": "change_scatter", "feat2": feats[0], "response": f"이상 피처 분포 feat2를 {feats[0]}로 변경했습니다."}, None
-        if len(feats) >= 2:
-            return {"action": "change_scatter", "feat1": feats[0], "feat2": feats[1], "response": f"이상 피처 분포를 {feats[0]}, {feats[1]}로 변경했습니다."}, None
-        # 피처 1개 + 위치 미지정 → feat1 기본값으로 변경
-        return {"action": "change_scatter", "feat1": feats[0], "response": f"이상 피처 분포 차트를 {feats[0]} 기준으로 변경했습니다."}, None
-
-    # ── filter_anomaly 감지 (특정 피처명 언급)
-    if feats and is_anomaly:
-        return {"action": "filter_anomaly", "features": feats, "response": f"Anomaly Feature를 {', '.join(feats)}만 표시합니다."}, None
+    # ── 피처 정상/불량 분포(R3) 피처 변경: "분포를 X831로 바꿔줘"
+    is_dist = bool(_re.search(r'분포|distribution', msg, _re.IGNORECASE))
+    if feats and is_dist:
+        return {"action": "set_dist_feature", "feature": feats[0],
+                "response": f"피처 정상/불량 분포를 {feats[0]}로 변경했습니다."}, None
 
     # ── change_unit 감지 (serial 번호 명시)
     if is_serial:

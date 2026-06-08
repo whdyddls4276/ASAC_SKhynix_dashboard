@@ -160,14 +160,14 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
     else:
         ppm = [round((1 - v / 100) * 1e6) if v is not None else 0 for v in lot_pred_yield]
 
-    # 마지막 주(WW37) 직전 값 × 1.6 강조 (Overview와 동일)
-    if n >= 2:
-        prev_val = next((ppm[i] for i in range(n - 2, -1, -1) if ppm[i]), 0)
-        ppm[-1] = round(prev_val * 1.6)
-
-    # X축: WW 번호 (마지막=WW37, 역산)
-    LAST_WW = 37
-    ww_labels = [f"WW{LAST_WW - (n - 1 - i)}" for i in range(n)]
+    # X축: N월 N주차 (HTML과 동일, 6월 2주차부터 주 단위 전진)
+    import datetime as _dt
+    _start = _dt.date(2026, 6, 8)  # 6월 2주차 월요일
+    ww_labels = []
+    for i in range(n):
+        dd = _start + _dt.timedelta(days=7 * i)
+        wk = (dd.day - 1) // 7 + 1
+        ww_labels.append(f"{dd.month}월 {wk}주차")
 
     dpi = 96
     fig, ax1 = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
@@ -195,13 +195,19 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
                  markeredgecolor="#ffffff", markeredgewidth=1.5, zorder=3)
     ax2.set_ylabel("예측불량 ppm", fontsize=11, color="#4b5563")
     ax2.tick_params(axis="y", labelsize=11, colors="#4b5563")
-    # ppm y축 고정 (HTML과 동일 스케일)
-    ax2.set_ylim(0, 4500)
+    # ppm y축 고정 (HTML과 동일 스케일 1500~2900)
+    ax2.set_ylim(1500, 2900)
     import matplotlib.ticker as _mticker
-    ax2.yaxis.set_major_formatter(_mticker.FuncFormatter(lambda v,_: f"{v/1000:.0f}k"))
+    ax2.yaxis.set_major_formatter(_mticker.FuncFormatter(lambda v,_: f"{v:,.0f}"))
+    # 각 포인트 ppm 값 라벨 (HTML ppmLabelPlugin과 동일: 예측=파랑, 최신=빨강)
+    for i, v in enumerate(ppm):
+        _clr = "#DC2626" if i == n - 1 else "#3b82f6"
+        ax2.annotate(f"{v:,.0f}", (xs[i], v), textcoords="offset points",
+                     xytext=(0, 7), ha="center", fontsize=8, fontweight="bold",
+                     color=_clr, zorder=4)
 
     ax1.set_xticks(xs)
-    ax1.set_xticklabels(ww_labels, fontsize=11, rotation=0, color="#4b5563")
+    ax1.set_xticklabels(ww_labels, fontsize=8, rotation=30, ha="right", color="#4b5563")
     ax1.tick_params(axis="x", length=0)
     for sp in ax1.spines.values(): sp.set_visible(False)
     for sp in ax2.spines.values(): sp.set_visible(False)
@@ -579,13 +585,17 @@ def _chart_fi_bar_png(features, w_px=580, h_px=200) -> bytes:
         ax.set_yticks(ys)
         ax.set_yticklabels(labels, fontsize=10, color="#111827", fontweight="bold")
         ax.invert_yaxis()
-        ax.set_xlim(0, max_v * 1.15)
+        ax.set_xlim(0, max_v * 1.25)
         from matplotlib.ticker import FuncFormatter
         ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}%"))
         ax.tick_params(axis="x", labelsize=12, colors="#6b7280")
         ax.tick_params(axis="y", length=0)
         for sp in ax.spines.values(): sp.set_visible(False)
         ax.grid(axis="x", color="#eef0f2", linewidth=0.5, zorder=0)
+        # 막대 옆 % 라벨 (HTML fiLabelPlugin과 동일)
+        for yi, v in zip(ys, values):
+            ax.text(v + max_v * 0.02, yi, f"{v:.1f}%", va="center", ha="left",
+                    fontsize=10, fontweight="bold", color="#374151")
         ax.set_axisbelow(True)
 
     fig.tight_layout(pad=0.3)
@@ -1301,81 +1311,40 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
 
     AX = RX + 12
 
-    # ── R2 Anomaly Feature 패널 ─────────────────────────────────
+    # ── R2 SHAP 영향도 패널 (HTML과 동일) ───────────────────────
     if show_r2:
         r2_replace = replace_map.get("R2_anomaly")
+        try:
+            _shap_items = _load_shap_bar_top(5)
+        except Exception:
+            _shap_items = []
         bx(AX, ry, R2_W, REMAIN_H, (255,254,248), (156,163,175), 0.5)
         bx(AX, ry, R2_W, HDR_H_PANEL, (243,244,246), (156,163,175), 0.5)
-        r2_title = r2_replace.get("title") if r2_replace else f"Anomaly Feature Top {len(anomaly_stats)}"
+        r2_title = r2_replace.get("title") if r2_replace else f"SHAP 영향도 Top {len(_shap_items)}"
         tx(r2_title, AX+8, ry+5, R2_W-16, 16, sz=11, bold=True, clr=(17,24,39))
-
-        if r2_replace:
-            try:
+        try:
+            if r2_replace:
                 png = _chart_custom_png(r2_replace, w_px=R2_W-6, h_px=REMAIN_H-HDR_H_PANEL-4)
-                img(png, AX+3, ry+HDR_H_PANEL+2, R2_W-6, REMAIN_H-HDR_H_PANEL-4)
-            except Exception as _e:
-                tx(f"차트 오류: {_e}", AX+6, ry+REMAIN_H//2, R2_W-12, 18, sz=9, clr=(220,80,80))
-        else:
-            n_anom  = max(len(anomaly_stats), 1)
-            ACARD_H = max(34, (REMAIN_H - HDR_H_PANEL - 6) // n_anom)
-            LBL_W_A = 32
-            BAR_W_A = R2_W - 18 - LBL_W_A - 50
-
-            for ai, s in enumerate(anomaly_stats):
-                ay = ry + HDR_H_PANEL + 3 + ai * ACARD_H
-                if ay + ACARD_H > ry + REMAIN_H - 2: break
-                fname      = s.get("feature","")
-                danger     = s.get("danger", 0)
-                normal_pct = s.get("normal", 100-danger)
-                g1m        = s.get("grade1_mean")
-                g4m        = s.get("grade4_mean")
-
-                bg = (255,255,255) if ai%2==0 else (248,250,252)
-                bx(AX+2, ay, R2_W-4, ACARD_H, bg, (229,231,235), 0.3)
-
-                NAME_H = 14
-                tx(fname, AX+7, ay+2, R2_W-14, NAME_H, sz=10, bold=True, clr=(17,24,39))
-
-                if g1m is not None and g4m is not None:
-                    try:
-                        g1f=float(g1m); g4f=float(g4m)
-                        mn=min(g1f,g4f); mx=max(g1f,g4f)
-                        rng=max(abs(mx-mn)*1.4, abs(mx)*0.05, 1e-9)
-                        axis_min=mn-rng*0.1; span=max(mx+rng*0.1-axis_min,1e-9)
-                        g4_pct=min(100,max(4,(g4f-axis_min)/span*100))
-                        g1_pct=min(100,max(4,(g1f-axis_min)/span*100))
-                    except: g4_pct=normal_pct; g1_pct=danger
-                else:
-                    g4_pct=normal_pct; g1_pct=danger
-
-                BAR_H_A = max(7, (ACARD_H - NAME_H - 10) // 2)
-                bar_top = ay + NAME_H + 2
-                bar_bot = bar_top + BAR_H_A + 3
-                BAR_X = AX + 8 + LBL_W_A
-
-                tx("정상", AX+7, bar_top, LBL_W_A-1, BAR_H_A, sz=7, bold=True, clr=(22,128,60))
-                bx(BAR_X, bar_top, BAR_W_A, BAR_H_A, (220,235,220))
-                bx(BAR_X, bar_top, max(4,int(BAR_W_A*g4_pct/100)), BAR_H_A, (22,128,60))
-                if g4m is not None:
-                    tx(f"{float(g4m):.4g}", BAR_X+BAR_W_A+4, bar_top, 46, BAR_H_A,
-                       sz=8, bold=True, clr=(22,128,60), align="right")
-
-                tx("불량", AX+7, bar_bot, LBL_W_A-1, BAR_H_A, sz=7, bold=True, clr=(185,28,28))
-                bx(BAR_X, bar_bot, BAR_W_A, BAR_H_A, (240,218,218))
-                bx(BAR_X, bar_bot, max(4,int(BAR_W_A*g1_pct/100)), BAR_H_A, (185,28,28))
-                if g1m is not None:
-                    tx(f"{float(g1m):.4g}", BAR_X+BAR_W_A+4, bar_bot, 46, BAR_H_A,
-                       sz=8, bold=True, clr=(185,28,28), align="right")
+            else:
+                png = _chart_shap_bar_png(_shap_items, w_px=R2_W-6, h_px=REMAIN_H-HDR_H_PANEL-4)
+            img(png, AX+3, ry+HDR_H_PANEL+2, R2_W-6, REMAIN_H-HDR_H_PANEL-4)
+        except Exception as _e:
+            tx(f"차트 오류: {_e}", AX+6, ry+REMAIN_H//2, R2_W-12, 18, sz=9, clr=(220,80,80))
 
     # ── R3 피처 정상/불량 분포 비교 패널 ─────────────────────
     if show_r3:
         r3_replace = replace_map.get("R3_scatter")
-        feat_dist_compare = report_data.get("feat_dist_compare", {})
-        fdc_feature   = feat_dist_compare.get("feature", "")
-        fdc_labels    = feat_dist_compare.get("labels", [])
-        fdc_normal    = feat_dist_compare.get("normal", [])
-        fdc_danger    = feat_dist_compare.get("danger", [])
-        fdc_threshold = feat_dist_compare.get("threshold")
+        # HTML과 동일: 대시보드 상위10%/하위10% 분포 (편집된 피처 반영)
+        _user_fdc = report_data.get("feat_dist_compare") or {}
+        try:
+            _fdc = _dashboard_feat_dist(feature=_user_fdc.get("feature")) or _user_fdc
+        except Exception:
+            _fdc = _user_fdc
+        fdc_feature   = _fdc.get("feature", "")
+        fdc_labels    = _fdc.get("labels", [])
+        fdc_normal    = _fdc.get("normal", [])
+        fdc_danger    = _fdc.get("danger", [])
+        fdc_threshold = _fdc.get("threshold")
         if not fdc_feature and features:
             fdc_feature = features[0].get("feature", "")
 
@@ -1586,7 +1555,7 @@ def build_html(report_data: dict) -> str:
 
     # ── 3a: anomaly 패널을 대시보드 'SHAP 영향도'(평균 |SHAP|)로 대체 ──
     try:
-        _shap_items = _load_shap_bar_top(8)
+        _shap_items = _load_shap_bar_top(5)
     except Exception:
         _shap_items = []
     _shap_n = len(_shap_items)
@@ -1968,8 +1937,8 @@ def build_html(report_data: dict) -> str:
     j_r3_labels      = _json.dumps(r3_labels, ensure_ascii=False)
     j_r3_high        = _json.dumps(r3_high)
     j_r3_med         = _json.dumps(r3_med)
-    # Feature Importance — 대시보드 기준(X피처, gain 순) Top 8
-    _fi_top4 = features[:8]
+    # Feature Importance — 대시보드 기준(X피처, gain 순) Top 5
+    _fi_top4 = features[:5]
     j_fi_top4_labels = _json.dumps([f.get("feature","") for f in _fi_top4], ensure_ascii=False)
     _fi_total = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
     j_fi_top4_values = _json.dumps([round((f.get("lgbm_gain", 0) or 0) / _fi_total * 100, 2) for f in _fi_top4])
@@ -2259,10 +2228,7 @@ Chart.defaults.color       = '#202832';
     ? defectPpm.map(function(v){{ return v!=null ? Math.round(v) : null; }})
     : predYieldPct.map(function(v){{ return v!=null ? Math.round((1-v/100)*1000000) : null; }});
   var n = predPpm.length;
-  // 마지막 주차 강조: 직전 값 × 1.6 (Overview와 동일)
-  var prevVal = 0;
-  for(var pi=n-2;pi>=0;pi--){{ if(predPpm[pi]!=null){{ prevVal=predPpm[pi]; break; }} }}
-  predPpm[n-1] = Math.round(prevVal * 1.6);
+  // 마지막 주차 = 실제 평균 예측 ppm (대시보드와 동일 — 인위적 ×1.6 제거)
   // 2구간 분할: 예측(WW32~WW36) / 최신(WW36~WW37)
   // 보고서에는 실측 라인이 없음 → 전부 '예측 구간', 마지막만 '최신 주차'
   var futureData = predPpm.map(function(v,i){{ return i<=n-2 ? v : null; }});
@@ -2282,7 +2248,21 @@ Chart.defaults.color       = '#202832';
   // 생산량 막대를 위쪽으로 작게 보이게 — y1 max 100k 고정 (대시보드 동일)
   var y1Max = 100000;
 
-  new Chart(ctx,{{type:'bar',data:{{labels:wwLabels,datasets:[
+  var ppmLabelPlugin = {{
+    id:'ppm-label',
+    afterDatasetsDraw:function(chart){{
+      var c2=chart.ctx, m1=chart.getDatasetMeta(1), m2=chart.getDatasetMeta(2);
+      c2.save(); c2.font='700 9px sans-serif'; c2.textAlign='center';
+      for(var i=0;i<n;i++){{
+        var v=predPpm[i]; if(v==null) continue;
+        var pt=(i===n-1)?(m2.data[i]):(m1.data[i]); if(!pt) continue;
+        c2.fillStyle=(i===n-1)?'#DC2626':'#3B82F6';
+        c2.fillText(Math.round(v).toLocaleString(), pt.x, pt.y-7);
+      }}
+      c2.restore();
+    }}
+  }};
+  new Chart(ctx,{{type:'bar',plugins:[ppmLabelPlugin],data:{{labels:wwLabels,datasets:[
     {{label:'생산량',data:prodData,type:'bar',
       backgroundColor:'rgba(99,102,241,0.35)',borderWidth:0,yAxisID:'y1',order:3,barPercentage:0.55}},
     {{label:'예측 구간',data:futureData,type:'line',
@@ -2323,8 +2303,8 @@ Chart.defaults.color       = '#202832';
         title:{{display:true,text:'불량 ppm',font:{{size:12,weight:'700'}}}},
         grid:{{display:false}},
         ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',
-          callback:function(v){{return (v/1000).toFixed(0)+'k';}}}},min:0,max:4500}},
-      x:{{grid:{{display:false}},ticks:{{font:{{size:12,weight:'700'}},color:'#4b5563',maxRotation:0}}}}
+          callback:function(v){{return (v/1000).toFixed(1)+'k';}}}},min:1500,max:2900}},
+      x:{{grid:{{display:false}},ticks:{{font:{{size:9,weight:'700'}},color:'#4b5563',maxRotation:35,minRotation:0,autoSkip:false}}}}
     }}
   }}}});
 }})();
@@ -2420,8 +2400,18 @@ Chart.defaults.color       = '#202832';
     values=[0.42,0.28,0.17,0.13];
   }}
   var maxVal = Math.max.apply(null, values) || 1;
+  var fiLabelPlugin = {{
+    id:'fi-label',
+    afterDatasetsDraw: function(chart){{
+      var c2=chart.ctx, meta=chart.getDatasetMeta(0);
+      c2.save(); c2.font='700 11px sans-serif'; c2.fillStyle='#374151'; c2.textBaseline='middle'; c2.textAlign='left';
+      meta.data.forEach(function(bar,i){{ c2.fillText(values[i].toFixed(1)+'%', bar.x+4, bar.y); }});
+      c2.restore();
+    }}
+  }};
   new Chart(ctx, {{
     type: 'bar',
+    plugins:[fiLabelPlugin],
     data: {{
       labels: labels,
       datasets: [{{
@@ -2447,7 +2437,7 @@ Chart.defaults.color       = '#202832';
           ticks: {{font:{{size:12,weight:'700'}}, color:'#6b7280', maxTicksLimit:5,
             callback: function(v){{ return v.toFixed(1)+'%'; }}
           }},
-          max: maxVal * 1.15
+          max: maxVal * 1.25
         }},
         y: {{
           grid: {{display: false}},
