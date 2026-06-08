@@ -1373,7 +1373,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     bx(0, FTR_Y, SW, 1, (107,114,128))
     tx("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14,
        sz=10, bold=True, clr=(17,24,39))
-    tx(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
+    tx(f"{today_str}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
        sz=10, clr=(75,85,99), align="center")
 
     # ─── 2번째 슬라이드: 추가 차트 + 메모 (있을 때만) ───────────
@@ -1432,7 +1432,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
         bx2(0, FTR_Y, SW, FTR_H, (241,245,249))
         bx2(0, FTR_Y, SW, 1, (107,114,128))
         tx2("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14, sz=10, bold=True, clr=(17,24,39))
-        tx2(f"{today_str}  ·  {model_nm}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
+        tx2(f"{today_str}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
             sz=10, clr=(75,85,99), align="center")
 
     buf = io.BytesIO()
@@ -2027,7 +2027,7 @@ body{{font-family:'Malgun Gothic','Segoe UI',Arial,sans-serif;font-weight:600;co
 .anom-lbl.unit{{color:#111827}}
 .anom-track{{position:relative;flex:1;height:7px;background:#e8ecef;border-radius:1px}}
 .anom-fill{{position:absolute;left:0;top:0;bottom:0;border-radius:1px}}
-.anom-fill.normal{{background:#16803c}}.anom-fill.danger{{background:#b91c1c}}
+.anom-fill.normal{{background:#3B82F6}}.anom-fill.danger{{background:#b91c1c}}
 .anom-val{{width:48px;flex-shrink:0;font:10px/1.1 Consolas,monospace;text-align:right;font-weight:900}}
 .fi-panel{{border:1px solid #9ca3af;background:#fff;display:flex;flex-direction:column;height:100%}}
 .fi-hdr{{background:#f3f4f6;border-bottom:1px solid #9ca3af;padding:4px 8px;font-size:13px;font-weight:900;flex-shrink:0}}
@@ -2201,7 +2201,7 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 
 <div class="s-footer">
   <div class="footer-brand">We Do Technology | SK hynix</div>
-  <span>{today_str} · {model_nm} · Val RMSE {val_rmse}</span>
+  <span>{today_str} · Val RMSE {val_rmse}</span>
 </div>
 </div>
 
