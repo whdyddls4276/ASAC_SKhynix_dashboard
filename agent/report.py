@@ -981,7 +981,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     delta_val     = ppm_delta.get("delta", 0)
     delta_str     = f"▲{abs(delta_val):,.0f}" if delta_val >= 0 else f"▼{abs(delta_val):,.0f}"
     try:
-        _default_alert = _load_shap_bar_top(1)[0]["feature"]   # SHAP 최상위 1개
+        _default_alert = ", ".join(it["feature"] for it in _load_shap_bar_top(2))   # SHAP 상위 2개
     except Exception:
         _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
     alert_features = meta.get("alert_features", _default_alert)
@@ -1495,7 +1495,7 @@ def build_html(report_data: dict) -> str:
     delta_str   = f"▲{abs(delta_val):,.0f}" if delta_val >= 0 else f"▼{abs(delta_val):,.0f}"
     delta_color = "#EF4444" if delta_val >= 0 else "#16A34A"
     try:
-        _default_alert = _load_shap_bar_top(1)[0]["feature"]   # SHAP 최상위 1개
+        _default_alert = ", ".join(it["feature"] for it in _load_shap_bar_top(2))   # SHAP 상위 2개
     except Exception:
         _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
     alert_features = meta.get("alert_features", _default_alert)
