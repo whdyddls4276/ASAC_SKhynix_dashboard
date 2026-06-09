@@ -33,11 +33,7 @@ async def _prebuild_preview():
         def _warmup():
             _load("dashboard_units.csv")
             _load("feature_importance.csv")
-            try:
-                _load("compet_xs_data.csv")   # 백그라운드 프리로드 (캐시용)
-                print("[preview] compet_xs_data.csv 캐시 완료")
-            except Exception as e:
-                print(f"[preview] xs 파일 로드 실패 (analyze_features 느려질 수 있음): {e}")
+            # compet_xs(1.2GB) 프리로드 제거 — 보고서는 xs 불필요, 서버 시작 시 xs 의존 제거
             return {
                 "scan_data":      scan_data(),
                 "get_importance": get_importance(top_n=10),

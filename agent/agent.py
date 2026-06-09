@@ -121,21 +121,17 @@ PI(Process Integration 엔지니어)의 요청에 따라 데이터를 분석하�
    - 2위: X891 (gain: 0.XXX)
    - ...
 
-4. importance 출력 후 `analyze_features(start, end)` 실행. 완료 즉시 아래 형식으로 출력:
-   🔬 분포 분석 (grade4 vs grade1)
-   - X234: grade4 평균 0.082 vs grade1 평균 0.035 (2.3배, p=0.001)
-   - ...
-   **grade4가 0개이거나 분석 불가인 경우에도** 아래 두 줄을 반드시 출력하세요:
+4. importance 출력 후, 아래 두 줄을 반드시 출력하세요:
 
 이 내용대로 보고서를 생성할까요?
-<<<BUTTONS: 보고서 생성, 기간 변경, 다른 feature 보기>>>
+<<<BUTTONS: 보고서 생성, 기간 변경>>>
 
 5. "보고서 생성" 확인을 받으면 **다른 어떤 텍스트도 출력하지 말고, 어떤 tool도 호출하지 말고**, **아래 한 줄만** 출력하세요:
 <<<HTML_REPORT>>>
 
 6. "기간 변경" 버튼을 받으면 아래 형식으로만 출력하세요:
    분석할 기간을 입력해주세요. (예: 전체 기간, 6월, 최근 30일)
-   그 후 사용자가 기간을 입력하면 `infer_period(user_text)`로 변환하고, **step 2부터 다시 실행**하세요. (scan_data, get_importance, analyze_features 모두 재실행)
+   그 후 사용자가 기간을 입력하면 `infer_period(user_text)`로 변환하고, **step 2부터 다시 실행**하세요. (scan_data, get_importance 재실행)
 
 ## 절대 금지 사항 (위반 시 사용자가 직접 지적함)
 
@@ -175,7 +171,7 @@ def _build_report_data(tool_cache: dict) -> dict:
     """tool_cache로부터 report_data를 조립 (pred_actual / trend_top1 실데이터 포함)."""
     # scan_data에서 사용된 날짜 필터 추출 (재사용)
     _scan = tool_cache.get("scan_data", {})
-    analysis = dict(tool_cache.get("analyze_features", {}))
+    analysis = {}   # analyze_features(compet_xs) 의존 제거 — pred_actual 등 비-xs 데이터만 채움
 
     # Pred vs Actual 실데이터 주입
     if "pred_actual" not in analysis:
@@ -254,12 +250,8 @@ def _build_report_data(tool_cache: dict) -> dict:
     except Exception:
         pass
 
-    # 어노멀리 피처 풀 전체 계산 (POOL_SIZE=60 후보 모두 — top_n은 슬라이싱으로 처리)
+    # 어노멀리 피처(get_anomaly_feature_stats, compet_xs 의존) 제거 — R2 패널은 SHAP로 대체됨
     anomaly_stats = []
-    try:
-        anomaly_stats = get_anomaly_feature_stats()  # top_n 무시, 전체 반환
-    except Exception:
-        pass
 
     # Feature Importance 전체 풀 (늘리기 복원용, top_n=20 미리 로드)
     importance_all = []
@@ -416,8 +408,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
     # "보고서 작성" shortcut — 캐시에 필수 결과가 모두 있으면 Claude 호출 없이 바로 HTML 생성
     _shortcut_phrases = {"보고서 작성", "보고서작성", "보고서 만들어줘", "보고서 만들어",
                          "보고서 생성", "보고서생성", "작성", "작성해줘", "진행", "확인"}
-    _has_min_cache = "scan_data" in tool_cache and "get_importance" in tool_cache \
-                     and "analyze_features" in tool_cache
+    _has_min_cache = "scan_data" in tool_cache and "get_importance" in tool_cache
     if user_message.strip() in _shortcut_phrases and _has_min_cache:
         report_data = _build_report_data(tool_cache)
         html = build_html(report_data)
@@ -426,7 +417,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         return
 
     # "기간 확인" shortcut — "확인" 메시지이고 분석이 안 됐으면 바로 실행
-    _analysis_done = "scan_data" in tool_cache and "analyze_features" in tool_cache
+    _analysis_done = "scan_data" in tool_cache and "get_importance" in tool_cache
     if user_message.strip() == "확인" and not _analysis_done:
         period = tool_cache.get("infer_period", {"label": "이번 주 (06/08~06/10)", "start": "20260608", "end": "20260610"})
         start = period.get("start", "")
@@ -469,21 +460,8 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
             imp_lines.append(f"- {i}위: {f.get('feature','?')} (gain: {gain:.1f})")
         yield {"type": "text", "content": "\n".join(imp_lines)}
 
-        yield {"type": "tool_start", "tool": "analyze_features"}
-        ana_result = await asyncio.to_thread(analyze_features, start=start, end=end, top_n=10)
-        tool_cache["analyze_features"] = ana_result
-        yield {"type": "tool_result", "tool": "analyze_features", "result": ana_result}
-
-        top_feats = ana_result.get("top_features", [])
-        ana_lines = [f"🔬 분포 분석 (grade4 vs grade1) — grade4: {ana_result.get('high_n',0)}개, grade1: {ana_result.get('low_n',0)}개"]
-        for f in top_feats[:5]:
-            ana_lines.append(
-                f"- {f.get('feature','?')}: grade4 평균 {f.get('high_mean',0):.3f} vs "
-                f"grade1 평균 {f.get('low_mean',0):.3f} ({f.get('ratio',0):.1f}배, p={f.get('p_value',0):.3f})"
-            )
-        ana_lines.append("\n이 내용대로 보고서를 생성할까요?")
-        yield {"type": "text", "content": "\n".join(ana_lines)}
-        yield {"type": "confirm", "buttons": ["보고서 생성", "기간 변경", "다른 feature 보기"]}
+        yield {"type": "text", "content": "분석을 마쳤습니다.\n\n이 내용대로 보고서를 생성할까요?"}
+        yield {"type": "confirm", "buttons": ["보고서 생성", "기간 변경"]}
         yield {"type": "done"}
         return
 
@@ -619,7 +597,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
                                            "model": "Stacking Ensemble"},
                             "scan":       tool_cache.get("scan_data", {}),
                             "importance": tool_cache.get("get_importance", {}),
-                            "analysis":   tool_cache.get("analyze_features", {}),
+                            "analysis":   {},
                             "actions":    [],
                             "chart_params": params,
                         })
@@ -1148,14 +1126,8 @@ def _handle_command(cmd: dict, d: dict):
                 return False, f"현재 최대 {len(pool)}개까지만 가능합니다"
             d.setdefault("importance", {})["features"] = pool[:n]
         elif section == "anomaly":
+            # anomaly 섹션은 SHAP로 대체됨 (compet_xs 의존 제거) — 기존 풀만 사용
             source = d.get("anomaly_stats_all") or []
-            if not source:
-                # 풀 없으면 전체 계산 후 저장
-                try:
-                    source = get_anomaly_feature_stats()
-                    d["anomaly_stats_all"] = source
-                except Exception:
-                    source = []
             if n > len(source):
                 return False, f"현재 최대 {len(source)}개까지 가능합니다 (풀 크기 {len(source)}개)"
             d["anomaly_stats"] = source[:n]
@@ -1448,8 +1420,7 @@ async def run_report_editor(user_message: str, history: list,
             d["scan"] = cache.get("scan_data", {})
         if not d.get("importance"):
             d["importance"] = cache.get("get_importance", {})
-        if not d.get("analysis"):
-            d["analysis"] = cache.get("analyze_features", {})
+        d.setdefault("analysis", {})   # analyze_features(compet_xs) 의존 제거
         d.setdefault("actions",         [])
         d.setdefault("chart_params",    {})
         d.setdefault("custom_sections", [])
@@ -1482,12 +1453,9 @@ async def run_report_editor(user_message: str, history: list,
         if not d.get("pred_ppm_trend"):
             try: d["pred_ppm_trend"] = get_pred_ppm_trend(recent_n=20)
             except Exception: d["pred_ppm_trend"] = {}
-        if not d.get("anomaly_stats_all"):
-            try: d["anomaly_stats_all"] = get_anomaly_feature_stats()  # 전체 풀
-            except Exception: d["anomaly_stats_all"] = []
-        if not d.get("anomaly_stats"):
-            n_init = len(d.get("anomaly_stats_all", []))
-            d["anomaly_stats"] = d["anomaly_stats_all"][:min(5, n_init)]
+        # anomaly_stats(get_anomaly_feature_stats, compet_xs 의존) 제거 — R2 패널은 SHAP로 대체
+        d.setdefault("anomaly_stats_all", [])
+        d.setdefault("anomaly_stats", [])
         # importance_all: Feature Importance 전체 풀 (top20)
         if not d.get("importance_all"):
             try: d["importance_all"] = get_importance(top_n=20).get("features", [])

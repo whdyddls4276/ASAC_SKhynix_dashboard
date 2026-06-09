@@ -221,7 +221,12 @@ def analyze_features(start: str = "", end: str = "", top_n: int = 10) -> dict:
     if xs_cache_key in _cache:
         xs = _cache[xs_cache_key]
     else:
-        xs = _load("compet_xs_data.csv")
+        try:
+            xs = _load("compet_xs_data.csv")
+        except Exception:
+            # xs(원본 1.2GB) 없으면 분포 분석 불가 — graceful 반환 (보고서는 이 함수 미사용)
+            return {"error": "compet_xs 데이터가 없어 분포 분석을 건너뜁니다.",
+                    "top_features": [], "high_n": 0, "low_n": 0}
     keep_cols = ["ufs_serial"] + ([c for c in top50 if c in xs.columns] if top50 else [c for c in xs.columns if c.startswith("X")])
     merged = xs[[c for c in keep_cols if c in xs.columns]].merge(period_units, on="ufs_serial", how="inner")
 
