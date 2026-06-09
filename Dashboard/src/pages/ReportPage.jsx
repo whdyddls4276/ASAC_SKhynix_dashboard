@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import './ReportPage.css'
 
-const API_URL = ''
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const INJECT_SCRIPT = `
 <script>
