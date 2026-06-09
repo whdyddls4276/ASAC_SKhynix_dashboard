@@ -779,11 +779,33 @@ def _chart_wafer_cbar_png(w_px=24, h_px=200) -> bytes:
     plt.close(fig); buf.seek(0); return buf.read()
 
 
+_FONT_READY = False
+
 def _try_set_font():
-    """matplotlib 한글 폰트 설정."""
+    """matplotlib 한글 폰트 설정.
+    배포 서버(Linux)에 한글 폰트가 없어 범례가 □로 깨지는 문제 →
+    repo 번들 폰트(agent/fonts/NanumGothic.ttf)를 직접 등록하여 플랫폼 무관하게 한글 보장."""
+    global _FONT_READY
+    import os
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
     import platform
+
+    plt.rcParams["axes.unicode_minus"] = False
+
+    # 1) repo 번들 폰트 (배포 Linux 등 시스템 한글 폰트 없어도 동작)
+    bundled = os.path.join(os.path.dirname(__file__), "fonts", "NanumGothic.ttf")
+    if os.path.exists(bundled):
+        try:
+            if not _FONT_READY:
+                fm.fontManager.addfont(bundled)
+                _FONT_READY = True
+            plt.rcParams["font.family"] = fm.FontProperties(fname=bundled).get_name()
+            return
+        except Exception:
+            pass
+
+    # 2) 시스템 폰트 폴백
     candidates = (
         ["Malgun Gothic"] if platform.system() == "Windows"
         else ["NanumGothic", "AppleGothic"]
