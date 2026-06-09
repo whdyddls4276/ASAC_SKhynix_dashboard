@@ -961,14 +961,8 @@ export default function DrilldownV2({ initialSelection }) {
     }
   }, [selectedPattern, lotPatternBuckets])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 기본 선택 ③ 계층탐색 탭 진입 시 리스트 상단(위험률 최고) lot 자동 선택 → 해당 lot맵 표시 ──
-  useEffect(() => {
-    if (activeTab !== 'default' || selectedLot || !lotTree.length) return
-    const top = lotTree[0].lot
-    setSelectedLot(top)
-    setExpandedLot(top)
-    setLoadedLot(top)
-  }, [activeTab, lotTree])  // eslint-disable-line react-hooks/exhaustive-deps
+  // ── 기본 선택 ③ (제거됨): 계층탐색 진입 시 lot 자동 선택 안 함 → 로트 목록만 표시 ──
+  //    (사용자가 직접 lot을 클릭해야 wafer/맵이 보임)
 
   // ── 기본 선택 ④ (제거됨): 위험률 최고 wafer 자동 선택 안 함 ──
 

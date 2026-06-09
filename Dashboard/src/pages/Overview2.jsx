@@ -639,17 +639,17 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       {/* 상단 KPI */}
       <div className="ov2-kpi-row">
         <KpiCard
-          label="최근 한달 평균 예측 PPM"
+          label="최근 한 달 평균 예측 PPM"
           value={recent30AvgPpm != null ? recent30AvgPpm.toLocaleString() : '—'}
           color="#1E3A5F"
         />
         <KpiCard
-          label="이번주 평균 예측 PPM"
+          label="이번 주 평균 예측 PPM"
           value={avgPpm.toLocaleString()}
           color="#1E3A5F"
         />
         <KpiCard
-          label="이번주차 검사 완료 유닛"
+          label="이번 주차 검사 완료 유닛"
           value={total.toLocaleString()}
           color="#1E3A5F"
         />
@@ -713,15 +713,15 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         </ChartCard>
 
         <ChartCard
-          title="이상치 유닛 웨이퍼맵"
+          title="고위험 유닛 웨이퍼맵"
           sub={outlierWafer
-            ? `LOT${outlierWafer.lot}-WF${outlierWafer.wafer}-${outlierWafer.serial} · ${Math.round(outlierWafer.ppm).toLocaleString()} ppm · 맵 클릭 시 계층탐색 이동`
-            : 'die 예측값(빨강=위험) · 보라 테두리 = 이상치 유닛 · 맵 클릭 시 계층탐색 이동'}
+            ? '맵 클릭 시 계층탐색 이동'
+            : 'die 예측값(빨강=위험) · 보라 테두리 = 고위험 유닛 · 맵 클릭 시 계층탐색 이동'}
         >
           <div style={{ width: '100%', height: 380, display: 'flex', alignItems: 'stretch', gap: 12 }}>
             {/* 이상치 웨이퍼 리스트 박스 (선택 시 우측 맵 표시) */}
             <div className="ov2-outlier-listbox">
-              <div className="ov2-outlier-listbox-title">이상치 웨이퍼 {outlierWafers.length}개</div>
+              <div className="ov2-outlier-listbox-title">고위험 웨이퍼 {outlierWafers.length}개</div>
               <div className="ov2-outlier-list">
                 {outlierWafers.length === 0 && (
                   <div className="ov2-outlier-empty">이상치 웨이퍼 없음</div>
