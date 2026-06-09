@@ -1129,12 +1129,6 @@ export default function DrilldownV2({ initialSelection }) {
         {/* ── 좌: 아코디언 트리 ── */}
         <div className="dd-left-panel">
           <div className="dd-tree-controls">
-            <input
-              className="dd-search-input"
-              placeholder="Lot 검색..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
             <button
               className={`dd-wafer-sort-btn ${lotSort !== 'default' ? 'active' : ''}`}
               onClick={() => setLotSort(s => s === 'risk_desc' ? 'risk_asc' : s === 'risk_asc' ? 'default' : 'risk_desc')}
