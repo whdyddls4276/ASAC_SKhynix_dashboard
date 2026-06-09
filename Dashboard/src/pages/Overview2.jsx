@@ -316,6 +316,7 @@ function riskClass(ratio) {
 export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor }) {
   const { data: units, loading: loadingUnits } = useCSV('/dashboard_units.csv')
   const { data: trendRaw, loading: loadingTrend } = useCSV('/trend_data.csv')
+  const { data: lotSummary } = useCSV('/dashboard_lot_summary.csv')  // 계층탐색과 동일 die-P90 위험비율
 
   const { q2, q3, upperFence } = useMemo(() => {
     if (!units.length) return { q2: 0, q3: 0, upperFence: 0 }
@@ -562,34 +563,41 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
   }, [trendRaw, units])
 
   const lotRankData = useMemo(() => {
-    if (!units.length || q3 === 0) return []
-    const thresholds = { q2, q3, upperFence }
+    if (!units.length) return []
+    // 위험비율: 계층탐색 로트 리스트와 동일 — die-P90 (dashboard_lot_summary 기반)
+    const dieMap = {}
+    lotSummary.forEach(d => {
+      const lotNum = parseInt(d.run_id)
+      if (!(lotNum >= 1 && lotNum <= 28)) return
+      const lot = String(lotNum)
+      if (!dieMap[lot]) dieMap[lot] = { rd: 0, td: 0 }
+      dieMap[lot].rd += parseFloat(d.risk_dies) || 0
+      dieMap[lot].td += parseFloat(d.total_dies) || 0
+    })
     const lotMap = {}
     units.forEach(u => {
       const lotNum = parseInt(u.run_id)
       // 원본 0_data 기준 lot 1~28만 (29~84는 split 시뮬레이션 분배)
       if (!(lotNum >= 1 && lotNum <= 28)) return
-      const lot = u.run_id
-      if (!lotMap[lot]) lotMap[lot] = { lot, total: 0, g3: 0, g4: 0, predSum: 0 }
+      const lot = String(lotNum)
+      if (!lotMap[lot]) lotMap[lot] = { lot, total: 0, predSum: 0 }
       const pred = parseFloat(u.reg_pred)
-      const grade = getGrade(pred, thresholds)
       lotMap[lot].total++
       if (isFinite(pred)) lotMap[lot].predSum += pred
-      if (grade === 'grade3') lotMap[lot].g3++
-      if (grade === 'grade4') lotMap[lot].g4++
     })
     return Object.values(lotMap)
-      .map(l => ({
-        lot: l.lot,
-        total: l.total,
-        g3: l.g3,
-        g4: l.g4,
-        riskRate: l.total ? (l.g3 + l.g4) / l.total : 0,
-        avgPpm: l.total ? Math.round(l.predSum / l.total * 1e6) : 0,
-      }))
+      .map(l => {
+        const dm = dieMap[l.lot]
+        return {
+          lot: l.lot,
+          total: l.total,
+          riskRate: dm && dm.td ? dm.rd / dm.td : 0,   // 계층탐색과 동일 die-P90 위험비율
+          avgPpm: l.total ? Math.round(l.predSum / l.total * 1e6) : 0,
+        }
+      })
       .sort((a, b) => b.riskRate - a.riskRate)
       .slice(0, 10)
-  }, [units, q2, q3, upperFence])
+  }, [units, lotSummary])
 
   // 이상치 유닛 웨이퍼맵: outlier_wafers.json(리스트) + wafer_scale.json (계층탐색과 동일 색상 기준)
   const [outlierWafers, setOutlierWafers] = useState([])

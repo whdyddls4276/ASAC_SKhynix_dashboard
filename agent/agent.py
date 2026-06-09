@@ -112,9 +112,9 @@ PI(Process Integration 엔지니어)의 요청에 따라 데이터를 분석하�
    📊 스캔 결과 (기간: YYYY.MM.DD ~ YYYY.MM.DD)
 
    - 총 unit: N개
-   - 매우위험: M개
-   - 집중 LOT: LOT XXX (매우위험 N개)
-   - 집중 웨이퍼: LOT_XXX-WF_YY (매우위험 N개)
+   - 고위험: M개
+   - 집중 LOT: LOT XXX (고위험 N개)
+   - 집중 웨이퍼: LOT_XXX-WF_YY (고위험 N개)
 
 3. 스캔 결과 출력 후 `get_importance` 실행. 완료 즉시 **다른 tool 호출 없이** 아래 형식으로 출력:
    📋 주요 Feature TOP5
@@ -441,9 +441,9 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         scan_text = (
             f"📊 스캔 결과 (기간: {date_label})\n\n"
             f"- 총 unit: {s.get('total_units', s.get('total', 0))}개\n"
-            f"- 매우위험: {s.get('grade4_count',0)}개\n"
-            f"- 집중 LOT: LOT {s.get('top_lot','N/A')} (매우위험 {s.get('top_lot_grade4_count',0)}개)\n"
-            f"- 집중 웨이퍼: {top_wafer_str} (매우위험 {top_wafer_g4}개)"
+            f"- 고위험: {s.get('grade4_count',0)}개\n"
+            f"- 집중 LOT: LOT {s.get('top_lot','N/A')} (고위험 {s.get('top_lot_grade4_count',0)}개)\n"
+            f"- 집중 웨이퍼: {top_wafer_str} (고위험 {top_wafer_g4}개)"
         )
         yield {"type": "text", "content": scan_text}
 
