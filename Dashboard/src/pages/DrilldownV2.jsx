@@ -966,12 +966,7 @@ export default function DrilldownV2({ initialSelection }) {
 
   // ── 기본 선택 ④ (제거됨): 위험률 최고 wafer 자동 선택 안 함 ──
 
-  // ── 기본 선택 ⑤ wafer의 가장 위험한 unit 자동 진단 (우측 창) ──
-  useEffect(() => {
-    if (!selectedKey || !selectedDies.length || selectedUnit) return
-    const worst = selectedDies.reduce((b, d) => parseFloat(d.pred) > parseFloat(b.pred) ? d : b, selectedDies[0])
-    if (worst?.ufs_serial) setSelectedUnit(worst.ufs_serial)
-  }, [selectedKey, selectedDies])  // eslint-disable-line react-hooks/exhaustive-deps
+  // ── 기본 선택 ⑤ (제거됨): wafer 선택 시 unit 자동 선택 안 함 → 사용자가 직접 die/unit 클릭 ──
 
   // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
   // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
