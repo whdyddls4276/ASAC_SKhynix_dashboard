@@ -980,7 +980,10 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     ppm_delta     = report_data.get("ppm_delta", {})
     delta_val     = ppm_delta.get("delta", 0)
     delta_str     = f"▲{abs(delta_val):,.0f}" if delta_val >= 0 else f"▼{abs(delta_val):,.0f}"
-    _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
+    try:
+        _default_alert = _load_shap_bar_top(1)[0]["feature"]   # SHAP 최상위 1개
+    except Exception:
+        _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
     alert_features = meta.get("alert_features", _default_alert)
     report_title   = meta.get("report_title", "Field Health 불량 예측 분석 보고서")
     summary_title  = _strip_html(meta.get("summary_title",
@@ -1491,7 +1494,10 @@ def build_html(report_data: dict) -> str:
     delta_val   = ppm_delta.get("delta", 0)
     delta_str   = f"▲{abs(delta_val):,.0f}" if delta_val >= 0 else f"▼{abs(delta_val):,.0f}"
     delta_color = "#EF4444" if delta_val >= 0 else "#16A34A"
-    _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
+    try:
+        _default_alert = _load_shap_bar_top(1)[0]["feature"]   # SHAP 최상위 1개
+    except Exception:
+        _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
     alert_features = meta.get("alert_features", _default_alert)
 
     # ── 커스텀 텍스트 (에이전트 수정 가능)
