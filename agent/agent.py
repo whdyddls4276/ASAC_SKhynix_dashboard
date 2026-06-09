@@ -15,7 +15,8 @@ from tools import (infer_period, scan_data, analyze_features, get_importance,
                    get_pred_ppm_trend, get_location_ppm_top, get_weekly_yield_trend,
                    get_anomaly_feature_stats, get_val_rmse, get_feat_vs_health_scatter,
                    get_lot_grade_stack, get_pred_health_hist, get_feature_dist_compare,
-                   get_top_risk_units, get_lot_mean_ppm_top, get_wafer_risk_die_ratio_top)
+                   get_top_risk_units, get_lot_mean_ppm_top, get_wafer_risk_die_ratio_top,
+                   get_shap_bar_top)
 from report import build_html
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -868,6 +869,7 @@ d.setdefault("custom_sections", []).append({
 | 요청 유형 | action JSON 형식 |
 |----------|----------------|
 | importance top-N 변경 | `{"action":"set_top_n","section":"importance","n":5,"response":"..."}` |
+| SHAP 영향도(R2) top-N 변경 | `{"action":"set_top_n","section":"shap","n":8,"response":"..."}` |
 | 불량 트렌드 기간/주수 변경 (L3) | `{"action":"set_top_n","section":"trend_weeks","n":4,"response":"..."}` |
 | LOT ppm 트렌드 기간 변경 | `{"action":"set_top_n","section":"trend_lots","n":10,"response":"..."}` |
 | 피처 정상/불량 분포(R3) 피처 변경 | `code`로 `d["feat_dist_compare"] = {"feature": "X831"}` (action 아님, 코드 사용) |
@@ -909,6 +911,36 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
         return {"title": "Feature Importance", "chart_type": "bar", "position": position,
                 "labels": labels, "horizontal": True, "height": 150,
                 "datasets": [{"label": "Gain %", "data": data, "color": "#3B82F6"}]}
+
+    elif chart_type == "shap":
+        items  = get_shap_bar_top(int(d.get("shap_top_n", 5) or 5))
+        labels = [it["feature"] for it in items]
+        data   = [round(it["mag"] * 1e6, 1) for it in items]   # ppm 스케일
+        colors = ["#EF4444" if it.get("signed", 0) >= 0 else "#3B82F6" for it in items]
+        return {"title": "SHAP 영향도", "chart_type": "bar", "position": position,
+                "labels": labels, "horizontal": True, "height": 150,
+                "datasets": [{"label": "평균 |SHAP| (ppm)", "data": data,
+                              "color": "#3B82F6", "colors": colors}]}
+
+    elif chart_type == "feat_dist":
+        fdc = d.get("feat_dist_compare") or {}
+        if not fdc.get("labels"):
+            try: fdc = get_feature_dist_compare()
+            except Exception: fdc = {}
+        return {"title": f"피처 정상/불량 분포 · {fdc.get('feature','')}", "chart_type": "line",
+                "position": position, "labels": fdc.get("labels", []), "height": 150,
+                "datasets": [
+                    {"label": "안전(하위10%)", "data": fdc.get("normal", []), "color": "#3B82F6"},
+                    {"label": "위험(상위10%)", "data": fdc.get("danger", []), "color": "#EF4444"},
+                ]}
+
+    elif chart_type == "defect_trend":
+        wyt    = d.get("weekly_yield_trend", {})
+        labels = wyt.get("labels", [])
+        ppm    = wyt.get("defect_ppm", [])
+        return {"title": "불량 트렌드 (예측 ppm)", "chart_type": "line", "position": position,
+                "labels": labels, "height": 150,
+                "datasets": [{"label": "예측불량 ppm", "data": ppm, "color": "#3B82F6"}]}
 
     elif chart_type == "anomaly":
         stats = d.get("anomaly_stats", [])[:10]
@@ -1127,6 +1159,8 @@ def _handle_command(cmd: dict, d: dict):
             if n > len(source):
                 return False, f"현재 최대 {len(source)}개까지 가능합니다 (풀 크기 {len(source)}개)"
             d["anomaly_stats"] = source[:n]
+        elif section == "shap":
+            d["shap_top_n"] = n
         elif section == "trend_weeks":
             d["weekly_yield_trend"] = get_weekly_yield_trend(recent_weeks=n)
         elif section == "trend_lots":
@@ -1305,14 +1339,17 @@ def _try_direct_action(message: str, d: dict):
             chart_type = cmd_raw.get("chart_type", "")
             if target_sid and chart_type:
                 chart_names = {
-                    "importance": "Feature Importance", "anomaly": "Anomaly Feature",
+                    "importance": "Feature Importance", "shap": "SHAP 영향도",
+                    "feat_dist": "피처 정상/불량 분포", "defect_trend": "불량 트렌드",
                     "lot_trend": "LOT 트렌드", "weekly_trend": "주차별 수율",
                     "ppm_trend": "LOT ppm", "pos_defect": "포지션별 불량률",
                     "pred_actual": "예측 vs 실측", "location_ppm": "위치별 평균 ppm",
+                    "health_hist": "예측 Health 분포", "top_risk_units": "위험 Unit Top 10",
+                    "lot_mean_ppm": "LOT 평균 ppm Top 10", "wafer_risk_ratio": "웨이퍼 위험 die 비율",
                 }
                 name = chart_names.get(chart_type, chart_type)
                 return {"action": "change_section", "target_sid": target_sid,
-                        "chart_type": chart_type, "response": f"{name} 차트로 변경했습니다."}, None
+                        "chart_type": chart_type, "response": f"{name} 차트 변경 완료"}, None
         return None, None
 
     # ── 숫자 추출 (X피처명 제거 후 추출 — 한글이 \w라 \b가 안 먹히는 문제 우회)
@@ -1322,6 +1359,7 @@ def _try_direct_action(message: str, d: dict):
 
     # ── 섹션 판별 키워드
     is_importance = bool(_re.search(r'importance|중요도|feature\s*importance', msg, _re.IGNORECASE))
+    is_shap       = bool(_re.search(r'shap|영향도', msg, _re.IGNORECASE))
     is_trend_lot  = bool(_re.search(r'lot\s*수|로트\s*수|pred_ppm|R3|trend_lot', msg, _re.IGNORECASE))
     is_trend_week = bool(_re.search(r'주\s*수|주차\s*수|L2|L3|trend_week|주간|불량\s*트렌드|트렌드\s*(차트|기간|수정|변경|주)', msg, _re.IGNORECASE))
     is_period_chg = bool(_re.search(r'기간|날짜|범위|주로|주\s*로|주\s*만|주\s*보|최근\s*\d', msg, _re.IGNORECASE))
@@ -1345,6 +1383,11 @@ def _try_direct_action(message: str, d: dict):
             return {"action": "set_top_n", "section": "trend_weeks", "n": n, "response": f"불량 트렌드를 최근 {n}주로 변경했습니다."}, None
         if is_trend_lot and not is_trend_week:
             return {"action": "set_top_n", "section": "trend_lots",  "n": n, "response": f"LOT ppm 트렌드를 최근 {n}개로 변경했습니다."}, None
+
+    # ── SHAP 영향도 차트 Top N 변경 ("SHAP 영향도 top8로")
+    if is_shap and n is not None:
+        return {"action": "set_top_n", "section": "shap", "n": n,
+                "response": f"SHAP 영향도 차트를 Top {n}로 변경했습니다."}, None
 
     # ── set_top_n 감지
     if is_topn and n is not None:

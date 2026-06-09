@@ -709,8 +709,12 @@ def get_ppm_delta() -> dict:
 
     # 이번주 = 전체 unit 평균 (대시보드 Overview2 트렌드의 마지막 주 = units.reg_pred.mean())
     curr_ppm = round(float(units["reg_pred"].mean()) * 1_000_000, 1)
-    # 지난주 = 대시보드 트렌드 과거 주 기준값 (Overview2.jsx TARGET_PAST_PPM)
-    prev_ppm = 2100.0
+    # 지난주 = 트렌드 차트의 직전 주 점 (대시보드 트렌드 끝에서 2번째 = 실제 전주)
+    try:
+        _dp = get_weekly_yield_trend(recent_weeks=10).get("defect_ppm") or []
+        prev_ppm = float(_dp[-2]) if len(_dp) >= 2 else 2100.0
+    except Exception:
+        prev_ppm = 2100.0
     delta    = round(curr_ppm - prev_ppm, 1)
 
     # top-2 피처명 (lgbm_rank 기준)
@@ -1265,6 +1269,24 @@ def get_feature_dist_compare(feature: str = None, bins: int = 40) -> dict:
         "danger":    danger,
         "threshold": threshold,
     }
+
+
+def get_shap_bar_top(n: int = 5) -> list:
+    """shap_bar.csv에서 X피처 상위 N개 (대시보드 SHAP 영향도 기준).
+    반환: [{feature, mag(mean_abs_shap), signed(mean_shap)}]"""
+    try:
+        import re as _re
+        sb = _load("shap_bar.csv")
+        sb = sb[sb["feature"].astype(str).str.match(r"^X\d+$")]
+        sb = sb.sort_values("mean_abs_shap", ascending=False).head(n)
+        out = []
+        for _, r in sb.iterrows():
+            out.append({"feature": str(r["feature"]),
+                        "mag":    float(r["mean_abs_shap"]),
+                        "signed": float(r.get("mean_shap", 0) or 0)})
+        return out
+    except Exception:
+        return []
 
 
 def get_pred_health_hist(bins: int = 10) -> dict:

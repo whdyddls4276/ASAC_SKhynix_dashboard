@@ -392,7 +392,6 @@ export default function ReportPage() {
   async function sendDirectAction(cmd) {
     if (loading) return
     setLoading(true)
-    addMsg('bot', cmd.action === 'remove' ? '섹션 삭제 중...' : '차트 변경 중...', { status: true })
     try {
       const res = await fetch(`${API_URL}/report/interact`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -400,7 +399,7 @@ export default function ReportPage() {
       })
       const consume = makeStreamParser({
         onReportReady: (html, data) => { pushUndo(); setCurrentHtml(html); if (data) setCurrentReportData(data) },
-        onDone: () => setLoading(false),
+        onDone: () => { addMsg('bot', cmd.action === 'remove' ? '섹션 삭제 완료' : '차트 변경 완료'); setLoading(false) },
         onError: (m) => { addMsg('bot', `⚠️ ${m}`); setLoading(false) },
       })
       await consume(res.body.getReader())

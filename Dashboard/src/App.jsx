@@ -65,7 +65,7 @@ export default function App() {
       <TopBar notifOpen={notifOpen} setNotifOpen={setNotifOpen} />
 
       <div className="app-body">
-        <Sidebar activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
+        <Sidebar activePage={activePage} setActivePage={(p) => { setPendingSelection(null); setActivePage(p) }} open={sidebarOpen} setOpen={setSidebarOpen} />
 
         <main className="main-content">
           {renderPageWithProps(activePage)}

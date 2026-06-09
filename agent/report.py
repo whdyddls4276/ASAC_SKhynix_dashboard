@@ -1134,7 +1134,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     cy = BY + SHDR_H + 10
 
     # ── 1. 모델 성능 KPI ──────────────────────────────────────
-    tx(f"1. {slabel('L1','모델 성능')}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
+    tx(f"{slabel('L1','모델 성능')}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
     cy += 18
 
     KPI_H = 56
@@ -1172,7 +1172,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     if show_l2:
         l2_replace = replace_map.get("L2_fi")
         l2_title = l2_replace.get("title") if l2_replace else slabel('L2','Feature Importance Top 5')
-        tx(f"2. {l2_title}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
+        tx(f"{l2_title}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
         cy += 18
         bx(LX+12, cy, LW-24, L2_H, (255,255,255), (156,163,175), 0.5)
         try:
@@ -1188,7 +1188,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     if show_l3:
         l3_replace = replace_map.get("L3_trend")
         l3_title = l3_replace.get("title") if l3_replace else slabel('L3','불량 트렌드')
-        tx(f"3. {l3_title}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
+        tx(f"{l3_title}", LX+12, cy, LW-24, 16, sz=11, bold=True, clr=(17,24,39))
         cy += 18
         bx(LX+12, cy, LW-24, L3_H, (255,255,255), (156,163,175), 0.5)
         try:
@@ -1318,7 +1318,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     if show_r2:
         r2_replace = replace_map.get("R2_anomaly")
         try:
-            _shap_items = _load_shap_bar_top(5)
+            _shap_items = _load_shap_bar_top(int(report_data.get("shap_top_n", 5)))
         except Exception:
             _shap_items = []
         bx(AX, ry, R2_W, REMAIN_H, (255,254,248), (156,163,175), 0.5)
@@ -1376,7 +1376,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     bx(0, FTR_Y, SW, 1, (107,114,128))
     tx("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14,
        sz=10, bold=True, clr=(17,24,39))
-    tx(f"{today_str}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
+    tx(f"{today_str}  ·  RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
        sz=10, clr=(75,85,99), align="center")
 
     # ─── 2번째 슬라이드: 추가 차트 + 메모 (있을 때만) ───────────
@@ -1435,7 +1435,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
         bx2(0, FTR_Y, SW, FTR_H, (241,245,249))
         bx2(0, FTR_Y, SW, 1, (107,114,128))
         tx2("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14, sz=10, bold=True, clr=(17,24,39))
-        tx2(f"{today_str}  ·  Val RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
+        tx2(f"{today_str}  ·  RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
             sz=10, clr=(75,85,99), align="center")
 
     buf = io.BytesIO()
@@ -1561,7 +1561,7 @@ def build_html(report_data: dict) -> str:
 
     # ── 3a: anomaly 패널을 대시보드 'SHAP 영향도'(평균 |SHAP|)로 대체 ──
     try:
-        _shap_items = _load_shap_bar_top(5)
+        _shap_items = _load_shap_bar_top(int(report_data.get("shap_top_n", 5)))
     except Exception:
         _shap_items = []
     _shap_n = len(_shap_items)
@@ -2084,7 +2084,7 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
     <div class="shdr">{slabel("left_header","[ 모델링 결과 ]")}</div>
     <div class="sbdy left-sbdy">
 
-      <div class="inum">1. {slabel("L1","모델 성능")}</div>
+      <div class="inum">{slabel("L1","모델 성능")}</div>
       <div class="ia-target" data-sid="L1_kpi" data-section="모델 성능" style="position:relative;margin-bottom:5px;flex-shrink:0">
         <div style="display:grid;grid-template-columns:1fr 1px 1fr;border:1px solid #9ca3af;background:#fff;height:28px;align-items:center;margin-bottom:4px">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:12px;font-weight:700;color:#374151">
@@ -2111,12 +2111,12 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
         </div>
       </div>
 
-      <div class="inum">2. {slabel("L2","Feature Importance Top 5")}</div>
+      <div class="inum">{slabel("L2","Feature Importance Top 5")}</div>
       <div class="cbox ia-target" data-sid="L2_fi" data-section="Feature Importance" style="position:relative;flex:1;display:flex;flex-direction:column">
         <div class="cbox-body" style="flex:1;position:relative"><canvas id="c-fi-top" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas></div>
       </div>
 
-      <div class="inum">3. {slabel("L3","불량 트렌드")}</div>
+      <div class="inum">{slabel("L3","불량 트렌드")}</div>
       <div class="cbox ia-target" data-sid="L3_trend" data-section="불량 트렌드" style="position:relative;flex:1;display:flex;flex-direction:column;min-height:0"{_dummy_attr(_is_dummy_l2)}>
         <div class="cbox-body" style="flex:1;position:relative"><canvas id="c-trend" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas></div>
       </div>
@@ -2192,12 +2192,11 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
   <div class="ctx-item" id="act-delete">🗑️ 삭제</div>
 </div>
 <div id="ia-chart-menu">
-  <div class="chart-hdr">기존 차트</div>
+  <div class="chart-hdr">기존 차트 (현재 보고서)</div>
   <div class="chart-item" data-chart="importance" title="모델이 예측에 중요하게 사용한 Feature 상위 막대 (LGBM Gain 기준)">Feature Importance 바 차트</div>
-  <div class="chart-item" data-chart="lot_trend" title="LOT별 위험(HIGH) 유닛 건수 추이 (LOT 순서)">LOT별 HIGH 건수 트렌드</div>
-  <div class="chart-item" data-chart="weekly_trend" title="주차별 예측 수율(불량률) 추이">주차별 수율 트렌드</div>
-  <div class="chart-item" data-chart="ppm_trend" title="LOT별 예측 ppm 추이 (평균/상위5%)">LOT별 예측 ppm 트렌드</div>
-  <div class="chart-item" data-chart="pred_actual" title="예측 health와 실측 health를 비교하는 산점도">예측 vs 실측 Scatter</div>
+  <div class="chart-item" data-chart="defect_trend" title="주차별 예측 불량 ppm 추이">불량 트렌드 (예측 ppm)</div>
+  <div class="chart-item" data-chart="shap" title="대시보드 SHAP 영향도 상위 피처 (평균 |SHAP| ppm)">SHAP 영향도 바 차트</div>
+  <div class="chart-item" data-chart="feat_dist" title="선택 피처의 안전(하위10%) vs 위험(상위10%) 값 분포">피처 정상/불량 분포</div>
   <div class="chart-hdr">추가 차트</div>
   <div class="chart-item" data-chart="health_hist" title="전체 유닛의 예측값 분포 히스토그램 (위험=예측 ppm 상위 10%)">예측 Health 분포</div>
   <div class="chart-item" data-chart="top_risk_units" title="예측 ppm이 가장 높은 위험 unit Top 10 (개별 유닛 우선순위)">위험 Unit Top 10 (예측 ppm)</div>
@@ -2207,7 +2206,7 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 
 <div class="s-footer">
   <div class="footer-brand">We Do Technology | SK hynix</div>
-  <span>{today_str} · Val RMSE {val_rmse}</span>
+  <span>{today_str} · RMSE {val_rmse}</span>
 </div>
 </div>
 

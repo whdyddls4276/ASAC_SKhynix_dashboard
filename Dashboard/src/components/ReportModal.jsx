@@ -263,8 +263,6 @@ export default function ReportModal({ markdown: html, reportData, toolCache, onC
   async function sendDirectAction(cmd) {
     if (loading) return
     setLoading(true)
-    const labels = { remove: '섹션 삭제 중...', change_chart: '차트 변경 중...' }
-    addMsg('ai', labels[cmd.action] || '처리 중...')
 
     const prompt = `__direct__:${JSON.stringify(cmd)}`
     try {

@@ -598,11 +598,20 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       .slice(0, 10)
   }, [units, q2, q3, upperFence])
 
-  // 이상치 유닛 웨이퍼맵: outlier_wafer.json + wafer_scale.json (계층탐색과 동일 색상 기준)
-  const [outlierWafer, setOutlierWafer] = useState(null)
+  // 이상치 유닛 웨이퍼맵: outlier_wafers.json(리스트) + wafer_scale.json (계층탐색과 동일 색상 기준)
+  const [outlierWafers, setOutlierWafers] = useState([])
+  const [outlierWafer, setOutlierWafer] = useState(null)   // 리스트에서 선택된 웨이퍼
   const [waferScale, setWaferScale] = useState(null)
   useEffect(() => {
-    fetch('/outlier_wafer.json').then(r => r.json()).then(setOutlierWafer).catch(() => setOutlierWafer(null))
+    const loadSingle = () => fetch('/outlier_wafer.json').then(r => r.json())
+      .then(w => { setOutlierWafers(w ? [w] : []); setOutlierWafer(w || null) })
+      .catch(() => { setOutlierWafers([]); setOutlierWafer(null) })
+    fetch('/outlier_wafers.json').then(r => r.json())
+      .then(list => {
+        if (Array.isArray(list) && list.length) { setOutlierWafers(list); setOutlierWafer(list[0]) }
+        else loadSingle()
+      })
+      .catch(loadSingle)
     fetch('/wafer_scale.json').then(r => r.json())
       .then(s => setWaferScale({ predMin: s.pred_min, predMax: s.pred_max, threshold: s.threshold }))
       .catch(() => setWaferScale(null))
@@ -706,33 +715,62 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         <ChartCard
           title="이상치 유닛 웨이퍼맵"
           sub={outlierWafer
-            ? `LOT${outlierWafer.lot}-WF${outlierWafer.wafer}-${outlierWafer.serial} · ${Math.round(outlierWafer.ppm).toLocaleString()} ppm · 클릭 시 계층탐색 이동`
-            : 'die 예측값(빨강=위험) · 보라 테두리 = 이상치 유닛 · 클릭 시 계층탐색 이동'}
+            ? `LOT${outlierWafer.lot}-WF${outlierWafer.wafer}-${outlierWafer.serial} · ${Math.round(outlierWafer.ppm).toLocaleString()} ppm · 맵 클릭 시 계층탐색 이동`
+            : 'die 예측값(빨강=위험) · 보라 테두리 = 이상치 유닛 · 맵 클릭 시 계층탐색 이동'}
         >
-          {outlierWafer && waferScale
-            ? (
-              <div style={{ width: '100%', height: 380, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div
-                  onClick={() => onNavigateDrilldown?.({ lot: outlierWafer.lot, wafer: outlierWafer.wafer, unit: outlierWafer.serial })}
-                  title="클릭하면 이 웨이퍼의 계층탐색으로 이동합니다"
-                  style={{ flex: 1, height: '100%', cursor: 'pointer' }}
-                >
-                  <OutlierWaferMap
-                    dies={outlierWafer.dies}
-                    unitDies={outlierWafer.unit_dies}
-                    scale={waferScale}
-                  />
-                </div>
-                {/* 컬러바 범례 (계층탐색과 동일 색상) */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: 300, flexShrink: 0, fontSize: 10, color: '#64748b' }}>
-                  <span style={{ marginBottom: 4, color: '#DC2626', fontWeight: 600 }}>위험</span>
-                  <div style={{ width: 14, flex: 1, borderRadius: 3, border: '1px solid #e2e8f0', background: COLOR_LEGEND_GRADIENT }} />
-                  <span style={{ marginTop: 4, color: '#64748b', fontWeight: 600 }}>정상</span>
-                </div>
+          <div style={{ width: '100%', height: 380, display: 'flex', alignItems: 'stretch', gap: 12 }}>
+            {/* 이상치 웨이퍼 리스트 박스 (선택 시 우측 맵 표시) */}
+            <div className="ov2-outlier-listbox">
+              <div className="ov2-outlier-listbox-title">이상치 웨이퍼 {outlierWafers.length}개</div>
+              <div className="ov2-outlier-list">
+                {outlierWafers.length === 0 && (
+                  <div className="ov2-outlier-empty">이상치 웨이퍼 없음</div>
+                )}
+                {outlierWafers.map((w, i) => {
+                  const active = outlierWafer?.serial === w.serial
+                  return (
+                    <button
+                      key={`${w.lot}_${w.wafer}_${w.serial}`}
+                      className={`ov2-outlier-item ${active ? 'active' : ''}`}
+                      onClick={() => setOutlierWafer(w)}
+                      title={`LOT${w.lot}-WF${w.wafer} ${w.serial} — 우측 웨이퍼맵에 표시`}
+                    >
+                      <span className="ov2-ol-rank">{i + 1}</span>
+                      <span className="ov2-ol-id">LOT{w.lot}-WF{w.wafer}</span>
+                      <span className="ov2-ol-ppm">{Math.round(w.ppm).toLocaleString()} ppm</span>
+                      <span className="ov2-ol-serial">{w.serial}</span>
+                    </button>
+                  )
+                })}
               </div>
-            )
-            : <div className="dummy-desc">이상치 웨이퍼 데이터 로딩 중…</div>
-          }
+            </div>
+
+            {/* 웨이퍼맵 + 컬러바 */}
+            {outlierWafer && waferScale
+              ? (
+                <>
+                  <div
+                    onClick={() => onNavigateDrilldown?.({ lot: outlierWafer.lot, wafer: outlierWafer.wafer, unit: outlierWafer.serial })}
+                    title="클릭하면 이 웨이퍼의 계층탐색으로 이동합니다"
+                    style={{ flex: 1, height: '100%', cursor: 'pointer' }}
+                  >
+                    <OutlierWaferMap
+                      dies={outlierWafer.dies}
+                      unitDies={outlierWafer.unit_dies}
+                      scale={waferScale}
+                    />
+                  </div>
+                  {/* 컬러바 범례 (계층탐색과 동일 색상) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: 300, alignSelf: 'center', flexShrink: 0, fontSize: 10, color: '#64748b' }}>
+                    <span style={{ marginBottom: 4, color: '#DC2626', fontWeight: 600 }}>위험</span>
+                    <div style={{ width: 14, flex: 1, borderRadius: 3, border: '1px solid #e2e8f0', background: COLOR_LEGEND_GRADIENT }} />
+                    <span style={{ marginTop: 4, color: '#64748b', fontWeight: 600 }}>정상</span>
+                  </div>
+                </>
+              )
+              : <div className="dummy-desc" style={{ flex: 1 }}>이상치 웨이퍼 데이터 로딩 중…</div>
+            }
+          </div>
         </ChartCard>
       </div>
 

@@ -42,3 +42,32 @@ out = {
 json.dump(out, open(PROC / 'outlier_wafer.json', 'w'), separators=(',', ':'))
 print(f'[{VERSION}] 이상치 웨이퍼: LOT{lot}-WF{wafer} {serial} ({ppm} ppm) | die {len(dies)}개, 이상치 유닛 die {len(unit_dies)}개')
 print(f'  저장: {PROC / "outlier_wafer.json"}')
+
+# ── 이상치 웨이퍼 리스트 — 불량현황에서 선택용 ──
+# 실제 이상치(grade4 매우위험) 유닛이 있는 웨이퍼만 (보강/채우기 없음)
+N_LIST = 50
+cand = u[u['grade'] == 'grade4'].sort_values('reg_pred', ascending=False)
+
+seen = set()
+wafers_list = []
+for r in cand.itertuples():
+    key = (r.run_id, r.wafer_no)
+    if key in seen:
+        continue
+    seen.add(key)
+    l_, w_, s_ = int(r.run_id), int(r.wafer_no), str(r.ufs_serial)
+    p_ = round(float(r.reg_pred) * 1e6, 1)
+    sub2 = wm[(wm['run_id'] == r.run_id) & (wm['wafer_no'] == r.wafer_no)].dropna(subset=['pred'])
+    if sub2.empty:
+        continue
+    wafers_list.append({
+        'lot': str(l_), 'wafer': str(w_), 'serial': s_, 'ppm': p_,
+        'max_pred': round(float(sub2['pred'].max()), 6),
+        'dies': [[int(x.die_x), int(x.die_y), round(float(x.pred), 6)] for x in sub2.itertuples()],
+        'unit_dies': [[int(x.die_x), int(x.die_y)] for x in sub2[sub2['ufs_serial'] == s_].itertuples()],
+    })
+    if len(wafers_list) >= N_LIST:
+        break
+
+json.dump(wafers_list, open(PROC / 'outlier_wafers.json', 'w'), separators=(',', ':'))
+print(f'  이상치 웨이퍼 리스트: {len(wafers_list)}개 → {PROC / "outlier_wafers.json"}')
