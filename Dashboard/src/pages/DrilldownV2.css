@@ -1132,7 +1132,7 @@
 /* 패턴별 Lot 통합맵 그리드 */
 .dd-pattern-map-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   max-height: calc(100vh - 240px);
   overflow-y: auto;
@@ -1423,7 +1423,7 @@
 
 /* 패턴 썸네일 클릭 시 오른쪽에 나란히 배치 */
 .dd-pattern-slidein {
-  width: 340px;
+  width: 520px;
   flex-shrink: 0;
   background: var(--surface);
   border: 1px solid var(--border);

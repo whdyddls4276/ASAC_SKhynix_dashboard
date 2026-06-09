@@ -776,6 +776,8 @@ export default function DrilldownV2({ initialSelection }) {
   const [loadedLot, setLoadedLot] = useState(null)
   const { data: dieData, loading: loadingDie } = useCSV(loadedLot ? `/wafer_map_lots/lot_${loadedLot}.csv` : null)
 
+  const pendingUnitRef = useRef(null)  // 메인 outlier 네비게이션 시 선택할 unit (initialSelection 유래)
+
   // 외부에서 initialSelection 전달받으면 자동 선택 (Lot 즉시 → die 로드 트리거)
   useEffect(() => {
     if (!initialSelection) return
@@ -796,7 +798,7 @@ export default function DrilldownV2({ initialSelection }) {
       setSelectedKey(`${lot}_${wafer}`)
     }
     if (unit) {
-      setTimeout(() => setSelectedUnit(unit), 0)
+      pendingUnitRef.current = unit   // dies 로드 후 선택 (아래 effect ⑤)
     }
   }, [initialSelection, dieData])
   const [waferSort, setWaferSort]       = useState('default') // 'default' | 'risk_desc' | 'risk_asc'
@@ -966,7 +968,16 @@ export default function DrilldownV2({ initialSelection }) {
 
   // ── 기본 선택 ④ (제거됨): 위험률 최고 wafer 자동 선택 안 함 ──
 
-  // ── 기본 선택 ⑤ (제거됨): wafer 선택 시 unit 자동 선택 안 함 → 사용자가 직접 die/unit 클릭 ──
+  // ── 기본 선택 ⑤ 수동 wafer 클릭은 unit 자동선택 안 함.
+  //    단, 메인 outlier 맵에서 넘어온 경우(initialSelection.unit)에만 해당 unit 선택 ──
+  useEffect(() => {
+    if (!pendingUnitRef.current || !selectedDies.length) return
+    const u = pendingUnitRef.current
+    if (selectedDies.some(d => String(d.ufs_serial) === String(u))) {
+      setSelectedUnit(u)
+      pendingUnitRef.current = null
+    }
+  }, [selectedDies])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
   // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
