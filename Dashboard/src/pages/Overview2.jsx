@@ -305,13 +305,6 @@ function ChartCard({ title, sub, children, style }) {
   )
 }
 
-function ppmColor(ppm, maxPpm) {
-  const r = ppm / maxPpm
-  if (r >= 0.97) return "#DC2626"
-  if (r >= 0.94) return "#F59E0B"
-  return "#2563EB"
-}
-
 function absBarWidth(ratio) {
   return `${Math.max(6, Math.round(ratio * 100))}%`
 }
@@ -631,7 +624,6 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
   }
 
   const { total, gradeCount, avgPpm } = kpi
-  const maxPpm = lotRankData.length ? Math.max(...lotRankData.map(r => r.avgPpm), 1) : 1
 
   return (
     <div className="overview">
@@ -702,7 +694,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
                       </span>
                       <span className={`ov-risk-badge ${rc}`}>{(row.riskRate * 100).toFixed(1)}%</span>
                     </td>
-                    <td className="ov-lot-ppm" style={{ color: ppmColor(row.avgPpm, maxPpm) }}>{row.avgPpm.toLocaleString()}</td>
+                    <td className={`ov-lot-ppm ${rc}`}>{row.avgPpm.toLocaleString()}</td>
                     <td className="ov-lot-count" style={{ textAlign: 'right' }}>{row.total.toLocaleString()}</td>
                   </tr>
                   )

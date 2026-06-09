@@ -473,6 +473,11 @@
   text-align: right;
 }
 
+/* 계층탐색 % 텍스트와 동일한 위험비율 기준 색상 */
+.ov-lot-ppm.danger { color: #DC2626; }
+.ov-lot-ppm.warn   { color: #D97706; }
+.ov-lot-ppm.ok     { color: var(--text3); }
+
 .ov-lot-count {
   font-size: 12px;
   font-family: 'JetBrains Mono', monospace;

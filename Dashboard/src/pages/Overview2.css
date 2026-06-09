@@ -145,9 +145,10 @@
   transition: width 0.3s;
 }
 
-.ov2-bar-fill.danger { background: #EF4444; }
-.ov2-bar-fill.warn   { background: #F59E0B; }
-.ov2-bar-fill.ok     { background: #22C55E; }
+/* 계층탐색 로트 리스트 바와 색상 통일 */
+.ov2-bar-fill.danger { background: #F87171; }
+.ov2-bar-fill.warn   { background: #FCD34D; }
+.ov2-bar-fill.ok     { background: #86EFAC; }
 
 /* 테이블 셀 패딩 축소 */
 .ov2-lot-table {
