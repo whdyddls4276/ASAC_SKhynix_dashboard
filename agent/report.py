@@ -1058,7 +1058,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     delta_val     = ppm_delta.get("delta", 0)
     delta_str     = f"▲{abs(delta_val):,.0f}" if delta_val >= 0 else f"▼{abs(delta_val):,.0f}"
     try:
-        _default_alert = ", ".join(it["feature"] for it in _load_shap_bar_top(2))   # SHAP 상위 2개
+        _default_alert = ", ".join(it["feature"] for it in _shap_red_items(report_data, 1))   # SHAP 차트 상위 1개(빨강=불량↑)
     except Exception:
         _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
     alert_features = meta.get("alert_features", _default_alert)
@@ -1115,7 +1115,8 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     _pred_h_raw  = _tu.get("pred_health", _tu.get("pred_ppm", 0))
     try: _pred_h_f = float(_pred_h_raw)
     except: _pred_h_f = 0.0
-    _pred_h_disp = f"{_pred_h_f/1e6:.6f}" if _pred_h_f > 1 else f"{_pred_h_f:.6f}"
+    _pred_h_frac = (_pred_h_f / 1e6) if _pred_h_f > 1 else _pred_h_f
+    _pred_h_disp = f"{round(_pred_h_frac * 1e6):,} ppm"
     unit_serial  = _tu.get("serial", "S38369")
     unit_lot     = str(_tu.get("run_id", "-"))
     unit_wafer   = str(_tu.get("wafer_no", "-"))
@@ -1604,7 +1605,7 @@ def build_html(report_data: dict) -> str:
     delta_str   = f"▲{abs(delta_val):,.0f}" if delta_val >= 0 else f"▼{abs(delta_val):,.0f}"
     delta_color = "#EF4444" if delta_val >= 0 else "#16A34A"
     try:
-        _default_alert = ", ".join(it["feature"] for it in _load_shap_bar_top(2))   # SHAP 상위 2개
+        _default_alert = ", ".join(it["feature"] for it in _shap_red_items(report_data, 1))   # SHAP 차트 상위 1개(빨강=불량↑)
     except Exception:
         _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
     alert_features = meta.get("alert_features", _default_alert)
@@ -1756,8 +1757,9 @@ def build_html(report_data: dict) -> str:
         _pred_health_f = float(_pred_health_raw)
     except (TypeError, ValueError):
         _pred_health_f = 0.0
-    # pred_health가 ppm 단위로 저장된 경우 → health 단위로 변환
-    _pred_health_display = f"{_pred_health_f/1e6:.6f}" if _pred_health_f > 1 else f"{_pred_health_f:.6f}"
+    # pred_health가 ppm 단위로 저장된 경우 → health 단위로 변환 후 ppm 표시
+    _pred_health_frac = (_pred_health_f / 1e6) if _pred_health_f > 1 else _pred_health_f
+    _pred_health_display = f"{round(_pred_health_frac * 1e6):,} ppm"
     dummy_unit = {
         "serial":        _tu.get("serial", "S38369"),
         "pred_health":   _pred_health_display,
