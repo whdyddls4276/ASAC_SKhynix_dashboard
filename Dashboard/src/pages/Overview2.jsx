@@ -8,6 +8,7 @@ import './Overview2.css'
 // 트렌드 차트 — 배경 영역(파랑/빨강)을 차트 뒤 div로 깔아 정확히 컬럼에 맞춤
 function TrendChart({ option, lastTrueIdx = -1 }) {
   const ref = useRef(null)
+  const wrapRef = useRef(null)
   const [bands, setBands] = useState(null)  // [{ left, width, color }], top, height
 
   const n = option?.xAxis?.data?.length ?? 0
@@ -47,15 +48,25 @@ function TrendChart({ option, lastTrueIdx = -1 }) {
     inst?.on('finished', compute)
     const t = setTimeout(compute, 60)
     window.addEventListener('resize', compute)
+    // 컨테이너 폭 변화(사이드바 접기/펼치기 등) 감지 → echarts 리사이즈 + 배경 밴드 재계산
+    let ro
+    if (typeof ResizeObserver !== 'undefined' && wrapRef.current) {
+      ro = new ResizeObserver(() => {
+        ref.current?.getEchartsInstance?.()?.resize()
+        compute()
+      })
+      ro.observe(wrapRef.current)
+    }
     return () => {
       inst?.off('finished', compute)
       clearTimeout(t)
       window.removeEventListener('resize', compute)
+      ro?.disconnect()
     }
   }, [option, n, lastTrueIdx])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
       {bands && bands.segs.map((s, i) => (
         <div key={i} style={{ position: 'absolute', top: bands.top, height: bands.height, left: s.left, width: s.width,
           background: s.color, pointerEvents: 'none', zIndex: 0 }} />
@@ -111,9 +122,10 @@ export const GRADE_COLORS = {
 }
 
 export function getGrade(pred, thresholds) {
-  const { q2, q3, upperFence } = thresholds
+  // 위험(grade3) 기준 = P90 (reg_pred 상위 10%) — CSV grade 컬럼·드릴다운과 통일
+  const { q2, p90, upperFence } = thresholds
   if (pred >= upperFence) return 'grade4'
-  if (pred >= q3)         return 'grade3'
+  if (pred >= p90)        return 'grade3'
   if (pred >= q2)         return 'grade2'
   return 'grade1'
 }
@@ -274,9 +286,10 @@ function computeThresholds(units) {
   const q1 = allPreds[Math.floor(n * 0.25)] ?? 0
   const q2 = allPreds[Math.floor(n * 0.50)] ?? 0
   const q3 = allPreds[Math.floor(n * 0.75)] ?? 0
+  const p90 = allPreds[Math.floor(n * 0.90)] ?? 0   // 위험(grade3) 컷
   const iqr = q3 - q1
   const upperFence = q3 + 1.5 * iqr
-  return { q1, q2, q3, iqr, upperFence }
+  return { q1, q2, q3, p90, iqr, upperFence }
 }
 
 function KpiCard({ label, value, sub, color }) {
@@ -316,16 +329,16 @@ function riskClass(ratio) {
 export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor }) {
   const { data: units, loading: loadingUnits } = useCSV('/dashboard_units.csv')
   const { data: trendRaw, loading: loadingTrend } = useCSV('/trend_data.csv')
-  const { data: lotSummary } = useCSV('/dashboard_lot_summary.csv')  // 계층탐색과 동일 die-P90 위험비율
+  const { data: lotSummary } = useCSV('/dashboard_lot_summary.csv')  // 계층탐색과 동일 유닛 기반 위험비율
 
-  const { q2, q3, upperFence } = useMemo(() => {
-    if (!units.length) return { q2: 0, q3: 0, upperFence: 0 }
+  const { q2, q3, p90, upperFence } = useMemo(() => {
+    if (!units.length) return { q2: 0, q3: 0, p90: 0, upperFence: 0 }
     return computeThresholds(units)
   }, [units])
 
   const kpi = useMemo(() => {
     if (!units.length) return null
-    const thresholds = { q2, q3, upperFence }
+    const thresholds = { q2, q3, p90, upperFence }
 
     const gradeCount = { grade1: 0, grade2: 0, grade3: 0, grade4: 0 }
     units.forEach(u => { gradeCount[getGrade(parseFloat(u.reg_pred), thresholds)]++ })
@@ -336,7 +349,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     )
 
     return { total, gradeCount, avgPpm }
-  }, [units, q2, q3, upperFence])
+  }, [units, q2, q3, p90, upperFence])
 
   // 주차별 불량 ppm 트렌드 (Overview1에서 이전)
   const trendResult = useMemo(() => {
@@ -425,7 +438,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
       if (v == null) return null
       if (i === n - 1) return Math.round(actualLastPpm)
       const scaled = Math.round(v * pastScale)
-      return Math.max(2000, Math.min(2200, scaled))
+      return scaled   // clamp 제거: 실제 스케일값 그대로 (보고서와 통일)
     })
     const trueAvgFilled = trueAvgRaw.map((v, i, arr) => {
       if (v != null) return v
@@ -439,7 +452,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     const trueAvg = trueAvgFilled.map(v => {
       if (v == null) return null
       const scaled = Math.round(v * pastScale)
-      return Math.max(2000, Math.min(2200, scaled))
+      return scaled   // clamp 제거: 실제 스케일값 그대로 (보고서와 통일)
     })
 
     const lastTrueIdx = trueAvg.reduce((acc, v, i) => v != null ? i : acc, -1)
@@ -450,7 +463,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
     const trueAvgRaw2 = trueAvgRaw.map(v => {
       if (v == null) return null
       const scaled = Math.round(v * pastScale)
-      return Math.max(2000, Math.min(2200, scaled))
+      return scaled   // clamp 제거: 실제 스케일값 그대로 (보고서와 통일)
     })
     const pastData   = trueAvgRaw2.map((v, i) => i <= lastTrueIdx ? v : null)
     const futureData = predAvg.map((v, i) => {
@@ -564,15 +577,15 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
 
   const lotRankData = useMemo(() => {
     if (!units.length) return []
-    // 위험비율: 계층탐색 로트 리스트와 동일 — die-P90 (dashboard_lot_summary 기반)
+    // 위험비율: 계층탐색 로트 리스트와 동일 — 유닛 기반(위험 유닛/전체 유닛, reg_pred≥P90)
     const dieMap = {}
     lotSummary.forEach(d => {
       const lotNum = parseInt(d.run_id)
       if (!(lotNum >= 1 && lotNum <= 28)) return
       const lot = String(lotNum)
       if (!dieMap[lot]) dieMap[lot] = { rd: 0, td: 0 }
-      dieMap[lot].rd += parseFloat(d.risk_dies) || 0
-      dieMap[lot].td += parseFloat(d.total_dies) || 0
+      dieMap[lot].rd += parseFloat(d.risk_units) || 0
+      dieMap[lot].td += parseFloat(d.total_units) || 0
     })
     const lotMap = {}
     units.forEach(u => {
@@ -591,7 +604,7 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
         return {
           lot: l.lot,
           total: l.total,
-          riskRate: dm && dm.td ? dm.rd / dm.td : 0,   // 계층탐색과 동일 die-P90 위험비율
+          riskRate: dm && dm.td ? dm.rd / dm.td : 0,   // 계층탐색과 동일 유닛 기반 위험비율(위험 유닛/전체 유닛)
           avgPpm: l.total ? Math.round(l.predSum / l.total * 1e6) : 0,
         }
       })
@@ -653,6 +666,9 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
           value={total.toLocaleString()}
           color="#1E3A5F"
         />
+      </div>
+      <div style={{ margin: '6px 2px 0', fontSize: 11.5, color: '#475569', fontWeight: 500, textAlign: 'right' }}>
+        * PPM(parts per million) = 백만분의 1 — 제품 100만 개당 불량 개수
       </div>
 
       {/* 주차별 불량 ppm 트렌드 */}

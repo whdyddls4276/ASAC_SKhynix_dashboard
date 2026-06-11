@@ -90,29 +90,31 @@ units = unit_meta.merge(
     on=["ufs_serial", "split"], how="left"
 )
 
-# threshold: 전체(train+val+test) pred IQR 기반
+# threshold: 전체(train+val+test) pred 분위 기반
+# 위험(grade3) 기준 = P90 (reg_pred 상위 10%) — die P90 색칠/프런트와 통일
 # grade1 = 정상        : pred < Q2
-# grade2 = 조심        : Q2 <= pred < Q3
-# grade3 = 위험        : Q3 <= pred < Q3 + 1.5*IQR
+# grade2 = 조심        : Q2  <= pred < P90
+# grade3 = 위험        : P90 <= pred < Q3 + 1.5*IQR
 # grade4 = 매우위험    : pred >= Q3 + 1.5*IQR
 all_preds = units["reg_pred"].dropna()
 q1 = all_preds.quantile(0.25)
 q2 = all_preds.quantile(0.50)            # Q2 (중앙값)
 q3 = all_preds.quantile(0.75)            # Q3
+p90 = all_preds.quantile(0.90)           # P90 = 위험(grade3) 컷
 iqr = q3 - q1                           # IQR = Q3 - Q1
 upper_fence = q3 + 1.5 * iqr            # Q3 + 1.5*IQR (이상치 경계)
-threshold = q3                           # 대표 임계값 = Q3
+threshold = p90                          # 대표 임계값 = P90 (위험 컷)
 
-print(f"  Q1={q1:.6f} | Q2={q2:.6f} | Q3={q3:.6f} | IQR={iqr:.6f} | upper_fence={upper_fence:.6f}")
+print(f"  Q2={q2:.6f} | Q3={q3:.6f} | P90={p90:.6f} | upper_fence={upper_fence:.6f}")
 
 def assign_risk(pred):
     if pred >= upper_fence: return "HIGH"
-    if pred >= q3:          return "MED"
+    if pred >= p90:         return "MED"
     return "LOW"
 
 def assign_grade(pred):
     if pred >= upper_fence: return "grade4"   # 매우위험
-    if pred >= q3:          return "grade3"   # 위험
+    if pred >= p90:         return "grade3"   # 위험 (P90)
     if pred >= q2:          return "grade2"   # 조심
     return "grade1"                           # 정상
 

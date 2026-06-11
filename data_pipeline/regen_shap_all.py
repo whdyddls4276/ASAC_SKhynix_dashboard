@@ -12,13 +12,15 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-ROOT     = Path('C:/Users/Dell3571/Desktop/dashboard_v3')
+ROOT     = Path('C:/Users/Dell3571/Desktop/dashboard_fin')
 RAW      = ROOT / 'data' / 'raw'
 PUBLIC   = ROOT / 'data' / 'processed'
-XS_PATH  = Path('C:/Users/Dell3571/Desktop/ASAC_SKhynix/0_data/compet_xs_data.csv')
+XS_PATH  = Path('C:/Users/Dell3571/Desktop/기업/0_data/compet_xs_data.csv')
 
-sys.path.insert(0, 'C:/Users/Dell3571/Desktop/ASAC_SKhynix/3_modeling')
-sys.path.insert(0, 'C:/Users/Dell3571/Desktop/ASAC_SKhynix')
+# ZITboost(BagZITEQLRegressor) 언피클용 모듈 경로
+_MODBASE = 'C:/Users/Dell3571/Desktop/backup/ASAC_SKhynix'
+sys.path.insert(0, _MODBASE + '/3_modeling')
+sys.path.insert(0, _MODBASE)
 
 print("=" * 60)
 print("SHAP 전체 die 재생성 (train + val + test)")
@@ -52,12 +54,12 @@ if 'die_x' in feat_meta or 'die_y' in feat_meta:
     parts = xs_all['run_wf_xy'].str.split('_')
     xs_all['die_x'] = parts.str[-2].apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
     xs_all['die_y'] = parts.str[-1].apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
-xs_all = xs_all.drop(columns='run_wf_xy')
 for base, mc in zip(missing_base, missing_feats):
     xs_all[mc] = xs_all[base].isna().astype(int) if base in xs_all.columns else 0
 xs_all = xs_all.drop(columns=[c for c in extra if c not in feat_names], errors='ignore')
 
-xs_merged = all_die[['ufs_serial']].merge(xs_all, on='ufs_serial', how='left')
+# die 단위 1:1 매칭(run_wf_xy). ufs_serial 단독 merge는 unit당 die 4×4=16 카테시안 폭증 → SHAP 4배 부풀림 버그.
+xs_merged = all_die[['ufs_serial', 'run_wf_xy']].merge(xs_all, on=['ufs_serial', 'run_wf_xy'], how='left')
 X_df = xs_merged[feat_names].copy()
 X = X_df.fillna(0).values
 serials = xs_merged['ufs_serial'].values
@@ -101,7 +103,7 @@ idx = [feat_names.index(f) for f in tfn]
 print(f"  beeswarm 피처: SHAP{TOP} ∪ gain{TOP} = {len(tfn)}개")
 sdf = pd.DataFrame(shap_values[:, idx], columns=tfn); sdf['ufs_serial'] = serials
 fdf = pd.DataFrame(X_df[tfn].values, columns=[f'fv_{c}' for c in tfn]); fdf['ufs_serial'] = serials
-su = sdf.groupby('ufs_serial')[tfn].mean(); fu = fdf.groupby('ufs_serial')[[f'fv_{c}' for c in tfn]].mean()
+su = sdf.groupby('ufs_serial')[tfn].mean(); fu = fdf.groupby('ufs_serial')[[f'fv_{c}' for c in tfn]].mean()  # die SHAP 평균(unit 대표 기여), 피처값(fv_)도 평균
 rows = []
 for ri, feat in enumerate(tfn):
     sv = su[feat]; fv = fu[f'fv_{feat}']
@@ -117,7 +119,7 @@ print(f"  저장: shap_beeswarm.csv ({len(beeswarm):,}행, {beeswarm['ufs_serial
 # 전체 X피처(~530개)에서 unit별 |SHAP| 상위 10개를 뽑아 항상 10개가 채워지게 함
 xcols = [i for i, f in enumerate(feat_names) if _isx(f)]
 xnames = np.array([feat_names[i] for i in xcols])
-um = pd.DataFrame(shap_values[:, xcols], columns=xnames).groupby(serials).mean()
+um = pd.DataFrame(shap_values[:, xcols], columns=xnames).groupby(serials).mean()  # die SHAP 평균(unit 대표 기여)
 arr = um.values                      # (unit, X피처)
 abs_arr = np.abs(arr)
 unit_serials = um.index.values

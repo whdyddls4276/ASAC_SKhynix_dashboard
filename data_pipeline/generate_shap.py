@@ -68,7 +68,6 @@ if feat_in_meta:
         xs_all["die_x"] = parts.str[-2].apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
     if "die_y" in feat_in_meta:
         xs_all["die_y"] = parts.str[-1].apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
-xs_all = xs_all.drop(columns="run_wf_xy")
 
 # _missing 인디케이터 생성
 for base, miss_col in zip(missing_base, missing_feats):
@@ -80,8 +79,9 @@ for base, miss_col in zip(missing_base, missing_feats):
 cols_to_drop = [c for c in extra_for_missing if c not in feat_names]
 xs_all = xs_all.drop(columns=cols_to_drop, errors="ignore")
 
-# all_die 순서 기준으로 merge
-xs_merged = all_die[["ufs_serial", "split"]].merge(xs_all, on="ufs_serial", how="left")
+# all_die 순서 기준으로 die 단위 1:1 merge (run_wf_xy 포함)
+# ufs_serial 단독 merge는 unit당 die 4×4=16 카테시안 폭증 → SHAP 4배 부풀림 버그.
+xs_merged = all_die[["ufs_serial", "run_wf_xy", "split"]].merge(xs_all, on=["ufs_serial", "run_wf_xy"], how="left")
 X_all_df  = xs_merged[feat_names].copy()          # NaN 유지 (feat_norm 계산용)
 X_all     = X_all_df.fillna(0).values             # SHAP 계산용
 serials   = xs_merged["ufs_serial"].values
@@ -132,7 +132,7 @@ top_feat_names = [feat_names[i] for i in top_feat_idx]
 shap_top20     = shap_values[:, top_feat_idx]        # (n_die, 20)
 feat_vals_top20 = X_all_df[top_feat_names].values    # NaN 유지
 
-# die → unit 평균
+# die → unit 집계: die SHAP 평균(unit 대표 기여), 피처값도 평균
 shap_df = pd.DataFrame(shap_top20, columns=top_feat_names)
 shap_df["ufs_serial"] = serials
 feat_df = pd.DataFrame(feat_vals_top20, columns=[f"fv_{c}" for c in top_feat_names])

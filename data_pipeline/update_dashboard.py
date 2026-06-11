@@ -284,9 +284,13 @@ def classify_wafer_pattern(dies, threshold):
 
 
 def gen_patterns():
-    hr(); log("[3] Lot 패턴 (dashboard_lot_patterns, dashboard_lot_pattern_maps)")
+    hr(); log("[3] Lot 패턴 (dashboard_lot_patterns, dashboard_lot_pattern_maps) — 유닛 reg_pred 기준")
     wm = pd.read_csv(PROC / "wafer_map.csv"); wm["pred"] = pd.to_numeric(wm["pred"], errors="coerce")
-    th = json.load(open(PROC / "wafer_scale.json"))["threshold"]
+    # 유닛 기준: 각 die에 소속 유닛 reg_pred 부착 → 좌표별 worst 유닛 reg_pred 로 집계
+    units = pd.read_csv(PROC / "dashboard_units.csv", usecols=["ufs_serial", "reg_pred"])
+    units["reg_pred"] = pd.to_numeric(units["reg_pred"], errors="coerce")
+    wm = wm.merge(units, on="ufs_serial", how="left")
+    th = float(units["reg_pred"].dropna().quantile(0.90))   # 유닛 위험 임계 = reg_pred P90
     # 대상 lot = 기존 patterns.csv 의 lot 집합 (원본 1~28)
     try:
         target = set(pd.read_csv(PROC / "dashboard_lot_patterns.csv")["lot"].astype(int).tolist())
@@ -295,17 +299,18 @@ def gen_patterns():
     maps, rows = {}, []
     for lot, g in wm.groupby("run_id"):
         if int(lot) not in target: continue
-        coord = g.groupby(["die_x", "die_y"], as_index=False)["pred"].max().dropna(subset=["pred"])
-        dl = [[int(r["die_x"]), int(r["die_y"]), round(float(r["pred"]), 6)] for _, r in coord.iterrows()]
+        # 좌표별 값 = 그 좌표에 닿는 유닛들의 reg_pred 최댓값(worst 유닛 위험도)
+        coord = g.groupby(["die_x", "die_y"], as_index=False)["reg_pred"].max().dropna(subset=["reg_pred"])
+        dl = [[int(r["die_x"]), int(r["die_y"]), round(float(r["reg_pred"]), 6)] for _, r in coord.iterrows()]
         maps[str(int(lot))] = dl
         rows.append({"lot": int(lot), "pattern": classify_wafer_pattern(dl, th),
                      "n_dies": len(coord), "n_wafers": g["wafer_no"].nunique(),
-                     "risk_ratio": round(float((coord["pred"] > th).mean()), 6),
-                     "avg_pred": round(float(coord["pred"].mean()), 6),
-                     "max_pred": round(float(coord["pred"].max()), 6)})
+                     "risk_ratio": round(float((coord["reg_pred"] > th).mean()), 6),
+                     "avg_pred": round(float(coord["reg_pred"].mean()), 6),
+                     "max_pred": round(float(coord["reg_pred"].max()), 6)})
     json.dump(maps, open(PROC / "dashboard_lot_pattern_maps.json", "w"), separators=(",", ":"))
     pd.DataFrame(rows).sort_values("lot").to_csv(PROC / "dashboard_lot_patterns.csv", index=False)
-    log(f"  ✔ pattern_maps.json + dashboard_lot_patterns.csv ({len(rows)} lot)")
+    log(f"  ✔ pattern_maps.json + dashboard_lot_patterns.csv ({len(rows)} lot) · 유닛 P90 th={th:.6f}")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -320,8 +325,16 @@ def gen_lot_summary():
         total_dies=("pred", "size"),
         risk_dies=("pred", lambda x: int((x > th).sum())),
         avg_ppm=("pred", lambda x: round(x.mean() * 1e6, 1))).reset_index()
+    # 유닛 기반 위험비율: 그 웨이퍼의 위험 유닛(grade3/4 = reg_pred≥P90) 수 / 전체 유닛 수
+    units = pd.read_csv(PROC / "dashboard_units.csv", usecols=["run_id", "wafer_no", "grade"])
+    ug = units.groupby(["run_id", "wafer_no"]).agg(
+        total_units=("grade", "size"),
+        risk_units=("grade", lambda s: int(s.isin(["grade3", "grade4"]).sum()))).reset_index()
+    g = g.merge(ug, on=["run_id", "wafer_no"], how="left")
+    g["total_units"] = g["total_units"].fillna(0).astype(int)
+    g["risk_units"]  = g["risk_units"].fillna(0).astype(int)
     g.to_csv(PROC / "dashboard_lot_summary.csv", index=False)
-    log(f"  ✔ dashboard_lot_summary.csv ({len(g):,} wafers)")
+    log(f"  ✔ dashboard_lot_summary.csv ({len(g):,} wafers) · 유닛 위험비율 컬럼 추가")
 
 
 # ════════════════════════════════════════════════════════════════

@@ -865,19 +865,71 @@
 
 .dd-bpos-row {
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 9px;
+  border-radius: 8px;
+  padding: 7px 10px;
   background: var(--surface);
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
 }
 .dd-bpos-row:hover { border-color: #94A3B8; background: #f8fafc; }
-.dd-bpos-row.selected { border-color: #7C3AED; background: #F5F3FF; }
+.dd-bpos-row.selected { border-color: #7C3AED; background: #F5F3FF; box-shadow: 0 0 0 1px #7C3AED inset; }
+.dd-bpos-row.ismax { border-color: #FCA5A5; background: #FFFBFB; }
+.dd-bpos-row.ismax.selected { border-color: #7C3AED; }
 .dd-bpos-row.risk { background: #FFF7F7; }
 .dd-bpos-row.risk.selected { border-color: #DC2626; background: #FEF2F2; }
+
+/* 다이버징 바: die 평균(중앙) 대비 좌우 편차 */
+.dd-bpos-unit { font-size: 9px; color: var(--text3); font-weight: 600; }
+.dd-bdiv-track {
+  flex: 1;
+  position: relative;
+  height: 16px;
+  background: linear-gradient(90deg, #F1F5F9 0%, #F8FAFC 50%, #F1F5F9 100%);
+  border-radius: 4px;
+}
+.dd-bdiv-center {
+  position: absolute;
+  left: 50%;
+  top: -2px; bottom: -2px;
+  width: 2px;
+  background: #94A3B8;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  z-index: 1;
+}
+.dd-bdiv-fill {
+  position: absolute;
+  top: 3px; bottom: 3px;
+  border-radius: 3px;
+  transition: width 0.25s ease;
+  min-width: 2px;
+}
+.dd-bdiv-fill.pos { background: linear-gradient(90deg, #FCA5A5, #DC2626); border-radius: 0 3px 3px 0; }
+.dd-bdiv-fill.neg { background: linear-gradient(90deg, #94A3B8, #CBD5E1); border-radius: 3px 0 0 3px; }
+.dd-bdiv-val {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: var(--text3);
+  min-width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.dd-bdiv-val.pos { color: #B91C1C; }
+.dd-bdiv-val.neg { color: #64748B; }
+.dd-bpos-max { font-size: 10px; font-weight: 800; color: #B91C1C; flex-shrink: 0; }
+.dd-bdiv-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text3);
+  padding: 0 2px;
+  margin-top: 1px;
+}
 
 .dd-bpos-header{
   display: flex;
@@ -903,11 +955,13 @@
 }
 
 .dd-bpos-ppm {
-  font-size: 11px;
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
   color: var(--text);
-  flex: 1;
+  min-width: 56px;
+  text-align: right;
+  flex-shrink: 0;
 }
 .dd-bpos-ppm.danger { color: #DC2626; }
 

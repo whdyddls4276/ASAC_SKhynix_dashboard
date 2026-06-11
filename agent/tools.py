@@ -936,11 +936,11 @@ def get_weekly_yield_trend(recent_weeks: int = 7) -> dict:
     def _clamp_past(v, is_last):
         if v is None: return None
         if is_last: return round(actual_last_ppm)
-        return max(2000, min(2200, round(v * past_scale)))
+        return round(v * past_scale)   # clamp 제거: 실제 스케일값 그대로 (대시보드와 통일)
 
     pred_final = [_clamp_past(pred_filled[i], i == n - 1) for i in range(n)]
     true_final = [
-        max(2000, min(2200, round(v * past_scale))) if v is not None else None
+        round(v * past_scale) if v is not None else None
         for v in true_filled
     ]
 
@@ -948,6 +948,21 @@ def get_weekly_yield_trend(recent_weeks: int = 7) -> dict:
         f"{fmt(weeks.loc[i,'week_start'])}~{fmt(weeks.loc[i,'week_start'] + timedelta(days=6))}"
         for i in range(n)
     ]
+
+    # ── 'N월 N주차' 라벨: 대시보드 Overview2와 동일 앵커 ──
+    #   마지막 y_true(실측) 주를 2026-06-08(6월 2주차)에 고정 → 그 이후 주는 예측으로 확장.
+    #   하드코딩(마지막=8/10 역산) 대신 데이터 기반이라 대시보드와 항상 일치.
+    from datetime import date as _date
+    _last_true = max([i for i in range(n) if pd.notna(weeks.loc[i, "true_ppm"])], default=n - 1)
+    _anchor = _date(2026, 6, 8)
+    def _ww(i):
+        d = _anchor + timedelta(days=(i - _last_true) * 7)
+        return f"{d.month}월 {-(-d.day // 7)}주차"   # ceil(day/7)
+    def _wd(i):
+        d = _anchor + timedelta(days=(i - _last_true) * 7); e = d + timedelta(days=6)
+        return f"{d.month:02d}/{d.day:02d}~{e.month:02d}/{e.day:02d}"
+    ww_all = [_ww(i) for i in range(n)]
+    wd_all = [_wd(i) for i in range(n)]
 
     # 최근 recent_weeks 만 슬라이스
     sl = slice(max(0, n - recent_weeks), n)
@@ -959,6 +974,8 @@ def get_weekly_yield_trend(recent_weeks: int = 7) -> dict:
 
     return {
         "labels":     labels_out,
+        "ww_labels":  ww_all[sl],   # 'N월 N주차' (대시보드 동일 앵커)
+        "date_labels": wd_all[sl],  # 'MM/DD~MM/DD' (앵커 기준)
         "production": [int(v) for v in prod_out],
         "pred_yield": pred_yield,
         "defect_ppm": [int(v) if v is not None else 0 for v in pred_out],
@@ -1289,6 +1306,47 @@ def get_shap_bar_top(n: int = 5) -> list:
             out.append({"feature": str(r["feature"]),
                         "mag":    float(r["mean_abs_shap"]),
                         "signed": float(r.get("mean_shap", 0) or 0)})
+        return out
+    except Exception:
+        return []
+
+
+def get_unit_shap_bar(serial: str, n: int = 5) -> list:
+    """shap_unit.json에서 특정 유닛의 SHAP 영향도 상위 N개 (부호 포함).
+    반환: [{feature, mag(|shap|), signed(shap_value)}] — _load_shap_bar_top과 동일 포맷."""
+    try:
+        import json as _json, os as _os, re as _re
+        p = _os.path.join(DATA_DIR, "shap_unit.json")
+        if not _os.path.exists(p):
+            return []
+        d = _json.load(open(p, encoding="utf-8"))
+        items = d.get(str(serial)) or []
+        items = [it for it in items if _re.match(r"^X\d+$", str(it.get("feature", "")))]
+        items = sorted(items, key=lambda it: abs(float(it.get("shap_value", 0) or 0)), reverse=True)[:n]
+        return [{"feature": str(it["feature"]),
+                 "mag":    abs(float(it.get("shap_value", 0) or 0)),
+                 "signed": float(it.get("shap_value", 0) or 0)} for it in items]
+    except Exception:
+        return []
+
+
+def get_candidate_units(n: int = 5) -> list:
+    """보고서 대표 유닛 후보 — grade4(이상치) 먼저, 부족하면 예측 ppm 상위로 채움.
+    반환: [{serial, lot, wafer, ppm}] (최대 n개)."""
+    try:
+        u = _load("dashboard_units.csv").copy()
+        u["reg_pred"] = pd.to_numeric(u["reg_pred"], errors="coerce")
+        u = u.dropna(subset=["reg_pred"])
+        # 대시보드는 원본 로트 1~28만 표시(29~84는 split 시뮬레이션) → 후보도 1~28로 제한
+        _lot = pd.to_numeric(u["run_id"], errors="coerce")
+        u = u[(_lot >= 1) & (_lot <= 28)]
+        g4 = u[u.get("grade") == "grade4"].sort_values("reg_pred", ascending=False)
+        rest = u.sort_values("reg_pred", ascending=False)
+        ordered = pd.concat([g4, rest]).drop_duplicates(subset=["ufs_serial"]).head(n)
+        out = []
+        for r in ordered.itertuples():
+            out.append({"serial": str(r.ufs_serial), "lot": int(r.run_id),
+                        "wafer": int(r.wafer_no), "ppm": round(float(r.reg_pred) * 1e6, 4)})  # 대시보드와 동일 정밀도(소수1자리 반올림 금지)
         return out
     except Exception:
         return []

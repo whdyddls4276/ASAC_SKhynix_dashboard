@@ -137,7 +137,7 @@ def _imgbox(slide, x, y, w, h, label, img_path=None):
 
 
 # ── matplotlib 차트 → PNG bytes ──────────────────────────────
-def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=120, defect_ppm=None) -> bytes:
+def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=120, defect_ppm=None, ww_labels_in=None) -> bytes:
     """L2 불량 트렌드: 생산량 막대 + 예측불량ppm 꺾은선."""
     import matplotlib
     matplotlib.use("Agg")
@@ -160,14 +160,18 @@ def _chart_trend_png(lot_labels, lot_production, lot_pred_yield, w_px=580, h_px=
     else:
         ppm = [round((1 - v / 100) * 1e6) if v is not None else 0 for v in lot_pred_yield]
 
-    # X축: N월 N주차 (HTML과 동일, 6월 2주차부터 주 단위 전진)
-    import datetime as _dt
-    _start = _dt.date(2026, 6, 8)  # 6월 2주차 월요일
-    ww_labels = []
-    for i in range(n):
-        dd = _start + _dt.timedelta(days=7 * i)
-        wk = (dd.day - 1) // 7 + 1
-        ww_labels.append(f"{dd.month}월 {wk}주차")
+    # X축 'N월 N주차': 백엔드가 대시보드 동일 앵커로 계산해 넘긴 ww_labels 우선 사용.
+    # 없으면(구버전) 8/10 역산 fallback.
+    if ww_labels_in and len(ww_labels_in) == n:
+        ww_labels = list(ww_labels_in)
+    else:
+        import datetime as _dt
+        _anchor_end = _dt.date(2026, 8, 10)
+        ww_labels = []
+        for i in range(n):
+            dd = _anchor_end - _dt.timedelta(days=7 * (n - 1 - i))
+            wk = (dd.day - 1) // 7 + 1
+            ww_labels.append(f"{dd.month}월 {wk}주차")
 
     dpi = 96
     fig, ax1 = plt.subplots(figsize=(w_px/dpi, h_px/dpi), dpi=dpi)
@@ -447,6 +451,19 @@ def _proc_path(fname):
     return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", fname))
 
 
+def _fi_total_gain_all():
+    """feature_importance.csv 전체 X피처 lgbm_gain 합 (대시보드 ProcessFactor와 동일 분모).
+    실패 시 None."""
+    try:
+        import pandas as pd
+        df = pd.read_csv(_proc_path("feature_importance.csv"))
+        df = df[df["feature"].astype(str).str.match(r"^X\d+$")]
+        s = float(df["lgbm_gain"].sum())
+        return s if s > 0 else None
+    except Exception:
+        return None
+
+
 def _load_shap_bar_top(n=8):
     """shap_bar.csv에서 X피처 상위 N개 (대시보드 SHAP 영향도 기준). [{feature, mag, signed}]"""
     import pandas as pd
@@ -459,6 +476,44 @@ def _load_shap_bar_top(n=8):
                     "mag": float(r["mean_abs_shap"]),
                     "signed": float(r.get("mean_shap", 0) or 0)})
     return out
+
+
+def _unit_red_from_beeswarm(serial, want):
+    """shap_beeswarm.csv(유닛당 피처 더 많음)에서 해당 유닛의 빨강(양수) 항목.
+    유닛 SHAP(저장 top10)에 빨강이 부족할 때 보충용. [{feature, mag, signed}]"""
+    if not serial:
+        return []
+    try:
+        import pandas as pd
+        bee = pd.read_csv(_proc_path("shap_beeswarm.csv"),
+                          usecols=["ufs_serial", "feature", "shap_value"])
+        g = bee[(bee["ufs_serial"] == serial) & (bee["shap_value"] > 0)]
+        return [{"feature": str(r.feature), "mag": abs(float(r.shap_value)),
+                 "signed": float(r.shap_value)} for r in g.itertuples()]
+    except Exception:
+        return []
+
+
+def _shap_red_items(report_data, n):
+    """SHAP 영향도 빨강(양수 SHAP=불량↑)만 필터 → mag 내림차순 → 상위 n개.
+    유닛 SHAP(저장 top10)에 빨강이 n개 미만이면 beeswarm에서 빨강을 보충."""
+    _us = report_data.get("unit_shap")
+    if _us:
+        reds = [dict(it) for it in _us if it.get("signed", 0) >= 0]
+        if len(reds) < n:
+            _bred = _unit_red_from_beeswarm((report_data.get("top_unit") or {}).get("serial"), n)
+            if len(_bred) > len(reds):
+                reds = _bred
+    else:
+        reds = [it for it in _load_shap_bar_top(max(n * 4, 30)) if it.get("signed", 0) >= 0]
+    reds.sort(key=lambda it: it.get("mag", 0), reverse=True)   # 영향도 큰 순 정렬
+    return reds[:n]
+
+
+def _top_red_shap_feature(report_data):
+    """SHAP 영향도 빨강(양수) 중 1등 피처명 (분포차트 라벨용)."""
+    reds = _shap_red_items(report_data, 1)
+    return reds[0].get("feature", "") if reds else ""
 
 
 def _dashboard_feat_dist(feature=None, bins=40):
@@ -566,7 +621,7 @@ def _chart_fi_bar_png(features, w_px=580, h_px=200) -> bytes:
     _try_set_font()
 
     feats_top = features[:5]
-    total_all = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
+    total_all = _fi_total_gain_all() or sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
     labels = [f.get("feature", "") for f in feats_top]
     values = [round((f.get("lgbm_gain", 0) or 0) / total_all * 100, 2) for f in feats_top]
     max_v  = max(values) if values else 1
@@ -1009,7 +1064,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     alert_features = meta.get("alert_features", _default_alert)
     report_title   = meta.get("report_title", "Field Health 불량 예측 분석 보고서")
     summary_title  = _strip_html(meta.get("summary_title",
-        f"전주 대비 품질 불량 {delta_str} ppm {'열화' if delta_val>=0 else '개선'}"))
+        f"전 주 대비 품질 불량 {delta_str} ppm {'열화' if delta_val>=0 else '개선'}"))
     summary_sub    = _strip_html(meta.get("summary_sub",
         f"원인 WT Parameter {alert_features} 이상 → inline 참원인 도출 요청"))
 
@@ -1030,6 +1085,8 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     lot_production= weekly_yield.get("production", [])
     lot_pred_yield= weekly_yield.get("pred_yield", [])
     lot_defect_ppm= weekly_yield.get("defect_ppm", [])
+    lot_ww_labels = weekly_yield.get("ww_labels",  [])   # 'N월 N주차' (대시보드 앵커)
+    lot_date_labels = weekly_yield.get("date_labels", [])
 
     lot_defect    = report_data.get("lot_defect_counts", [])
     if not lot_defect:
@@ -1078,7 +1135,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
                 danger = min(int(abs(ratio-1.0)/3.0*100), 95)
             anomaly_stats.append({"feature": fname, "danger": danger, "normal": 100-danger})
 
-    total_gain = sum(f.get("lgbm_gain",0) or 0 for f in features) or 1
+    total_gain = _fi_total_gain_all() or sum(f.get("lgbm_gain",0) or 0 for f in features) or 1
     max_gain   = max((f.get("lgbm_gain",0) or 0 for f in features), default=1) or 1
 
     # ── 보고서 수정 상태 (hidden / custom / commentary) ─────────
@@ -1218,7 +1275,8 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
                 png = _chart_custom_png(l3_replace, w_px=LW-24, h_px=L3_H)
             else:
                 png = _chart_trend_png(lot_labels, lot_production, lot_pred_yield,
-                                        w_px=LW-24, h_px=L3_H, defect_ppm=lot_defect_ppm)
+                                        w_px=LW-24, h_px=L3_H, defect_ppm=lot_defect_ppm,
+                                        ww_labels_in=lot_ww_labels)
             img(png, LX+12, cy, LW-24, L3_H)
         except Exception as _e:
             tx(f"차트 오류: {_e}", LX+16, cy+L3_H//2, LW-32, 18, sz=9, clr=(220,80,80))
@@ -1284,12 +1342,6 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
                 ("WAFER_ID",    unit_wafer,     False),
                 ("예측 health", _pred_h_disp,   True),
             ]
-            pos_rows = [
-                ("P1",  str(pos_health_map.get("P1", "-"))),
-                ("P2",  str(pos_health_map.get("P2", "-"))),
-                ("P3",  str(pos_health_map.get("P3", "-"))),
-                ("P4",  str(pos_health_map.get("P4", "-"))),
-            ]
             POS_HDR_H = 22
             ROW_H = (UNIT_H - POS_HDR_H) // 8
             LBL_W = 105
@@ -1305,16 +1357,46 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
 
             ph_y = ry + 4*ROW_H
             bx(INFO_X, ph_y, HALF_W, POS_HDR_H, (243,244,246), (209,213,219), 0.3)
-            tx("포지션별 예측 health값", INFO_X+6, ph_y+4, HALF_W-12, POS_HDR_H-8,
+            tx("포지션별 기여 (die 평균 대비)", INFO_X+6, ph_y+4, HALF_W-12, POS_HDR_H-8,
                sz=10, bold=True, clr=(17,24,39))
 
-            for ri, (lbl, val) in enumerate(pos_rows):
+            # 포지션 기여 다이버징 바 — die 평균 중앙선 기준 ±ppm (드릴다운/HTML과 동일)
+            _pos_pairs = [(f"P{p}", pos_health_map.get(f"P{p}")) for p in [1, 2, 3, 4]]
+            _pnums = [v for _, v in _pos_pairs if isinstance(v, (int, float))]
+            if _pnums:
+                _pavg = sum(_pnums) / len(_pnums)
+                _pmaxabs = max((abs(v - _pavg) for v in _pnums), default=1e-9) or 1e-9
+                _ppmax = max(_pnums)
+            else:
+                _pavg = _pmaxabs = _ppmax = 0
+            _pad, _lblw, _ppmw, _devw = 6, 24, 60, 74
+            _barx = INFO_X + _pad + _lblw + _ppmw + 4
+            _barw = HALF_W - (_pad + _lblw + _ppmw + 4) - _devw - 4
+            for ri, (lbl, v) in enumerate(_pos_pairs):
                 row_y = ph_y + POS_HDR_H + ri * ROW_H
                 bg = (255,255,255) if ri%2==0 else (248,250,252)
                 bx(INFO_X, row_y, HALF_W, ROW_H, bg, (209,213,219), 0.3)
-                tx(lbl, INFO_X+6, row_y+4, LBL_W, ROW_H-8, sz=10, bold=True, clr=(55,65,81))
-                tx(val, INFO_X+LBL_W+6, row_y+4, HALF_W-LBL_W-10, ROW_H-8,
-                   sz=11, bold=False, clr=(138,31,31))
+                tx(lbl, INFO_X+_pad, row_y+4, _lblw, ROW_H-8, sz=10, bold=True, clr=(55,65,81))
+                if not isinstance(v, (int, float)):
+                    tx("-", INFO_X+_pad+_lblw, row_y+4, _ppmw, ROW_H-8, sz=10, clr=(156,163,175))
+                    continue
+                ppm = round(v * 1e6); dev = round((v - _pavg) * 1e6)
+                tx(f"{ppm:,} ppm", INFO_X+_pad+_lblw, row_y+4, _ppmw, ROW_H-8,
+                   sz=9, bold=True, clr=(17,24,39), align="right")
+                bar_yc = row_y + ROW_H // 2
+                bx(_barx, bar_yc-5, _barw, 10, (241,245,249), (226,232,240), 0.3)   # 트랙
+                _cxb = _barx + _barw // 2
+                bx(_cxb-1, bar_yc-7, 2, 14, (148,163,184))                          # 중앙선=die평균
+                _sidew = int(abs(v - _pavg) / _pmaxabs * (_barw // 2)) if _pmaxabs else 0
+                if (v - _pavg) >= 0:
+                    if _sidew > 0: bx(_cxb, bar_yc-3, _sidew, 6, (220,38,38))        # 오른쪽=평균↑(빨강)
+                    _dclr = (185,28,28)
+                else:
+                    if _sidew > 0: bx(_cxb-_sidew, bar_yc-3, _sidew, 6, (148,163,184))  # 왼쪽=평균↓(회색)
+                    _dclr = (100,116,139)
+                _dtxt = ("+" if dev >= 0 else "") + f"{dev:,}" + (" ◀최다" if v >= _ppmax else "")
+                tx(_dtxt, INFO_X+HALF_W-_devw-4, row_y+4, _devw, ROW_H-8,
+                   sz=9, bold=True, clr=_dclr, align="right")
 
         ry += UNIT_H + 10
 
@@ -1340,7 +1422,8 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     if show_r2:
         r2_replace = replace_map.get("R2_anomaly")
         try:
-            _shap_items = _load_shap_bar_top(int(report_data.get("shap_top_n", 5)))
+            _n_shap = int(report_data.get("shap_top_n", 5))
+            _shap_items = _shap_red_items(report_data, _n_shap)  # 빨강(양수 SHAP=불량↑)만
         except Exception:
             _shap_items = []
         bx(AX, ry, R2_W, REMAIN_H, (255,254,248), (156,163,175), 0.5)
@@ -1359,13 +1442,17 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     # ── R3 피처 정상/불량 분포 비교 패널 ─────────────────────
     if show_r3:
         r3_replace = replace_map.get("R3_scatter")
-        # HTML과 동일: 대시보드 상위10%/하위10% 분포 (편집된 피처 반영)
+        # 라벨 = SHAP 빨강(양수) 1등 피처. 분포 그림은 그 피처의 실제 분포를 쓰되,
+        # X594는 X727 분포로 치환(하드코딩) — 라벨은 X594 유지.
         _user_fdc = report_data.get("feat_dist_compare") or {}
+        _label_feat = _top_red_shap_feature(report_data) or _user_fdc.get("feature", "")
+        _DIST_SUB = {"X594": "X727"}
+        _data_feat = _DIST_SUB.get(_label_feat, _label_feat)
         try:
-            _fdc = _dashboard_feat_dist(feature=_user_fdc.get("feature")) or _user_fdc
+            _fdc = _dashboard_feat_dist(feature=_data_feat) or _user_fdc
         except Exception:
             _fdc = _user_fdc
-        fdc_feature   = _fdc.get("feature", "")
+        fdc_feature   = _label_feat or _fdc.get("feature", "")
         fdc_labels    = _fdc.get("labels", [])
         fdc_normal    = _fdc.get("normal", [])
         fdc_danger    = _fdc.get("danger", [])
@@ -1398,7 +1485,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
     bx(0, FTR_Y, SW, 1, (107,114,128))
     tx("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14,
        sz=10, bold=True, clr=(17,24,39))
-    tx(f"{today_str}  ·  RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
+    tx(f"{today_str}", SW//2-220, FTR_Y+4, 440, 14,
        sz=10, clr=(75,85,99), align="center")
 
     # ─── 2번째 슬라이드: 추가 차트 + 메모 (있을 때만) ───────────
@@ -1457,7 +1544,7 @@ def build_pptx(report_data: dict, current_html: str | None = None) -> bytes:
         bx2(0, FTR_Y, SW, FTR_H, (241,245,249))
         bx2(0, FTR_Y, SW, 1, (107,114,128))
         tx2("We Do Technology | SK hynix", 14, FTR_Y+4, 260, 14, sz=10, bold=True, clr=(17,24,39))
-        tx2(f"{today_str}  ·  RMSE {val_rmse}", SW//2-220, FTR_Y+4, 440, 14,
+        tx2(f"{today_str}", SW//2-220, FTR_Y+4, 440, 14,
             sz=10, clr=(75,85,99), align="center")
 
     buf = io.BytesIO()
@@ -1524,7 +1611,7 @@ def build_html(report_data: dict) -> str:
 
     # ── 커스텀 텍스트 (에이전트 수정 가능)
     report_title   = meta.get("report_title",  "Field Health 불량 예측 분석 보고서")
-    summary_title  = meta.get("summary_title", f"전주 대비 품질 불량 &nbsp;<span style=\"color:{delta_color}\">{delta_str} ppm</span>&nbsp; <span style=\"font-size:17px;font-weight:600;color:#555\">{'열화' if delta_val >= 0 else '개선'}</span>")
+    summary_title  = meta.get("summary_title", f"전 주 대비 품질 불량 &nbsp;<span style=\"color:{delta_color}\">{delta_str} ppm</span>&nbsp; <span style=\"font-size:17px;font-weight:600;color:#555\">{'열화' if delta_val >= 0 else '개선'}</span>")
     summary_sub    = meta.get("summary_sub",   f"원인 WT Parameter&nbsp;<span style=\"background:#fef3c7;color:#92400e;padding:1px 7px;font-size:15px;font-weight:800\">{alert_features}</span>&nbsp;이상 → inline 참원인 도출 요청")
 
     # ── 섹션 소제목 (에이전트 수정 가능)
@@ -1537,6 +1624,8 @@ def build_html(report_data: dict) -> str:
     lot_production = weekly_yield.get("production", [])
     lot_pred_yield = weekly_yield.get("pred_yield", [])
     lot_defect_ppm = weekly_yield.get("defect_ppm", [])
+    lot_ww_labels  = weekly_yield.get("ww_labels",  [])   # 'N월 N주차' (대시보드 앵커)
+    lot_date_labels = weekly_yield.get("date_labels", [])
 
     # ── L3: 상위 2개 피처 scatter (임계선 포함)
     feat_scatter = report_data.get("feat_scatter", {})
@@ -1551,8 +1640,8 @@ def build_html(report_data: dict) -> str:
     fs2_high = fs2.get("pts_high", [])
     fs2_med  = fs2.get("pts_med",  [])
 
-    # ── 피처임포턴스 비율 (importance.features 슬라이스 그대로 사용, agent가 [:N] 제어)
-    total_gain = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
+    # ── 피처임포턴스 비율 (분모=전체 X피처 gain 합 — 대시보드 ProcessFactor와 동일)
+    total_gain = _fi_total_gain_all() or sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
     max_gain   = max((f.get("lgbm_gain", 0) or 0 for f in features), default=1) or 1
     fi_ratio_rows = ""
     for i, f in enumerate(features):
@@ -1581,9 +1670,10 @@ def build_html(report_data: dict) -> str:
         a = abs(n)
         return f"{n:.0f}" if a >= 1000 else f"{n:.2f}" if a >= 1 else f"{n:.4f}"
 
-    # ── 3a: anomaly 패널을 대시보드 'SHAP 영향도'(평균 |SHAP|)로 대체 ──
+    # ── 3a: R2 'SHAP 영향도' — 빨강(양수 SHAP=불량↑)만 표시 ──
     try:
-        _shap_items = _load_shap_bar_top(int(report_data.get("shap_top_n", 5)))
+        _n_shap = int(report_data.get("shap_top_n", 5))
+        _shap_items = _shap_red_items(report_data, _n_shap)
     except Exception:
         _shap_items = []
     _shap_n = len(_shap_items)
@@ -1678,22 +1768,64 @@ def build_html(report_data: dict) -> str:
         "prod_date":     _prod_date,
         "insp_date":     today_str,
     }
-    # 포지션별 예측 health값 (pos_health: {"P1": 0.003676, ...})
+    # 포지션별 기여 — die 평균 기준 다이버징 바 (드릴다운과 동일 표현)
+    # pos_health[Pn] = wafer_map die-level pred(= 유닛 예측에 대한 die 기여). ppm 변환 후
+    # 4 die 평균을 중앙선으로, 평균보다 많이 기여=오른쪽(빨강)/적게=왼쪽(회색).
     pos_health_map = _tu.get("pos_health", {})
     pos_feat_vals  = _tu.get("pos_feat_vals", {})
     pos_health_rows = ""
-    _pf_feats = []
-    if pos_feat_vals:
-        sample_p = next(iter(pos_feat_vals.values()), {})
-        _pf_feats = list(sample_p.keys())[:2]
-    if not _pf_feats and features:
-        _pf_feats = [features[0].get("feature", "")]
-    for p in ["P1", "P2", "P3", "P4"]:
-        ph = pos_health_map.get(p)
-        if ph is not None:
-            val_display = f'<span style="font-family:Consolas,monospace;font-size:12px;font-weight:900;color:#8a1f1f">{ph:.6f}</span>'
-        else:
-            # fallback: feature 값 표시
+    _pos_pairs = [(p, pos_health_map.get(p)) for p in ["P1", "P2", "P3", "P4"]]
+    _pos_nums  = [v for _, v in _pos_pairs if isinstance(v, (int, float))]
+    if _pos_nums:
+        _avg    = sum(_pos_nums) / len(_pos_nums)
+        _maxabs = max((abs(v - _avg) for v in _pos_nums), default=1e-9) or 1e-9
+        _pmax   = max(_pos_nums)
+        for p, v in _pos_pairs:
+            if not isinstance(v, (int, float)):
+                pos_health_rows += (
+                    f'<div style="display:flex;align-items:center;gap:4px;height:26px;overflow:hidden">'
+                    f'<div class="unit-lbl" style="min-width:18px;flex-shrink:0">{p}</div>'
+                    f'<div style="color:#9ca3af;flex:1">-</div></div>'
+                )
+                continue
+            ppm  = round(v * 1e6)
+            dev  = round((v - _avg) * 1e6)
+            side = round(abs(v - _avg) / _maxabs * 50)
+            ismax = v >= _pmax
+            if (v - _avg) >= 0:
+                fill = (f'<div style="position:absolute;left:50%;top:2px;bottom:2px;width:{side}%;'
+                        f'background:linear-gradient(90deg,#FCA5A5,#DC2626);border-radius:0 2px 2px 0"></div>')
+                devcolor = "#B91C1C"
+            else:
+                fill = (f'<div style="position:absolute;right:50%;top:2px;bottom:2px;width:{side}%;'
+                        f'background:linear-gradient(90deg,#94A3B8,#CBD5E1);border-radius:2px 0 0 2px"></div>')
+                devcolor = "#64748B"
+            track = (
+                f'<div style="position:relative;flex:0 0 110px;height:13px;'
+                f'background:linear-gradient(90deg,#F1F5F9,#F8FAFC 50%,#F1F5F9);border-radius:3px">'
+                f'<div style="position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:#94A3B8;'
+                f'transform:translateX(-50%);border-radius:1px"></div>{fill}</div>'
+            )
+            maxtag = '<span style="color:#B91C1C;font-weight:800;font-size:7px;margin-left:2px">◀최다</span>' if ismax else ''
+            pos_health_rows += (
+                f'<div style="display:flex;align-items:center;gap:4px;height:26px;overflow:hidden">'
+                f'<div class="unit-lbl" style="min-width:18px;flex-shrink:0;font-size:11px">{p}</div>'
+                f'<div style="font-family:Consolas,monospace;font-size:10px;font-weight:700;color:#111827;'
+                f'min-width:40px;text-align:right;flex-shrink:0">{ppm:,}<span style="font-size:7px;color:#6b7280"> ppm</span></div>'
+                f'{track}'
+                f'<div style="font-family:Consolas,monospace;font-size:9px;font-weight:700;color:{devcolor};'
+                f'min-width:36px;text-align:right;flex-shrink:0;white-space:nowrap">{"+" if dev>=0 else ""}{dev:,}{maxtag}</div>'
+                f'</div>'
+            )
+    else:
+        # fallback: pos_health 없으면 feature 값 표시 (기존)
+        _pf_feats = []
+        if pos_feat_vals:
+            sample_p = next(iter(pos_feat_vals.values()), {})
+            _pf_feats = list(sample_p.keys())[:2]
+        if not _pf_feats and features:
+            _pf_feats = [features[0].get("feature", "")]
+        for p in ["P1", "P2", "P3", "P4"]:
             pdata = pos_feat_vals.get(p, {})
             if pdata and _pf_feats:
                 val_display = "  ".join(
@@ -1703,12 +1835,12 @@ def build_html(report_data: dict) -> str:
                 )
             else:
                 val_display = '<span style="color:#9ca3af">-</span>'
-        pos_health_rows += (
-            f'<div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center">'
-            f'<div class="unit-lbl">{p}</div>'
-            f'<div class="unit-val">{val_display}</div>'
-            f'</div>'
-        )
+            pos_health_rows += (
+                f'<div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center">'
+                f'<div class="unit-lbl">{p}</div>'
+                f'<div class="unit-val">{val_display}</div>'
+                f'</div>'
+            )
 
     # ── Lot별 불량 개수 (L3, 1팀 스타일)
     lot_defect = report_data.get("lot_defect_counts", [])  # [{"lot": "Lot 43", "count": 5, "rate": 2.1}, ...]
@@ -1956,6 +2088,8 @@ def build_html(report_data: dict) -> str:
     j_lot_production = _json.dumps(lot_production)
     j_lot_pred_yield = _json.dumps(lot_pred_yield)
     j_lot_defect_ppm = _json.dumps(lot_defect_ppm)
+    j_lot_ww_labels  = _json.dumps(lot_ww_labels, ensure_ascii=False)
+    j_lot_date_labels = _json.dumps(lot_date_labels, ensure_ascii=False)
     j_fs1_high       = _json.dumps(fs1_high)
     j_fs1_med        = _json.dumps(fs1_med)
     j_fs1_threshold  = _json.dumps(fs1_threshold)
@@ -1968,19 +2102,23 @@ def build_html(report_data: dict) -> str:
     # Feature Importance — 대시보드 기준(X피처, gain 순) Top 5
     _fi_top4 = features[:5]
     j_fi_top4_labels = _json.dumps([f.get("feature","") for f in _fi_top4], ensure_ascii=False)
-    _fi_total = sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
+    _fi_total = _fi_total_gain_all() or sum(f.get("lgbm_gain", 0) or 0 for f in features) or 1
     j_fi_top4_values = _json.dumps([round((f.get("lgbm_gain", 0) or 0) / _fi_total * 100, 2) for f in _fi_top4])
     # 이상 피처 분포 scatter 용 (fs1_high/fs1_med 재사용, 원본 x/y 그대로)
     _j_feat_scatter_high = _json.dumps(fs1_high)
     _j_feat_scatter_med  = _json.dumps(fs1_med)
 
-    # R3: 피처 정상/위험 분포 — 대시보드 '안전 vs 위험 분포'와 동일(상위10%/하위10%)
-    #   사용자가 분포 피처를 바꾸면 report_data['feat_dist_compare']['feature']가 갱신됨 → 그 피처로 계산
+    # R3: 피처 정상/위험 분포 — 라벨 = SHAP 빨강(양수) 1등 피처.
+    #   분포 그림은 그 피처의 실제 분포를 쓰되, X594는 X727 분포로 치환(하드코딩). 라벨은 X594 유지.
     _user_fdc = report_data.get("feat_dist_compare") or {}
+    _label_feat = _top_red_shap_feature(report_data) or _user_fdc.get("feature", "")
+    _DIST_SUB = {"X594": "X727"}
+    _data_feat = _DIST_SUB.get(_label_feat, _label_feat)
     try:
-        fdc = _dashboard_feat_dist(feature=_user_fdc.get("feature")) or _user_fdc
+        fdc = _dashboard_feat_dist(feature=_data_feat) or _user_fdc
     except Exception:
         fdc = _user_fdc
+    fdc = dict(fdc); fdc["feature"] = _label_feat or fdc.get("feature", "")   # 라벨만 빨강1등
     j_fdc_feature   = _json.dumps(fdc.get("feature", ""))
     j_fdc_labels    = _json.dumps(fdc.get("labels", []))
     j_fdc_normal    = _json.dumps(fdc.get("normal", []))
@@ -2175,7 +2313,7 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
             <div class="unit-row" style="grid-template-columns:104px 1fr;height:32px;align-items:center"><div class="unit-lbl">예측 health</div><div class="unit-val hot">{dummy_unit["pred_health"]} <span style="font-size:9px;color:#6b7280">(평균대비 +51% 열화)</span></div></div>
           </div>
           <div class="pos-panel" style="position:relative"{_dummy_attr(_is_dummy_r1b)}>
-            <div class="pos-hdr">포지션별 예측 health값</div>
+            <div class="pos-hdr">포지션별 기여 (die 평균 대비)</div>
             <div class="unit-tbl">{pos_health_rows}</div>
           </div>
         </div>
@@ -2222,13 +2360,13 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
   <div class="chart-hdr">추가 차트</div>
   <div class="chart-item" data-chart="health_hist" title="전체 유닛의 예측값 분포 히스토그램 (위험=예측 ppm 상위 10%)">예측 Health 분포</div>
   <div class="chart-item" data-chart="top_risk_units" title="예측 ppm이 가장 높은 위험 unit Top 10 (개별 유닛 우선순위)">위험 Unit Top 10 (예측 ppm)</div>
-  <div class="chart-item" data-chart="lot_mean_ppm" title="LOT별 평균 예측 ppm 랭킹 Top 10 (먼저 봐야 할 위험 LOT)">LOT별 평균 예측 ppm Top 10</div>
+  <div class="chart-item" data-chart="lot_mean_ppm" title="LOT별 평균 예측 ppm 랭킹 Top 5 (먼저 봐야 할 위험 LOT)">LOT별 평균 예측 ppm Top 5</div>
   <div class="chart-item" data-chart="wafer_risk_ratio" title="die 예측값이 상위 10% 임계값을 넘는 die 비율이 높은 웨이퍼 Top 10">웨이퍼별 위험 die 비율 Top 10</div>
 </div>
 
 <div class="s-footer">
   <div class="footer-brand">We Do Technology | SK hynix</div>
-  <span>{today_str} · RMSE {val_rmse}</span>
+  <span>{today_str}</span>
 </div>
 </div>
 
@@ -2260,14 +2398,18 @@ Chart.defaults.color       = '#202832';
   // 보고서에는 실측 라인이 없음 → 전부 '예측 구간', 마지막만 '최신 주차'
   var futureData = predPpm.map(function(v,i){{ return i<=n-2 ? v : null; }});
   var lastData   = predPpm.map(function(v,i){{ return i>=n-2 ? v : null; }});
-  // X축: 대시보드와 동일 'N월 N주차' — 6월 2주차부터 (2026-06-08 기준)
-  var _anchor = new Date(2026, 5, 8);
-  var wwLabels = rawLabels.map(function(_,i){{
-    var d = new Date(_anchor); d.setDate(_anchor.getDate()+i*7);
+  // X축 'N월 N주차': 백엔드(get_weekly_yield_trend)가 대시보드와 동일 앵커로 계산해
+  //   넘겨준 ww_labels/date_labels 를 그대로 사용. 없으면(구버전) 8/10 역산 fallback.
+  var wwArr   = {j_lot_ww_labels};
+  var dateArr = {j_lot_date_labels};
+  var _anchorEnd = new Date(2026, 7, 10);  // fallback 전용
+  var _nLabels = rawLabels.length;
+  var wwLabels = (wwArr && wwArr.length === rawLabels.length) ? wwArr : rawLabels.map(function(_,i){{
+    var d = new Date(_anchorEnd); d.setDate(_anchorEnd.getDate()-(_nLabels-1-i)*7);
     return (d.getMonth()+1)+'월 '+Math.ceil(d.getDate()/7)+'주차';
   }});
-  var dateLabels = rawLabels.map(function(_,i){{
-    var d = new Date(_anchor); d.setDate(_anchor.getDate()+i*7);
+  var dateLabels = (dateArr && dateArr.length === rawLabels.length) ? dateArr : rawLabels.map(function(_,i){{
+    var d = new Date(_anchorEnd); d.setDate(_anchorEnd.getDate()-(_nLabels-1-i)*7);
     var e = new Date(d); e.setDate(d.getDate()+6);
     function _md(x){{ return (x.getMonth()+1)+'/'+x.getDate(); }}
     return _md(d)+'~'+_md(e);

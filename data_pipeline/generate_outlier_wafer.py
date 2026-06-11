@@ -13,7 +13,11 @@ import pandas as pd
 from pathlib import Path
 
 VERSION = sys.argv[1] if len(sys.argv) > 1 else 'v3'
-PROC = Path(f'C:/Users/Dell3571/Desktop/dashboard_{VERSION}/data/processed')
+if VERSION == 'fin':
+    # fin 프로젝트 자체 processed (update_dashboard.py 와 동일 경로)
+    PROC = Path(__file__).resolve().parent.parent / 'data' / 'processed'
+else:
+    PROC = Path(f'C:/Users/Dell3571/Desktop/dashboard_{VERSION}/data/processed')
 
 u = pd.read_csv(PROC / 'dashboard_units.csv')
 u['reg_pred'] = pd.to_numeric(u['reg_pred'], errors='coerce')
@@ -24,7 +28,7 @@ if o.empty:
     o = u.sort_values('reg_pred', ascending=False)
 top = o.iloc[0]
 lot, wafer, serial = int(top['run_id']), int(top['wafer_no']), str(top['ufs_serial'])
-ppm = round(float(top['reg_pred']) * 1e6, 1)
+ppm = round(float(top['reg_pred']) * 1e6, 4)  # 계층탐색(reg_pred*1e6)과 동일 정밀도 → Math.round 일치
 
 # 해당 웨이퍼의 die 맵
 wm = pd.read_csv(PROC / 'wafer_map.csv', usecols=['run_id', 'wafer_no', 'die_x', 'die_y', 'pred', 'ufs_serial'])
@@ -56,7 +60,7 @@ for r in cand.itertuples():
         continue
     seen.add(key)
     l_, w_, s_ = int(r.run_id), int(r.wafer_no), str(r.ufs_serial)
-    p_ = round(float(r.reg_pred) * 1e6, 1)
+    p_ = round(float(r.reg_pred) * 1e6, 4)  # 계층탐색과 동일 정밀도 → Math.round 일치
     sub2 = wm[(wm['run_id'] == r.run_id) & (wm['wafer_no'] == r.wafer_no)].dropna(subset=['pred'])
     if sub2.empty:
         continue

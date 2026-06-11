@@ -26,6 +26,11 @@ const RISK_STOPS = [
   [1.0,  [220, 38, 38]],
 ]
 
+// 드릴다운 웨이퍼맵 색칠 기준 토글:
+//  'unit' = 유닛 reg_pred 기준(한 유닛의 4 die를 같은 색으로 통일) — 현재
+//  'die'  = die별 기여 ppm 기준(과거 버전, 백업) ← 복원하려면 이 값으로 변경
+const WMAP_COLOR_BY = 'unit'
+
 function interp(stops, t) {
   const tt = Math.max(0, Math.min(1, t))
   for (let i = 1; i < stops.length; i++) {
@@ -75,7 +80,7 @@ function computeScale(allDies) {
 }
 
 // ── WaferMap SVG 컴포넌트 (1팀 WaferMap.tsx 포팅) ────
-function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSelectDie, mini = false }) {
+function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSelectDie, mini = false, unitColorMap, unitColorScale, colorScale }) {
   const layout = useMemo(() => {
     if (!dies.length) return null
     const xs = dies.map(d => d.die_x)
@@ -150,12 +155,26 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
               const y = cy + (dy - centerY) * cellH - cellH / 2
               const isUnitSel = die.ufs_serial === selectedUnit
               const isDieSel  = selectedDie && String(die.die_x) === String(selectedDie.die_x) && String(die.die_y) === String(selectedDie.die_y)
-              const fill = predColor(parseFloat(die.pred), scale.predMin, scale.predMax, scale.threshold)
+              // 색 기준 우선순위:
+              //  ① unitColorMap: die의 소속 유닛 reg_pred (드릴다운, 4 die 통일)
+              //  ② colorScale: die.pred 가 이미 유닛 reg_pred 스케일 (패턴맵 — 좌표별 worst 유닛)
+              //  ③ die 기여 ppm 기준 (백업)
+              const _urp = (unitColorMap && unitColorScale && die.ufs_serial != null)
+                ? unitColorMap.get(String(die.ufs_serial)) : undefined
+              let fill, _tipUnit = ''
+              if (_urp != null) {
+                fill = predColor(_urp, unitColorScale.predMin, unitColorScale.predMax, unitColorScale.threshold)
+                _tipUnit = `\n유닛=${Math.round(_urp * 1e6)} ppm`
+              } else if (colorScale) {
+                fill = predColor(parseFloat(die.pred), colorScale.predMin, colorScale.predMax, colorScale.threshold)
+              } else {
+                fill = predColor(parseFloat(die.pred), scale.predMin, scale.predMax, scale.threshold)
+              }
               return (
                 <g key={`${dx}-${dy}`}>
                   <title>{`${die.ufs_serial ?? ''}
 (${dx}, ${dy})
-pred=${Math.round(parseFloat(die.pred) * 1e6)} ppm`}</title>
+기여=${Math.round(parseFloat(die.pred) * 1e6)} ppm${_tipUnit}`}</title>
                   <rect
                     x={x} y={y}
                     width={cellW}
@@ -372,11 +391,15 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapUnitMap,
     <div className="dd-report-empty">데이터 없음</div>
   )
 
-  // unit 예측값 = 4개 die pred 평균
-  const predVals = dies.map(d => parseFloat(d.pred)).filter(isFinite)
-  const pred = predVals.length ? predVals.reduce((a, b) => a + b, 0) / predVals.length : 0
+  // unit 예측값 = CSV reg_pred (보정된 유닛값, 보고서와 동일). 없으면 die 평균 fallback
+  const _urow = unitData?.find(u => u.ufs_serial === ufsSerial)
+  const _dieVals = dies.map(d => parseFloat(d.pred)).filter(isFinite)
+  const _dieAvg = _dieVals.length ? _dieVals.reduce((a, b) => a + b, 0) / _dieVals.length : 0
+  const _regPred = _urow ? parseFloat(_urow.reg_pred) : NaN
+  const pred = isFinite(_regPred) ? _regPred : _dieAvg
   const ppm = Math.round(pred * 1e6)
-  const isRisk = pred > scale.threshold
+  // 위험 판정은 유닛 grade(grade3=위험, grade4=매우위험) 기준 — die 임계값과 스케일 다름
+  const isRisk = _urow?.grade ? ['grade3', 'grade4'].includes(_urow.grade) : pred > scale.threshold
   const waferNo = dies[0].wafer_no ?? null
   const runId   = dies[0].run_id ?? null
   // 불량 확률: 4개 die clf_proba 평균
@@ -494,8 +517,11 @@ function ReportButton({ ufsSerial, ppm, isRisk, worstDie, grade }) {
   )
 }
 
-// ── 웨이퍼 하단: 임계값 게이지 + 포지션별 ppm 바 ─────
-function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie }) {
+// ── [백업/미사용] 구버전: die 임계 기준 게이지 + 포지션별 예측 ppm 바 ──
+// die pred을 die 임계(τ)와 비교해 위험/정상으로 색칠하던 버전.
+// die pred은 "유닛 예측에 대한 기여분"이라 die 단위 위험 판정이 성립하지 않아
+// 기여도 기반 신버전(WaferBottomPanel)으로 교체함. 필요 시 복원용으로 보존.
+function WaferBottomPanel_old({ ufsSerial, allDies, scale, selectedDie, onSelectDie }) {
   const dies = useMemo(() =>
     ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
     [ufsSerial, allDies]
@@ -503,11 +529,7 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
 
   const thPpm  = Math.round(scale.threshold * 1e6)
   const maxPpm = Math.round(scale.predMax * 1e6)
-
-  // 포지션 바 (unit 선택 시)
   const sorted = [...dies].sort((a, b) => parseInt(a.position || 0) - parseInt(b.position || 0))
-  // 바 길이 기준: scale.predMax 기준 통일 (임계선 위치와 동일 스케일)
-  const posMaxPpm = Math.round(scale.predMax * 1e6) || 1
 
   if (!ufsSerial) {
     return (
@@ -519,20 +541,16 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
 
   return (
     <div className="dd-bottom-panel">
-      {/* ① 임계값 설명 게이지 */}
       <div className="dd-bottom-thresh">
         <div className="dd-bottom-thresh-label">
           <span className="dd-bottom-thresh-title">임계값 (τ)</span>
           <span className="dd-bottom-thresh-val">{thPpm.toLocaleString()} ppm</span>
-          <span className="dd-bottom-thresh-sub">전체 pred Q3 기준</span>
         </div>
         <div className="dd-bottom-thresh-bar-wrap">
-          {/* 정상 50% + 위험 50% 고정 분할 */}
           <div style={{ display: 'flex', width: '100%', height: 12, borderRadius: 4, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
             <div style={{ width: '50%', height: '100%', background: 'linear-gradient(to right, #f3f4f6, #dbeafe, #a5d7dc)' }} />
             <div style={{ width: '50%', height: '100%', background: 'linear-gradient(to right, #fef08a, #fef08a, #fb923c, #dc2626)' }} />
           </div>
-          {/* 마커: 항상 50% */}
           <div className="dd-bottom-thresh-marker" style={{ left: '50%' }}>
             <div className="dd-bottom-thresh-marker-line" />
             <div className="dd-bottom-thresh-marker-label">{thPpm.toLocaleString()}</div>
@@ -544,8 +562,6 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
           </div>
         </div>
       </div>
-
-      {/* ② 포지션별 ppm 바 */}
       {sorted.length > 0 && (
         <div className="dd-bottom-pos">
           <div className="dd-bottom-pos-title">
@@ -562,13 +578,10 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
                 String(die.die_x) === String(selectedDie.die_x) &&
                 String(die.die_y) === String(selectedDie.die_y)
               const fillColor = predColor(pred, scale.predMin, scale.predMax, scale.threshold)
-
-              // threshold가 항상 50%가 되도록 좌우 스케일 분리
               const thresh = scale.threshold
               const barW = isRisk
                 ? 50 + Math.round(((pred - thresh) / Math.max(1e-9, scale.predMax - thresh)) * 50)
                 : Math.round((pred / Math.max(1e-9, thresh)) * 50)
-
               return (
                 <div
                   key={`${die.die_x}-${die.die_y}`}
@@ -599,49 +612,169 @@ function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie 
   )
 }
 
+// ── 웨이퍼 하단(신): 유닛 판정(reg_pred vs 유닛 임계 P90) + 포지션별 기여 ppm ──
+// die는 "유닛 예측에 대한 기여분"이므로 die 단위 위험 판정 없이 기여 ppm만 표시.
+// 위험/정상은 유닛값(reg_pred)을 유닛 임계(P90)와 비교해 한 줄로 표기.
+function WaferBottomPanel({ ufsSerial, allDies, scale, selectedDie, onSelectDie, unitRow, unitThreshold, unitColorScale }) {
+  const dies = useMemo(() =>
+    ufsSerial ? allDies.filter(d => d.ufs_serial === ufsSerial) : [],
+    [ufsSerial, allDies]
+  )
+
+  if (!ufsSerial) {
+    return (
+      <div className="dd-bottom-panel">
+        <div className="dd-bottom-hint">웨이퍼맵에서 유닛을 클릭하면 유닛 판정 및 포지션별 기여가 표시됩니다.</div>
+      </div>
+    )
+  }
+
+  const sorted   = [...dies].sort((a, b) => parseInt(a.position || 0) - parseInt(b.position || 0))
+  const dieSum   = dies.reduce((s, d) => s + parseFloat(d.pred), 0)
+  // 유닛 예측값 = CSV reg_pred(보정 합버전). 없으면 die 합 fallback
+  const unitPred = unitRow && isFinite(parseFloat(unitRow.reg_pred)) ? parseFloat(unitRow.reg_pred) : dieSum
+  const unitPpm  = Math.round(unitPred * 1e6)
+  const hasThr   = isFinite(unitThreshold) && unitThreshold > 0
+  const thrPpm   = hasThr ? Math.round(unitThreshold * 1e6) : null
+  const isRisk   = hasThr ? unitPred >= unitThreshold
+                          : (unitRow?.grade ? ['grade3', 'grade4'].includes(unitRow.grade) : false)
+  // 포지션 막대 길이 기준: die 중 최대 기여로 정규화(유닛 내 상대 비교)
+  const posMax   = Math.max(...dies.map(d => parseFloat(d.pred)), 1e-9)
+  // die 평균 기여 = 합 / 실제 die 개수(4 고정 아님 — 결측 포지션 대비)
+  const avgDie   = dies.length ? dieSum / dies.length : 0
+  // 다이버징 바 정규화용: 평균 대비 최대 편차(절대값)
+  const maxAbsDev = Math.max(...dies.map(d => Math.abs(parseFloat(d.pred) - avgDie)), 1e-9)
+  // 색칩 = 웨이퍼맵과 동일하게 유닛 색(4 die 통일). 없으면 die별 색(백업)
+  const chipColor = unitColorScale
+    ? predColor(unitPred, unitColorScale.predMin, unitColorScale.predMax, unitColorScale.threshold)
+    : null
+
+  return (
+    <div className="dd-bottom-panel">
+      {/* ① 유닛 판정: reg_pred vs 유닛 임계(P90) */}
+      <div className="dd-bottom-thresh">
+        <div className="dd-bottom-thresh-label">
+          <span className="dd-bottom-thresh-title">
+            유닛 판정
+            <span className={`dd-verdict-badge ${isRisk ? 'risk' : 'normal'}`} style={{ fontSize: 11, marginLeft: 8 }}>
+              {isRisk ? '⚠ 위험' : '✓ 정상'}
+            </span>
+          </span>
+          <span className="dd-bottom-thresh-val">
+            {unitPpm.toLocaleString()} ppm
+            {thrPpm !== null && <span style={{ color: '#94A3B8', fontWeight: 400 }}> / 임계 {thrPpm.toLocaleString()}</span>}
+          </span>
+        </div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+          유닛 예측(보정 합) vs 유닛 위험 임계(reg_pred 상위 10% · P90). die 단위 위험 판정 없음 — 아래는 기여 ppm.
+        </div>
+      </div>
+
+      {/* ② 포지션별 기여 — die 평균 기준 다이버징 바 (오른쪽=평균보다 더 기여) */}
+      {sorted.length > 0 && (
+        <div className="dd-bottom-pos">
+          <div className="dd-bottom-pos-title">
+            포지션별 기여
+            <span className="dd-bottom-pos-serial"> · die 평균 {Math.round(avgDie * 1e6).toLocaleString()} ppm 기준 · {ufsSerial}</span>
+          </div>
+          <div className="dd-bottom-pos-grid">
+            {sorted.map(die => {
+              const pred   = parseFloat(die.pred)
+              const ppm    = Math.round(pred * 1e6)
+              const devRaw = pred - avgDie
+              const dev    = Math.round(devRaw * 1e6)             // die 평균 대비 ±ppm
+              const isMax  = pred >= posMax                       // 최다 기여 die
+              const pos    = die.position || '?'
+              const isDieSel = selectedDie &&
+                String(die.die_x) === String(selectedDie.die_x) &&
+                String(die.die_y) === String(selectedDie.die_y)
+              const fillColor = predColor(pred, scale.predMin, scale.predMax, scale.threshold)
+              const sidePct = Math.round((Math.abs(devRaw) / maxAbsDev) * 50)
+              return (
+                <div
+                  key={`${die.die_x}-${die.die_y}`}
+                  className={`dd-bpos-row ${isDieSel ? 'selected' : ''} ${isMax ? 'ismax' : ''}`}
+                  onClick={() => onSelectDie?.(die)}
+                  title={`(${die.die_x}, ${die.die_y})`}
+                >
+                  <span className="dd-bpos-num">P{pos}</span>
+                  <span className="dd-bpos-chip" style={{ background: chipColor ?? fillColor }} />
+                  <span className="dd-bpos-ppm">{ppm.toLocaleString()}<span className="dd-bpos-unit"> ppm</span></span>
+                  <div className="dd-bdiv-track">
+                    <div className="dd-bdiv-center" />
+                    {devRaw >= 0
+                      ? <div className="dd-bdiv-fill pos" style={{ left: '50%', width: `${sidePct}%` }} />
+                      : <div className="dd-bdiv-fill neg" style={{ right: '50%', width: `${sidePct}%` }} />}
+                  </div>
+                  <span className={`dd-bdiv-val ${dev > 0 ? 'pos' : dev < 0 ? 'neg' : ''}`}>
+                    {dev >= 0 ? '+' : ''}{dev.toLocaleString()}
+                  </span>
+                  {isMax && <span className="dd-bpos-max">◀ 최다</span>}
+                  {isDieSel && <span className="dd-bpos-sel-arrow">◀</span>}
+                </div>
+              )
+            })}
+          </div>
+          <div className="dd-bdiv-axis"><span>평균보다 적게 기여</span><span>die 평균</span><span>평균보다 많이 기여</span></div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Die 진단 패널 ──────────────────────────────────────
-function DieReport({ die, scale, onClose }) {
+function DieReport({ die, scale, onClose, unitAvg, unitMaxAbsDev }) {
   if (!die) return (
-    <div className="dd-report-empty">웨이퍼맵에서 다이를 클릭하면 진단 결과가 표시됩니다.</div>
+    <div className="dd-report-empty">웨이퍼맵에서 다이를 클릭하면 기여도가 표시됩니다.</div>
   )
 
   const pred    = parseFloat(die.pred)
   const ppm     = Math.round(pred * 1e6)
-  const isRisk  = pred > scale.threshold
   const clf     = die.clf_proba !== undefined ? parseFloat(die.clf_proba) : null
-  const thPpm   = Math.round(scale.threshold * 1e6)
-
-  const barPct  = Math.min(100, Math.round((pred / scale.predMax) * 100))
-  const barColor = isRisk ? '#EF4444' : '#22C55E'
+  // die 평균(유닛 die 기여 평균, 같은 ppm 스케일) 대비 편차. reg_pred(유닛값)이 아님
+  const _hasAvg = unitAvg != null && isFinite(unitAvg)
+  const devRaw  = _hasAvg ? (pred - unitAvg) : null
+  const dev     = devRaw != null ? Math.round(devRaw * 1e6) : null
+  const avgPpm  = _hasAvg ? Math.round(unitAvg * 1e6) : null
+  // 하단 포지션 다이버징 바와 동일 정규화(유닛 4 die 최대 편차 기준)
+  const _mad    = (unitMaxAbsDev && unitMaxAbsDev > 0) ? unitMaxAbsDev : 1e-9
+  const sidePct = devRaw != null ? Math.round(Math.abs(devRaw) / _mad * 50) : 0
 
   return (
     <div className="dd-report">
-      {/* 좌표 + ppm 요약 (verdict 대신 compact 헤더) */}
-      <div className={`dd-die-header ${isRisk ? 'risk' : 'normal'}`}>
+      {/* 좌표 + 기여 ppm 요약 (die 단위 위험 판정 없음 — 위험/정상은 유닛 기준) */}
+      <div className="dd-die-header normal">
         <div className="dd-die-header-row">
-          <span className={`dd-verdict-badge ${isRisk ? 'risk' : 'normal'}`} style={{ fontSize: 12 }}>
-            {isRisk ? '⚠ 위험' : '✓ 정상'}
-          </span>
+          <span className="dd-verdict-badge normal" style={{ fontSize: 12 }}>기여 die</span>
           <span className="dd-die-coord-main">({die.die_x}, {die.die_y})</span>
           {onClose && <button className="dd-report-close" onClick={onClose}>✕</button>}
         </div>
-        <div className="dd-verdict-pred" style={{ fontSize: 11 }}>{ppm.toLocaleString()} ppm</div>
+        <div className="dd-verdict-pred" style={{ fontSize: 11 }}>{ppm.toLocaleString()} ppm 기여</div>
       </div>
 
-      {/* 위험도 게이지 */}
+      {/* 유닛 기여도 — die 평균 기준 다이버징 바 (하단 포지션 바와 동일) */}
       <div className="dd-section-box">
-        <div className="dd-section-title">예측 위험도</div>
-        <div style={{ margin: '8px 0 4px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>
-            <span>0 ppm</span>
-            <span style={{ color: '#F97316' }}>임계 {thPpm.toLocaleString()}</span>
-            <span>{Math.round(scale.predMax * 1e6).toLocaleString()} ppm</span>
+        <div className="dd-section-title">유닛 기여도 <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 400 }}>(die 평균 대비)</span></div>
+        {dev !== null ? (
+          <div style={{ margin: '12px 0 4px' }}>
+            <div className="dd-bdiv-track" style={{ height: 18 }}>
+              <div className="dd-bdiv-center" />
+              {devRaw >= 0
+                ? <div className="dd-bdiv-fill pos" style={{ left: '50%', width: `${sidePct}%` }} />
+                : <div className="dd-bdiv-fill neg" style={{ right: '50%', width: `${sidePct}%` }} />}
+            </div>
+            <div className="dd-bdiv-axis" style={{ marginTop: 4 }}>
+              <span>평균보다 적게</span>
+              <span style={{ fontWeight: 700, color: '#475569' }}>
+                {dev >= 0 ? '+' : ''}{dev.toLocaleString()} ppm
+                <span style={{ fontWeight: 400, color: '#94A3B8' }}> · die 평균 {avgPpm?.toLocaleString()} ppm</span>
+              </span>
+              <span>평균보다 많이</span>
+            </div>
           </div>
-          <div style={{ height: 10, background: '#F1F5F9', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
-            <div style={{ position: 'absolute', left: `${Math.round((scale.threshold / scale.predMax) * 100)}%`, top: 0, bottom: 0, width: 2, background: '#F97316', zIndex: 1 }} />
-            <div style={{ width: `${barPct}%`, height: '100%', background: barColor, borderRadius: 5, transition: 'width .3s' }} />
-          </div>
-        </div>
+        ) : (
+          <div style={{ fontSize: 11, color: '#94A3B8', margin: '8px 0' }}>기여 {ppm.toLocaleString()} ppm</div>
+        )}
       </div>
 
       {/* 상세 수치 */}
@@ -653,15 +786,17 @@ function DieReport({ die, scale, onClose }) {
             <span className="dd-detail-val mono">({die.die_x}, {die.die_y})</span>
           </div>
           <div className="dd-detail-row">
-            <span className="dd-detail-key">예측 PPM</span>
-            <span className={`dd-detail-val mono ${isRisk ? 'danger' : ''}`}>{ppm.toLocaleString()} ppm</span>
+            <span className="dd-detail-key">기여 ppm</span>
+            <span className="dd-detail-val mono">{ppm.toLocaleString()} ppm</span>
           </div>
-          <div className="dd-detail-row">
-            <span className="dd-detail-key">임계 대비</span>
-            <span className={`dd-detail-val mono ${isRisk ? 'danger' : ''}`}>
-              {isRisk ? `+${(ppm - thPpm).toLocaleString()} ppm 초과` : `${(thPpm - ppm).toLocaleString()} ppm 여유`}
-            </span>
-          </div>
+          {dev !== null && (
+            <div className="dd-detail-row">
+              <span className="dd-detail-key">die 평균 대비</span>
+              <span className="dd-detail-val mono" style={{ color: dev > 0 ? '#B91C1C' : '#64748B' }}>
+                {dev >= 0 ? '+' : ''}{dev.toLocaleString()} ppm
+              </span>
+            </div>
+          )}
           {clf !== null && (
             <div className="dd-detail-row">
               <span className="dd-detail-key">위험 확률</span>
@@ -825,6 +960,47 @@ export default function DrilldownV2({ initialSelection }) {
     return s
   }, [unitData])
 
+  // 유닛 reg_pred(보정 합버전) 기준 lot/wafer 평균 ppm 맵
+  // 계층탐색·패턴분류의 ppm을 die 평균이 아닌 유닛 예측값으로 통일
+  const { unitLotPpm, unitWaferPpm } = useMemo(() => {
+    const lotAgg = {}    // lot -> {sum, n}
+    const waferAgg = {}  // `${lot}_${wno}` -> {sum, n}
+    unitData.forEach(u => {
+      const rp = parseFloat(u.reg_pred)
+      if (!isFinite(rp)) return
+      const lot = String(u.run_id)
+      const wkey = `${lot}_${u.wafer_no}`
+      if (!lotAgg[lot]) lotAgg[lot] = { sum: 0, n: 0 }
+      if (!waferAgg[wkey]) waferAgg[wkey] = { sum: 0, n: 0 }
+      lotAgg[lot].sum += rp; lotAgg[lot].n += 1
+      waferAgg[wkey].sum += rp; waferAgg[wkey].n += 1
+    })
+    const lotPpm = {}, waferPpm = {}
+    Object.entries(lotAgg).forEach(([k, v]) => { lotPpm[k] = v.n ? Math.round((v.sum / v.n) * 1e6) : 0 })
+    Object.entries(waferAgg).forEach(([k, v]) => { waferPpm[k] = v.n ? Math.round((v.sum / v.n) * 1e6) : 0 })
+    return { unitLotPpm: lotPpm, unitWaferPpm: waferPpm }
+  }, [unitData])
+
+  // 유닛 위험 임계 = reg_pred P90 (die P90 색칠 기준과 통일, 위험 유닛 = 상위 10%)
+  const unitThreshold = useMemo(() => {
+    const arr = unitData.map(u => parseFloat(u.reg_pred)).filter(isFinite).sort((a, b) => a - b)
+    if (!arr.length) return null
+    return arr[Math.floor(arr.length * 0.90)]
+  }, [unitData])
+
+  // 웨이퍼맵 유닛 기준 색칠용: serial→reg_pred 맵 + reg_pred 분포 스케일(임계=P90)
+  const unitColorMap = useMemo(() => {
+    const m = new Map()
+    unitData.forEach(u => { const v = parseFloat(u.reg_pred); if (isFinite(v)) m.set(String(u.ufs_serial), v) })
+    return m
+  }, [unitData])
+  const unitColorScale = useMemo(() => {
+    if (unitThreshold == null || !unitColorMap.size) return null
+    let mn = Infinity, mx = -Infinity
+    unitColorMap.forEach(v => { if (v < mn) mn = v; if (v > mx) mx = v })
+    return isFinite(mn) ? { predMin: mn, predMax: mx, threshold: unitThreshold } : null
+  }, [unitColorMap, unitThreshold])
+
   const lotTree = useMemo(() => {
     if (!summaryData.length) return []
     const lotMap = {}
@@ -835,16 +1011,15 @@ export default function DrilldownV2({ initialSelection }) {
       const lot = String(d.run_id)
       const wno = String(d.wafer_no)
       const key = `${lot}_${wno}`
-      if (!lotMap[lot]) lotMap[lot] = { lot, wafers: {}, totalDies: 0, riskDies: 0, ppmSum: 0 }
+      if (!lotMap[lot]) lotMap[lot] = { lot, wafers: {}, totalUnits: 0, riskUnits: 0 }
       lotMap[lot].wafers[wno] = {
         wno, key,
-        dies: d.total_dies,
-        riskDies: d.risk_dies,
-        avgPpm: d.avg_ppm,
+        units: Number(d.total_units) || 0,
+        riskUnits: Number(d.risk_units) || 0,
+        avgPpm: unitWaferPpm[key] ?? 0,  // 유닛 reg_pred 평균 기준
       }
-      lotMap[lot].totalDies += d.total_dies
-      lotMap[lot].riskDies  += d.risk_dies
-      lotMap[lot].ppmSum    += d.avg_ppm * d.total_dies
+      lotMap[lot].totalUnits += Number(d.total_units) || 0
+      lotMap[lot].riskUnits  += Number(d.risk_units) || 0
     })
     let lots = Object.values(lotMap)
     if (search.trim()) {
@@ -854,19 +1029,19 @@ export default function DrilldownV2({ initialSelection }) {
       )
     }
     lots.sort((a, b) => {
-      const rA = a.totalDies ? a.riskDies / a.totalDies : 0
-      const rB = b.totalDies ? b.riskDies / b.totalDies : 0
+      const rA = a.totalUnits ? a.riskUnits / a.totalUnits : 0
+      const rB = b.totalUnits ? b.riskUnits / b.totalUnits : 0
       if (lotSort === 'risk_asc') return rA - rB
       if (lotSort === 'default') return parseInt(a.lot) - parseInt(b.lot)
       return rB - rA
     })
     return lots.map(l => ({
       ...l,
-      riskRatio: l.totalDies ? l.riskDies / l.totalDies : 0,
-      avgPpm: l.totalDies ? Math.round(l.ppmSum / l.totalDies) : 0,
+      riskRatio: l.totalUnits ? l.riskUnits / l.totalUnits : 0,
+      avgPpm: unitLotPpm[l.lot] ?? 0,  // 유닛 reg_pred 평균 기준
       waferList: Object.values(l.wafers).sort((a, b) => parseInt(a.wno) - parseInt(b.wno)),
     }))
-  }, [summaryData, search, lotSort])
+  }, [summaryData, search, lotSort, unitLotPpm, unitWaferPpm])
 
   const selectedDies = useMemo(() => {
     if (!selectedKey) return []
@@ -979,15 +1154,14 @@ export default function DrilldownV2({ initialSelection }) {
     }
   }, [selectedDies])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 절대 임계: ~70% 초록, 70~85% 노랑, 85%+ 빨강
-  // 바 길이: 70% 미만 → 아주 짧음, 70~85% → 0~50%, 85%+ → 50~100%
+  // 유닛 기반 위험비율(위험 유닛/전체 유닛) 스케일
+  //  분포: 로트 최대 ~35%, 웨이퍼 최대 ~57%, 중앙값 ~0%
+  //  색: <10% 초록, 10~25% 노랑, 25%+ 빨강 / 바: 일반 0~100% (100%=만충)
   function absBarWidth(ratio) {
-    if (ratio < 0.70) return `${Math.round(ratio / 0.70 * 15)}%`
-    if (ratio < 0.85) return `${Math.round((ratio - 0.70) / 0.15 * 50)}%`
-    return `${Math.round(50 + (ratio - 0.85) / 0.15 * 50)}%`
+    return `${Math.min(100, Math.round(ratio * 100))}%`
   }
   function absClass(ratio) {
-    return ratio >= 0.85 ? 'danger' : ratio >= 0.70 ? 'warn' : 'ok'
+    return ratio >= 0.25 ? 'danger' : ratio >= 0.10 ? 'warn' : 'ok'
   }
 
   const currentDies = selectedKey ? selectedDies : lotAccumDies
@@ -1070,7 +1244,7 @@ export default function DrilldownV2({ initialSelection }) {
                             <span className="dd-pattern-mini-risk">{(l.riskRatio * 100).toFixed(0)}%</span>
                           </div>
                           <div className="dd-pattern-mini-map">
-                            {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} mini />}
+                            {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} mini colorScale={WMAP_COLOR_BY === 'unit' ? unitColorScale : undefined} />}
                           </div>
                         </div>
                       )
@@ -1098,13 +1272,13 @@ export default function DrilldownV2({ initialSelection }) {
                           <div>die <b>{zoomLot.nDies}</b></div>
                           <div>wafer <b>{zoomLot.nWafers}</b></div>
                           <div>위험 <b style={{ color: '#EF4444' }}>{(zoomLot.riskRatio * 100).toFixed(1)}%</b></div>
-                          <div>평균 <b>{Math.round(zoomLot.avgPred * 1e6).toLocaleString()} ppm</b></div>
+                          <div>평균 <b>{(unitLotPpm[zoomLot.lot] ?? Math.round(zoomLot.avgPred * 1e6)).toLocaleString()} ppm</b></div>
                         </div>
                         <button className="dd-report-close" onClick={() => setZoomLot(null)}>✕</button>
                       </div>
                     </div>
                     <div className="dd-pattern-slidein-map">
-                      {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} />}
+                      {scale && dies.length > 0 && <WaferMap dies={dies} scale={scale} colorScale={WMAP_COLOR_BY === 'unit' ? unitColorScale : undefined} />}
                     </div>
                     <div className="dd-zoom-actions">
                       <button
@@ -1201,13 +1375,13 @@ export default function DrilldownV2({ initialSelection }) {
                       </button>
                       {[...waferList]
                         .sort((a, b) => waferSort === 'risk_desc'
-                          ? (b.riskDies / b.dies) - (a.riskDies / a.dies)
+                          ? (b.units ? b.riskUnits / b.units : 0) - (a.units ? a.riskUnits / a.units : 0)
                           : waferSort === 'risk_asc'
-                          ? (a.riskDies / a.dies) - (b.riskDies / b.dies)
+                          ? (a.units ? a.riskUnits / a.units : 0) - (b.units ? b.riskUnits / b.units : 0)
                           : parseInt(a.wno) - parseInt(b.wno)
                         )
                         .map(w => {
-                        const wRatio  = w.dies ? w.riskDies / w.dies : 0
+                        const wRatio  = w.units ? w.riskUnits / w.units : 0
                         const wClass  = absClass(wRatio)
                         const wPpm    = w.avgPpm
                         const isSel   = selectedKey === w.key
@@ -1276,6 +1450,8 @@ export default function DrilldownV2({ initialSelection }) {
                   onSelectUnit={setSelectedUnit}
                   selectedDie={selectedDie}
                   onSelectDie={setSelectedDie}
+                  unitColorMap={WMAP_COLOR_BY === 'unit' ? unitColorMap : undefined}
+                  unitColorScale={WMAP_COLOR_BY === 'unit' ? unitColorScale : undefined}
                 />
               </div>
               <WaferBottomPanel
@@ -1284,6 +1460,9 @@ export default function DrilldownV2({ initialSelection }) {
                 scale={scale}
                 selectedDie={selectedDie}
                 onSelectDie={setSelectedDie}
+                unitRow={unitData.find(u => u.ufs_serial === selectedUnit)}
+                unitThreshold={unitThreshold}
+                unitColorScale={WMAP_COLOR_BY === 'unit' ? unitColorScale : undefined}
               />
             </div>
           )}
@@ -1306,6 +1485,8 @@ export default function DrilldownV2({ initialSelection }) {
                   scale={scale}
                   selectedUnit={null}
                   onSelectUnit={undefined}
+                  unitColorMap={WMAP_COLOR_BY === 'unit' ? unitColorMap : undefined}
+                  unitColorScale={WMAP_COLOR_BY === 'unit' ? unitColorScale : undefined}
                 />
               </div>
               <WaferBottomPanel
@@ -1343,6 +1524,13 @@ export default function DrilldownV2({ initialSelection }) {
               die={selectedDie}
               scale={scale}
               onClose={selectedDie ? () => setSelectedDie(null) : undefined}
+              {...(selectedDie ? (() => {
+                const ud = selectedDies.filter(d => d.ufs_serial === selectedDie.ufs_serial)
+                if (!ud.length) return { unitAvg: null, unitMaxAbsDev: null }
+                const avg = ud.reduce((s, d) => s + parseFloat(d.pred), 0) / ud.length
+                const mad = Math.max(...ud.map(d => Math.abs(parseFloat(d.pred) - avg)), 1e-9)
+                return { unitAvg: avg, unitMaxAbsDev: mad }
+              })() : { unitAvg: null, unitMaxAbsDev: null })}
             />
           </div>
         </div>

@@ -81,6 +81,7 @@ export default function ReportPage() {
   const [currentReportData, setCurrentReportData] = useState({})
   const currentHtmlRef   = useRef(null)
   const currentReportRef = useRef({})
+  const originalReportRef = useRef(null)   // 생성 직후 원본(초기화 복원용)
   const [blobUrl, setBlobUrl] = useState(null)
   const prevBlobRef = useRef(null)
   const initialLoad = useRef(true)
@@ -236,7 +237,11 @@ export default function ReportPage() {
   }
 
   function handleReset() {
+    const orig = originalReportRef.current
+    if (!orig) { alert('복원할 원본 보고서가 없습니다. 먼저 보고서를 생성하세요.'); return }
     if (!window.confirm('모든 수정을 폐기하고 원본 보고서로 되돌립니까?')) return
+    setCurrentHtml(orig.html)
+    setCurrentReportData(orig.report_data || {})
     undoStackRef.current = []; redoStackRef.current = []
     setCanUndo(false); setCanRedo(false)
     clearSelect()
@@ -360,6 +365,7 @@ export default function ReportPage() {
             initialLoad.current = true
             setCurrentHtml(html)
             if (data) setCurrentReportData(data)
+            originalReportRef.current = { html, report_data: data || {} }  // 원본 저장(초기화용)
             setButtons([])
             // 자동 생성 완료
             autoGenRef.current = false

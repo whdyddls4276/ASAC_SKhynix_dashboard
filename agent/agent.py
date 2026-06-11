@@ -16,7 +16,7 @@ from tools import (infer_period, scan_data, analyze_features, get_importance,
                    get_anomaly_feature_stats, get_val_rmse, get_feat_vs_health_scatter,
                    get_lot_grade_stack, get_pred_health_hist, get_feature_dist_compare,
                    get_top_risk_units, get_lot_mean_ppm_top, get_wafer_risk_die_ratio_top,
-                   get_shap_bar_top)
+                   get_shap_bar_top, get_unit_shap_bar, get_candidate_units)
 from report import build_html
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -168,6 +168,22 @@ def _run_tool(name: str, inputs: dict) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def _feat_dist_for_shap(shap_items):
+    """선택 유닛 SHAP 차트의 1등(유효) X피처로 R3 분포차트를 동기화.
+    shap_items에서 feature_dist에 존재하는 첫 X피처를 골라 분포를 계산한다.
+    유효 피처가 없으면 None(→ 호출부에서 전역 기본값 사용)."""
+    try:
+        for _it in (shap_items or []):
+            _f = str(_it.get("feature", ""))
+            if _f.startswith("X") and _f[1:].isdigit():
+                _fdc = get_feature_dist_compare(feature=_f)
+                if _fdc.get("labels"):
+                    return _fdc
+    except Exception:
+        pass
+    return None
+
+
 def _build_report_data(tool_cache: dict) -> dict:
     """tool_cache로부터 report_data를 조립 (pred_actual / trend_top1 실데이터 포함)."""
     # scan_data에서 사용된 날짜 필터 추출 (재사용)
@@ -192,6 +208,19 @@ def _build_report_data(tool_cache: dict) -> dict:
     top_unit = {}
     try:
         top_unit = get_top_unit_data()
+    except Exception:
+        pass
+
+    # 대표 유닛의 per-unit SHAP (R2 패널용) + 후보 유닛 목록(생성/편집 시 선택용)
+    unit_shap = []
+    try:
+        if top_unit.get("serial"):
+            unit_shap = get_unit_shap_bar(top_unit["serial"], 10)
+    except Exception:
+        pass
+    candidate_units = []
+    try:
+        candidate_units = get_candidate_units(5)
     except Exception:
         pass
 
@@ -269,9 +298,10 @@ def _build_report_data(tool_cache: dict) -> dict:
         pass
 
     # R3: 피처 정상/위험 분포 비교 히스토그램 (ProcessFactor 차트)
+    # 대표 유닛 SHAP 1등 피처와 동기화, 없으면 전역 기본값
     feat_dist_compare = {}
     try:
-        feat_dist_compare = get_feature_dist_compare()
+        feat_dist_compare = _feat_dist_for_shap(unit_shap) or get_feature_dist_compare()
     except Exception:
         pass
 
@@ -291,6 +321,8 @@ def _build_report_data(tool_cache: dict) -> dict:
         "importance":       tool_cache.get("get_importance", {}),
         "analysis":         analysis,
         "top_unit":         top_unit,
+        "unit_shap":        unit_shap,        # 대표/선택 유닛 per-unit SHAP (R2)
+        "candidate_units":  candidate_units,  # 대표 유닛 후보 5개 (선택용)
         "pos_defect":       pos_defect,
         "ppm_delta":        ppm_delta,
         "feat_scatter":     feat_scatter,
@@ -322,6 +354,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
     {"type": "report_ready", "markdown": "..."}  - 보고서 초안 완성
     {"type": "done"}                             - 완료
     """
+    import re as _re   # 함수 전체에서 안전하게 사용 (조건부 import로 인한 unbound 방지)
     # history에서 단순 텍스트 메시지만 추출 (tool_use 블록 등 복잡한 구조 제거)
     clean_history = []
     for msg in history:
@@ -417,6 +450,18 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         yield {"type": "done"}
         return
 
+    # 유닛 후보 버튼 선택(예: 'S22474') → 해당 유닛으로 보고서 생성
+    _sel = _re.match(r'^\s*(S\d{4,})\s*$', user_message.strip())
+    if _sel and _has_min_cache:
+        _serial = _sel.group(1)
+        report_data = _build_report_data(tool_cache)
+        _handle_command({"action": "change_unit", "serial": _serial}, report_data)
+        html = build_html(report_data)
+        yield {"type": "text", "content": f"{_serial} 유닛으로 보고서를 생성했습니다."}
+        yield {"type": "report_ready", "html": html, "report_data": report_data}
+        yield {"type": "done"}
+        return
+
     # "기간 확인" shortcut — "확인" 메시지이고 분석이 안 됐으면 바로 실행
     _analysis_done = "scan_data" in tool_cache and "get_importance" in tool_cache
     if user_message.strip() == "확인" and not _analysis_done:
@@ -425,6 +470,7 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         end = period.get("end", "")
 
         yield {"type": "tool_start", "tool": "scan_data"}
+        await asyncio.sleep(5)   # '🔍 데이터 스캔 중...' 표시 후 5초 대기 → 이후 진행
         scan_result = await asyncio.to_thread(scan_data, start=start, end=end)
         tool_cache["scan_data"] = scan_result
         yield {"type": "tool_result", "tool": "scan_data", "result": scan_result}
@@ -459,8 +505,19 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
             imp_lines.append(f"- {i}위: {f.get('feature','?')} (gain: {gain:.1f})")
         yield {"type": "text", "content": "\n".join(imp_lines)}
 
-        yield {"type": "text", "content": "분석을 마쳤습니다.\n\n이 내용대로 보고서를 생성할까요?"}
-        yield {"type": "confirm", "buttons": ["보고서 생성", "기간 변경"]}
+        # 대표 유닛 후보 제시 — 선택 시 그 유닛으로 보고서 생성 (R1 웨이퍼맵 + R2 SHAP)
+        _cands = []
+        try: _cands = get_candidate_units(5)
+        except Exception: pass
+        if _cands:
+            _lines = ["분석을 마쳤습니다.\n\n보고서에 표시할 **대표 유닛**을 선택하세요 (예측 ppm 높은 순):"]
+            for c in _cands:
+                _lines.append(f"- {c['serial']} · LOT{c['lot']}-WF{c['wafer']} · {c['ppm']:,.0f} ppm")
+            yield {"type": "text", "content": "\n".join(_lines)}
+            yield {"type": "confirm", "buttons": [c["serial"] for c in _cands] + ["기간 변경"]}
+        else:
+            yield {"type": "text", "content": "분석을 마쳤습니다.\n\n이 내용대로 보고서를 생성할까요?"}
+            yield {"type": "confirm", "buttons": ["보고서 생성", "기간 변경"]}
         yield {"type": "done"}
         return
 
@@ -651,7 +708,7 @@ REPORT_EDITOR_SYSTEM = """당신은 SK Hynix 반도체 보고서 수정 전문 A
 
 ### 헤더 구조
 - 좌: 발행일자 / 중앙: 품질불량예측보고서 / 우: 대외비 뱃지
-- 알림 배너 (전체 너비): "전주 대비 품질불량 ▲ ppm 이상 | [피처명] 특성 불량에 대해 Inline 원인 소급 요청"
+- 알림 배너 (전체 너비): "전 주 대비 품질불량 ▲ ppm 이상 | [피처명] 특성 불량에 대해 Inline 원인 소급 요청"
 
 ### 왼쪽 컬럼 — 모델링 현황 보고
 | 섹션 | 내용 | 데이터 |
@@ -734,7 +791,7 @@ d["weekly_yield_trend"] - 주차별 불량 트렌드 (L2)
 d["pred_ppm_trend"]     - LOT별 예측 ppm 트렌드 (L3)
 d["feat_scatter"]       - 피처 분포 scatter (보조)
 d["wafer_die"]          - 웨이퍼맵 die 좌표
-d["ppm_delta"]          - 전주 대비 ppm 변화 (배너용)
+d["ppm_delta"]          - 전 주 대비 ppm 변화 (배너용)
 d["pos_defect"]         - 포지션별 불량률
 d["chart_params"]       - 차트 파라미터 오버라이드 {"chart": str, "top_n": str}
 d["table_params"]       - 테이블 컬럼 숨기기 {"shap_hide_cols": [str,...]}
@@ -785,7 +842,7 @@ d.setdefault("importance", {})["features"] = feats[:5]   # 상위 5개만
 # 보고서 헤더 제목 (상단 가운데)
 d.setdefault("meta", {})["report_title"] = "Field Health 불량 예측 분석 보고서"
 # 요약 배너 첫째 줄 (HTML 허용, span 태그로 색상 지정 가능)
-d["meta"]["summary_title"] = "전주 대비 품질 불량 &nbsp;<span style=\"color:#EF4444\">▲163,452 ppm</span>&nbsp; <span style=\"font-size:17px;font-weight:600;color:#555\">열화</span>"
+d["meta"]["summary_title"] = "전 주 대비 품질 불량 &nbsp;<span style=\"color:#EF4444\">▲163,452 ppm</span>&nbsp; <span style=\"font-size:17px;font-weight:600;color:#555\">열화</span>"
 # 요약 배너 둘째 줄 (HTML 허용)
 d["meta"]["summary_sub"] = "원인 WT Parameter&nbsp;<span style=\"background:#fef3c7;color:#92400e;padding:1px 7px;font-size:15px;font-weight:800\">X1064, X592</span>&nbsp;이상 → inline 참원인 도출 요청"
 # 원인 피처만 바꾸려면 (summary_sub 자동 재생성됨):
@@ -800,17 +857,15 @@ d["meta"]["section_labels"]["L3"] = "Lot별 불량 개수"
 d["meta"]["section_labels"]["L4"] = "주요 피처 임계값 분포"
 d["meta"]["section_labels"]["R1"] = "불량 예측 현황 · 대표 불량 unit 기준"
 
-## 주차별 수율 트렌드 (L2) — 표시 주수 변경
-# d["weekly_yield_trend"]는 {"labels": [...], "production": [...], "pred_yield": [...]} 구조
-# 최근 N주만 보이려면 리스트를 tail로 자른다
+## 주차별 트렌드 (L2/L3) — 표시 주수 변경
+# d["weekly_yield_trend"]는 {"labels","ww_labels","date_labels","production",
+#   "pred_yield","defect_ppm","true_ppm"} 구조.
+# ⚠ 반드시 모든 list 필드를 함께 tail 한다. defect_ppm/ww_labels 를 빠뜨리면
+#   ppm 값이 pred_yield에서 역산되어 대시보드와 어긋난다.
 # 예) 최근 3주:
 n = 3
 wyt = d.get("weekly_yield_trend", {})
-d["weekly_yield_trend"] = {
-    "labels":     wyt.get("labels",     [])[-n:],
-    "production": wyt.get("production", [])[-n:],
-    "pred_yield": wyt.get("pred_yield", [])[-n:],
-}
+d["weekly_yield_trend"] = {k: (v[-n:] if isinstance(v, list) else v) for k, v in wyt.items()}
 
 ## SHAP 분석 테이블 컬럼 숨기기/복원
 # 숨길 수 있는 컬럼명: "feature", "high_mean", "low_mean", "ratio", "pval"
@@ -1074,10 +1129,10 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
 
     elif chart_type == "lot_mean_ppm":
         try:
-            lmp = get_lot_mean_ppm_top(top_n=10)
+            lmp = get_lot_mean_ppm_top(top_n=5)
         except Exception:
             lmp = {}
-        return {"title": "LOT별 평균 예측 ppm Top 10", "chart_type": "bar", "position": position,
+        return {"title": "LOT별 평균 예측 ppm Top 5", "chart_type": "bar", "position": position,
                 "labels": lmp.get("labels", []), "horizontal": True, "height": 150,
                 "datasets": [
                     {"label": "평균 ppm", "data": lmp.get("ppm", []), "color": "#F59E0B"},
@@ -1218,6 +1273,11 @@ def _handle_command(cmd: dict, d: dict):
         try:
             d["top_unit"] = get_top_unit_data(serial=serial)
             d["wafer_die"] = get_wafer_die_data(serial=serial)
+            d["unit_shap"] = get_unit_shap_bar(serial, 10)   # R2 SHAP도 해당 유닛으로
+            # R3 분포차트도 해당 유닛 SHAP 1등 피처로 동기화
+            _fdc = _feat_dist_for_shap(d["unit_shap"])
+            if _fdc:
+                d["feat_dist_compare"] = _fdc
         except Exception as e:
             return False, str(e)
         return True, None
@@ -1316,7 +1376,7 @@ def _try_direct_action(message: str, d: dict):
                     "ppm_trend": "LOT ppm", "pos_defect": "포지션별 불량률",
                     "pred_actual": "예측 vs 실측", "location_ppm": "위치별 평균 ppm",
                     "health_hist": "예측 Health 분포", "top_risk_units": "위험 Unit Top 10",
-                    "lot_mean_ppm": "LOT 평균 ppm Top 10", "wafer_risk_ratio": "웨이퍼 위험 die 비율",
+                    "lot_mean_ppm": "LOT 평균 ppm Top 5", "wafer_risk_ratio": "웨이퍼 위험 die 비율",
                 }
                 name = chart_names.get(chart_type, chart_type)
                 return {"action": "change_section", "target_sid": target_sid,
@@ -1386,6 +1446,12 @@ def _try_direct_action(message: str, d: dict):
         serial = _re.search(r'S\d{4,}', msg).group()
         return {"action": "change_unit", "serial": serial, "response": f"{serial} 유닛으로 변경했습니다."}, None
 
+    # ── 유닛 변경 요청인데 serial 미지정 → 후보 유닛 버튼 제시 (run_report_editor가 처리)
+    is_unit = bool(_re.search(r'유닛|unit|대표', msg, _re.IGNORECASE))
+    is_unit_change = bool(_re.search(r'변경|바꿔|바꾸|교체|선택|골라|다른', msg, _re.IGNORECASE))
+    if is_unit and is_unit_change:
+        return {"action": "__ask_unit__"}, None
+
     # ── toggle_section 감지
     sid_map = {
         'L1': 'L1_kpi', 'L2': 'L2_fi', 'L3': 'L3_trend',
@@ -1428,6 +1494,12 @@ async def run_report_editor(user_message: str, history: list,
         if not d.get("top_unit"):
             try: d["top_unit"] = get_top_unit_data()
             except Exception: d["top_unit"] = {}
+        if not d.get("unit_shap"):
+            try: d["unit_shap"] = get_unit_shap_bar(d.get("top_unit", {}).get("serial", ""), 10)
+            except Exception: d["unit_shap"] = []
+        if not d.get("candidate_units"):
+            try: d["candidate_units"] = get_candidate_units(5)
+            except Exception: d["candidate_units"] = []
         if not d.get("wafer_die"):
             try: d["wafer_die"] = get_wafer_die_data()
             except Exception: d["wafer_die"] = {}
@@ -1464,6 +1536,23 @@ async def run_report_editor(user_message: str, history: list,
 
     # ── Pre-router: known action 직접 처리 (Claude 호출 없이) ───────
     direct_cmd, clarify_q = _try_direct_action(user_message, d)
+
+    # 유닛 변경 요청(serial 미지정) → 후보 유닛 버튼 제시
+    if direct_cmd and direct_cmd.get("action") == "__ask_unit__":
+        _cands = d.get("candidate_units") or []
+        if not _cands:
+            try: _cands = get_candidate_units(5)
+            except Exception: _cands = []
+        if _cands:
+            _lines = ["변경할 **대표 유닛**을 선택하세요 (예측 ppm 높은 순):"]
+            for c in _cands:
+                _lines.append(f"- {c['serial']} · LOT{c['lot']}-WF{c['wafer']} · {c['ppm']:,.0f} ppm")
+            yield {"type": "text", "content": "\n".join(_lines)}
+            yield {"type": "confirm", "buttons": [c["serial"] for c in _cands]}
+        else:
+            yield {"type": "text", "content": "변경할 유닛 serial(예: S22474)을 알려주세요."}
+        yield {"type": "done"}
+        return
 
     if clarify_q:
         # 파라미터 불명확 → 질문만 반환 (보고서 수정 없음)

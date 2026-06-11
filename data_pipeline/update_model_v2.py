@@ -160,12 +160,12 @@ if 'die_x' in feat_meta or 'die_y' in feat_meta:
     parts = xs_val['run_wf_xy'].str.split('_')
     xs_val['die_x'] = parts.str[-2].apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
     xs_val['die_y'] = parts.str[-1].apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
-xs_val = xs_val.drop(columns='run_wf_xy')
 for base, mc in zip(missing_base, missing_feats):
     xs_val[mc] = xs_val[base].isna().astype(int) if base in xs_val.columns else 0
 xs_val = xs_val.drop(columns=[c for c in extra if c not in feat_names], errors='ignore')
 
-xs_merged = all_die[['ufs_serial']].merge(xs_val, on='ufs_serial', how='left')
+# die 단위 1:1 매칭(run_wf_xy). ufs_serial 단독 merge는 unit당 die 4×4=16 카테시안 폭증 → SHAP 4배 부풀림 버그.
+xs_merged = all_die[['ufs_serial', 'run_wf_xy']].merge(xs_val, on=['ufs_serial', 'run_wf_xy'], how='left')
 X_val_df = xs_merged[feat_names].copy()
 X_val = X_val_df.fillna(0).values
 serials_val = xs_merged['ufs_serial'].values
@@ -192,7 +192,7 @@ print(f"  저장: shap_bar.csv")
 TOP = 20; idx = rank_order[:TOP]; tfn = [feat_names[i] for i in idx]
 sdf = pd.DataFrame(shap_values[:, idx], columns=tfn); sdf['ufs_serial'] = serials_val
 fdf = pd.DataFrame(X_val_df[tfn].values, columns=[f'fv_{c}' for c in tfn]); fdf['ufs_serial'] = serials_val
-su = sdf.groupby('ufs_serial')[tfn].mean(); fu = fdf.groupby('ufs_serial')[[f'fv_{c}' for c in tfn]].mean()
+su = sdf.groupby('ufs_serial')[tfn].mean(); fu = fdf.groupby('ufs_serial')[[f'fv_{c}' for c in tfn]].mean()  # die SHAP 평균(unit 대표 기여), 피처값(fv_)도 평균
 rows = []
 for ri, feat in enumerate(tfn):
     sv = su[feat]; fv = fu[f'fv_{feat}']
