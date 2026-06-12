@@ -21,9 +21,10 @@ const NORMAL_STOPS = [
   [1.0, [165, 215, 220]],
 ]
 const RISK_STOPS = [
-  [0.0,  [251, 146, 60]],
-  [0.5,  [239, 68,  68]],
-  [1.0,  [153, 27,  27]],
+  [0.0,  [254, 240, 138]],
+  [0.33, [251, 146,  60]],
+  [0.67, [220,  38,  38]],
+  [1.0,  [100,   0,   0]],
 ]
 
 // 드릴다운 웨이퍼맵 색칠 기준 토글:
@@ -60,7 +61,7 @@ function predColor(pred, predMin, predMax, threshold) {
 }
 
 const COLOR_LEGEND_GRADIENT =
-  'linear-gradient(to right, #f3f4f6, #dbeafe, #a5d7dc, #fb923c, #ef4444, #991b1b)'
+  'linear-gradient(to right, #f3f4f6, #dbeafe, #a5d7dc, #fef08a, #fb923c, #dc2626, #640000)'
 
 // 전체 데이터(oof+val+test)의 die 좌표 글로벌 범위 — 웨이퍼맵 격자 고정용
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
