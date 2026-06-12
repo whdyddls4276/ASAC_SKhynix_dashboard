@@ -54,10 +54,10 @@ function predColor(pred, predMin, predMax, threshold) {
   if (!isFinite(pred)) return '#f1f5f9'
   if (pred <= threshold) {
     const span = Math.max(1e-9, threshold - predMin)
-    return interp(NORMAL_STOPS, Math.sqrt((pred - predMin) / span))
+    return interp(NORMAL_STOPS, (pred - predMin) / span)
   } else {
     const span = Math.max(1e-9, predMax - threshold)
-    return interp(RISK_STOPS, Math.sqrt((pred - threshold) / span))
+    return interp(RISK_STOPS, (pred - threshold) / span)
   }
 }
 
