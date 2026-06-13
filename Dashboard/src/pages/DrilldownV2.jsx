@@ -16,10 +16,10 @@ import './DrilldownV2.css'
 
 // ── 색상 로직 (1팀 colors.ts 포팅) ───────────────────
 const NORMAL_STOPS = [
-  [0.0,  [240, 249, 255]],
-  [0.33, [224, 242, 254]],
-  [0.67, [186, 230, 253]],
-  [1.0,  [125, 211, 252]],
+  [0.0,  [241, 245, 249]],   // #f1f5f9 밝은 회색
+  [0.33, [147, 197, 253]],   // #93c5fd 연파랑
+  [0.67, [ 59, 130, 246]],   // #3b82f6 파랑
+  [1.0,  [ 29,  78, 216]],   // #1d4ed8 진파랑 (threshold 직전)
 ]
 const RISK_STOPS = [
   [0.0,  [250, 204,  21]],   // #facc15 진한 노란색
@@ -62,7 +62,7 @@ function predColor(pred, predMin, predMax, threshold) {
 }
 
 const COLOR_LEGEND_GRADIENT =
-  'linear-gradient(to right, #f0f9ff, #e0f2fe, #bae6fd, #7dd3fc, #facc15, #f97316, #dc2626, #450a0a)'
+  'linear-gradient(to right, #f1f5f9, #93c5fd, #3b82f6, #1d4ed8, #facc15, #f97316, #dc2626, #450a0a)'
 
 // 전체 데이터(oof+val+test)의 die 좌표 글로벌 범위 — 웨이퍼맵 격자 고정용
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
@@ -983,11 +983,11 @@ export default function DrilldownV2({ initialSelection }) {
     return { unitLotPpm: lotPpm, unitWaferPpm: waferPpm }
   }, [unitData])
 
-  // 유닛 위험 임계 = reg_pred P90 (die P90 색칠 기준과 통일, 위험 유닛 = 상위 10%)
+  // 유닛 위험 임계 = reg_pred P75 (상위 25%를 위험으로 색칠 — 노란~빨간 범위 확대)
   const unitThreshold = useMemo(() => {
     const arr = unitData.map(u => parseFloat(u.reg_pred)).filter(isFinite).sort((a, b) => a - b)
     if (!arr.length) return null
-    return arr[Math.floor(arr.length * 0.90)]
+    return arr[Math.floor(arr.length * 0.75)]
   }, [unitData])
 
   // 웨이퍼맵 유닛 기준 색칠용: serial→reg_pred 맵 + reg_pred 분포 스케일(임계=P90)
