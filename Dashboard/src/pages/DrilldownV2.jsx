@@ -22,10 +22,10 @@ const NORMAL_STOPS = [
   [1.0,  [125, 211, 252]],
 ]
 const RISK_STOPS = [
-  [0.0,  [254, 240, 138]],
-  [0.33, [251, 146,  60]],
-  [0.67, [220,  38,  38]],
-  [1.0,  [100,   0,   0]],
+  [0.0,  [250, 204,  21]],   // #facc15 진한 노란색
+  [0.33, [249, 115,  22]],   // #f97316 오렌지
+  [0.67, [220,  38,  38]],   // #dc2626 빨간색
+  [1.0,  [ 69,  10,  10]],   // #450a0a 다크레드
 ]
 
 // 드릴다운 웨이퍼맵 색칠 기준 토글:
@@ -62,7 +62,7 @@ function predColor(pred, predMin, predMax, threshold) {
 }
 
 const COLOR_LEGEND_GRADIENT =
-  'linear-gradient(to right, #f0f9ff, #e0f2fe, #bae6fd, #7dd3fc, #fef08a, #fb923c, #dc2626, #640000)'
+  'linear-gradient(to right, #f0f9ff, #e0f2fe, #bae6fd, #7dd3fc, #facc15, #f97316, #dc2626, #450a0a)'
 
 // 전체 데이터(oof+val+test)의 die 좌표 글로벌 범위 — 웨이퍼맵 격자 고정용
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
@@ -76,8 +76,8 @@ function computeScale(allDies) {
   preds.sort((a, b) => a - b)
   const predMin = preds[0]
   const predMax = preds[preds.length - 1]
-  const q3 = preds[Math.floor(preds.length * 0.75)] ?? predMin
-  const threshold = q3
+  const q2 = preds[Math.floor(preds.length * 0.50)] ?? predMin
+  const threshold = q2
   return { predMin, predMax, threshold, gridXRange: gx.xRange, gridYRange: gx.yRange, gridXMin: gx.xMin, gridXMax: gx.xMax, gridYMin: gx.yMin, gridYMax: gx.yMax }
 }
 
