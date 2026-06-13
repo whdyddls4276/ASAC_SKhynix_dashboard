@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  publicDir: '../data/processed',
+  publicDir: 'public',
   server: {
     hmr: false,
     proxy: {
