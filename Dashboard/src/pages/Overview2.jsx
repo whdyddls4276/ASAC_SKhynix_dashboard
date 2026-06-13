@@ -2,7 +2,6 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useCSV } from '../hooks/useCSV'
 import ALL_DIE_POSITIONS from './diePositions.js'
-import './Overview.css'
 import './Overview2.css'
 
 // 트렌드 차트 — 배경 영역(파랑/빨강)을 차트 뒤 div로 깔아 정확히 컬럼에 맞춤
