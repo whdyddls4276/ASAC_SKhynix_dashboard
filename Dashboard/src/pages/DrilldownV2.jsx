@@ -21,8 +21,9 @@ const NORMAL_STOPS = [
   [1.0,  [125, 211, 252]],   // #7dd3fc 하늘색
 ]
 const RISK_STOPS = [
-  [0.0,  [254, 240, 138]],   // #fef08a 연한 노랑
-  [0.5,  [253, 186,  76]],   // #fdba4c 연한 주황
+  [0.0,  [254, 249, 195]],   // #fef9c3 아주 연한 노랑
+  [0.4,  [253, 224,  71]],   // #fde047 노랑
+  [0.7,  [250, 173,  20]],   // #faad14 진한 노랑
   [1.0,  [249, 115,  22]],   // #f97316 주황
 ]
 
@@ -55,12 +56,13 @@ function predColor(pred, predMin, predMax, threshold) {
     return interp(NORMAL_STOPS, (pred - predMin) / span)
   } else {
     const span = Math.max(1e-9, predMax - threshold)
-    return interp(RISK_STOPS, (pred - threshold) / span)
+    // 제곱근 스케일: 낮은 위험값도 색상 퍼짐
+    return interp(RISK_STOPS, Math.sqrt((pred - threshold) / span))
   }
 }
 
 const COLOR_LEGEND_GRADIENT =
-  'linear-gradient(to right, #f8fafc, #bae6fd, #7dd3fc, #fef08a, #fdba4c, #f97316)'
+  'linear-gradient(to right, #f8fafc, #bae6fd, #7dd3fc, #fef9c3, #fde047, #faad14, #f97316)'
 
 // 전체 데이터(oof+val+test)의 die 좌표 글로벌 범위 — 웨이퍼맵 격자 고정용
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
