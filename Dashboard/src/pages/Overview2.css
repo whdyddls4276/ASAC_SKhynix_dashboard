@@ -1,4 +1,38 @@
-﻿/* KPI 카드 3개 가로 한 줄 */
+﻿/* KPI 카드 기본 스타일 (Overview.css에서 이전) */
+.kpi-card {
+  background: var(--surface, #fff);
+  border-radius: var(--radius, 10px);
+  padding: 20px 22px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  border: 1.5px solid #CBD5E1;
+  transition: box-shadow .2s, transform .2s;
+}
+.kpi-card:hover {
+  box-shadow: 0 4px 12px rgba(15,23,42,0.08);
+  transform: translateY(-1px);
+}
+.kpi-info { display: flex; flex-direction: column; gap: 2px; }
+.kpi-val {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+.kpi-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+.kpi-sub {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+/* KPI 카드 3개 가로 한 줄 */
 .ov2-kpi-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
