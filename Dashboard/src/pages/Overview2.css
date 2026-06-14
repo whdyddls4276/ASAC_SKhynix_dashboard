@@ -1,4 +1,36 @@
-﻿/* KPI 카드 기본 스타일 (Overview.css에서 이전) */
+﻿/* chart-card 스타일 (Overview.css에서 이전) */
+.chart-card {
+  background: var(--surface, #fff);
+  border-radius: var(--radius, 10px);
+  border: 1px solid var(--border, #E2E8F0);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.06);
+  overflow: hidden;
+  transition: box-shadow .2s;
+}
+.chart-card:hover { box-shadow: 0 4px 12px rgba(15,23,42,0.1); }
+
+.cc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border, #E2E8F0);
+}
+.cc-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text1, #0F172A);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cc-sub {
+  font-size: 12px;
+  color: var(--text3, #94A3B8);
+}
+.cc-body { padding: 16px 18px; }
+
+/* KPI 카드 기본 스타일 (Overview.css에서 이전) */
 .kpi-card {
   background: var(--surface, #fff);
   border-radius: var(--radius, 10px);
