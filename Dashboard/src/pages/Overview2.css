@@ -1,4 +1,80 @@
-﻿/* chart-card 스타일 (Overview.css에서 이전) */
+﻿/* overview 레이아웃 */
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 28px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* lot 테이블 */
+.ov-lot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ov-lot-table th {
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2, #64748b);
+  border-bottom: 1.5px solid var(--border, #E2E8F0);
+  background: var(--surface2, #F8FAFC);
+  white-space: nowrap;
+}
+.ov-lot-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border, #E2E8F0);
+  vertical-align: middle;
+}
+.ov-lot-table tr:last-child td { border-bottom: none; }
+.ov-lot-table tr:hover td { background: #EFF6FF; }
+
+.ov-lot-rank {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text3, #94A3B8);
+  font-family: 'JetBrains Mono', monospace;
+  width: 36px;
+}
+.ov-lot-id {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #0F172A);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+.ov-lot-pct { white-space: nowrap; }
+.ov-lot-ppm {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text2, #475569);
+  white-space: nowrap;
+  text-align: right;
+}
+.ov-lot-ppm.danger { color: #DC2626; }
+.ov-lot-ppm.warn   { color: #D97706; }
+.ov-lot-count {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text3, #94A3B8);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* dummy-desc */
+.dummy-desc {
+  font-size: 12px;
+  color: #9CA3AF;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* chart-card 스타일 (Overview.css에서 이전) */
 .chart-card {
   background: var(--surface, #fff);
   border-radius: var(--radius, 10px);
