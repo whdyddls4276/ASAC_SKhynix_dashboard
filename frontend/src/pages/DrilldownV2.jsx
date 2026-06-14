@@ -217,21 +217,20 @@ function WaferMap({ dies, scale, selectedUnit, onSelectUnit, selectedDie, onSele
 }
 
 // ── SHAP 바 (shap_unit.json 기반 unit별 실제 SHAP, fallback: shap_bar.csv 전체 평균) ─
-function ShapBar({ shapData, shapUnitMap, ufsSerial, selectedFeature, onSelectFeature }) {
+function ShapBar({ shapData, shapUnitMap, ufsSerial, selectedFeature, onSelectFeature, featNormData }) {
+  const availFeatures = useMemo(() => new Set(featNormData?.map(r => r.feature) ?? []), [featNormData])
+
   const unitShap = useMemo(() => {
     if (!shapUnitMap || !ufsSerial) return null
     const rows = shapUnitMap[ufsSerial]
-    console.log('[ShapBar] ufsSerial:', ufsSerial, '| rows:', rows?.length, '| sample:', rows?.[0])
     if (!rows?.length) return null
     const mapped = rows.map(r => {
       const v = Number(r.shap_value)
       return { feature: String(r.feature), val: isNaN(v) ? 0 : v, magnitude: isNaN(v) ? 0 : Math.abs(v) }
     }).filter(r => r.magnitude > 0).sort((a, b) => b.magnitude - a.magnitude).slice(0, 10)
-    console.log('[ShapBar] mapped after filter:', mapped.length, mapped[0])
     return mapped.length ? mapped : null
   }, [shapUnitMap, ufsSerial])
 
-  // shap_unit.json 로딩 중이면 로딩 표시
   if (!shapUnitMap && ufsSerial) {
     return <div style={{ fontSize: 11, color: '#94a3b8', padding: '8px 0' }}>SHAP 데이터 로딩 중…</div>
   }
@@ -249,33 +248,37 @@ function ShapBar({ shapData, shapUnitMap, ufsSerial, selectedFeature, onSelectFe
 
   if (!bars.length) return null
   const maxMag = Math.max(...bars.map(b => b.magnitude), 1e-9)
+  const hasClickable = bars.some(b => availFeatures.size === 0 || availFeatures.has(b.feature))
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
       {bars.map(b => {
         const w = Math.round(b.magnitude / maxMag * 100)
+        const hasWafer = availFeatures.size === 0 || availFeatures.has(b.feature)
         const clr = b.val >= 0 ? '#ef4444' : '#3b82f6'
         const isSelected = selectedFeature === b.feature
         return (
           <div
             key={b.feature}
-            onClick={() => onSelectFeature?.(isSelected ? null : b.feature)}
+            onClick={() => hasWafer && onSelectFeature?.(isSelected ? null : b.feature)}
+            title={hasWafer ? '클릭 → 웨이퍼 히트맵' : '웨이퍼 위치 데이터 없음'}
             style={{
               display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
-              cursor: onSelectFeature ? 'pointer' : undefined,
+              cursor: hasWafer && onSelectFeature ? 'pointer' : 'default',
               background: isSelected ? '#eff6ff' : 'transparent',
               borderRadius: 4, padding: '2px 2px',
               boxShadow: isSelected ? 'inset 0 0 0 1.5px #3b82f6' : 'none',
+              opacity: hasWafer ? 1 : 0.45,
             }}
           >
             <span style={{ width: 60, textAlign: 'right', fontFamily: 'monospace', color: isSelected ? '#1d4ed8' : '#374151', flexShrink: 0, fontWeight: isSelected ? 700 : 400 }}>{b.feature}</span>
             <div style={{ flex: 1, background: '#f1f5f9', height: 10, borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ width: `${w}%`, height: '100%', background: clr, borderRadius: 2 }} />
+              <div style={{ width: `${w}%`, height: '100%', background: hasWafer ? clr : '#94a3b8', borderRadius: 2 }} />
             </div>
-            <span style={{ width: 52, fontSize: 11, color: clr, fontWeight: 700, textAlign: 'right' }}>{b.val >= 0 ? '+' : ''}{Math.round(b.val * 1e6).toLocaleString()}</span>
+            <span style={{ width: 52, fontSize: 11, color: hasWafer ? clr : '#94a3b8', fontWeight: 700, textAlign: 'right' }}>{b.val >= 0 ? '+' : ''}{Math.round(b.val * 1e6).toLocaleString()}</span>
           </div>
         )
       })}
-      {onSelectFeature && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>막대 클릭 → 웨이퍼 히트맵</div>}
+      {onSelectFeature && hasClickable && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>색상 막대 클릭 → 웨이퍼 히트맵</div>}
     </div>
   )
 }
@@ -437,7 +440,7 @@ function UnitReport({ ufsSerial, allDies, scale, onClose, shapData, shapUnitMap,
       {/* 주요 기여 변수 (unit별 SHAP - shap_beeswarm.csv 기반) */}
       <div className="dd-section" style={{ padding: '6px 4px 4px' }}>
         <div className="dd-section-title">주요 기여 변수 Top 10 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>unit별 SHAP</span><span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginLeft: 6 }}>(ppm)</span></div>
-        <ShapBar shapData={shapData} shapUnitMap={shapUnitMap} ufsSerial={ufsSerial} selectedFeature={selectedFeature} onSelectFeature={setSelectedFeature} />
+        <ShapBar shapData={shapData} shapUnitMap={shapUnitMap} ufsSerial={ufsSerial} selectedFeature={selectedFeature} onSelectFeature={setSelectedFeature} featNormData={featNormData} />
         {/* 피처 웨이퍼 히트맵 (SHAP 막대 클릭 시 SHAP 바 바로 아래 표시) */}
         {selectedFeature && (
           <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
