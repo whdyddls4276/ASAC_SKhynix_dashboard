@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useCSV } from '../hooks/useCSV'
+import { dataUrl } from '../utils/dataUrl'
 import ALL_DIE_POSITIONS from './diePositions.js'
 import './Overview2.css'
 
@@ -616,16 +617,16 @@ export default function Overview2({ onNavigateDrilldown, onNavigateProcessFactor
   const [outlierWafer, setOutlierWafer] = useState(null)   // 리스트에서 선택된 웨이퍼
   const [waferScale, setWaferScale] = useState(null)
   useEffect(() => {
-    const loadSingle = () => fetch('/outlier_wafer.json').then(r => r.json())
+    const loadSingle = () => fetch(dataUrl('/outlier_wafer.json')).then(r => r.json())
       .then(w => { setOutlierWafers(w ? [w] : []); setOutlierWafer(w || null) })
       .catch(() => { setOutlierWafers([]); setOutlierWafer(null) })
-    fetch('/outlier_wafers.json').then(r => r.json())
+    fetch(dataUrl('/outlier_wafers.json')).then(r => r.json())
       .then(list => {
         if (Array.isArray(list) && list.length) { setOutlierWafers(list); setOutlierWafer(list[0]) }
         else loadSingle()
       })
       .catch(loadSingle)
-    fetch('/wafer_scale.json').then(r => r.json())
+    fetch(dataUrl('/wafer_scale.json')).then(r => r.json())
       .then(s => setWaferScale({ predMin: s.pred_min, predMax: s.pred_max, threshold: s.threshold }))
       .catch(() => setWaferScale(null))
   }, [])

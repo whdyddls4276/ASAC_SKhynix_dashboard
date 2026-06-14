@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Papa from 'papaparse'
+import { dataUrl } from '../utils/dataUrl'
 
 export function useCSV(path) {
   const [data, setData] = useState([])
@@ -8,7 +9,7 @@ export function useCSV(path) {
   useEffect(() => {
     if (!path) { setData([]); setLoading(false); return }
     setLoading(true)
-    fetch(path)
+    fetch(dataUrl(path))
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.text()

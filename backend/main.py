@@ -7,9 +7,9 @@ import json
 import asyncio
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, FileResponse
 from pydantic import BaseModel
 
 from agent import run_agent
@@ -245,6 +245,17 @@ async def report_interact(req: InteractRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+@app.get("/api/data/{path:path}")
+async def serve_data(path: str):
+    """CSV/JSON 정적 데이터 파일 서빙."""
+    file_path = os.path.join(_STATIC_DIR, path)
+    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
 
 
 @app.get("/health")

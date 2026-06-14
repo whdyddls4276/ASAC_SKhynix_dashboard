@@ -11,6 +11,7 @@
  */
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useCSV } from '../hooks/useCSV'
+import { dataUrl } from '../utils/dataUrl'
 import ALL_DIE_POSITIONS from './diePositions.js'
 import './DrilldownV2.css'
 
@@ -876,7 +877,7 @@ export default function DrilldownV2({ initialSelection }) {
   const { data: lotPatternsAll } = useCSV('/dashboard_lot_patterns.csv')
   const [lotPatternMaps, setLotPatternMaps] = useState({})
   useEffect(() => {
-    fetch('/dashboard_lot_pattern_maps.json')
+    fetch(dataUrl('/dashboard_lot_pattern_maps.json'))
       .then(r => r.ok ? r.json() : {})
       .then(setLotPatternMaps)
       .catch(() => {})
@@ -884,7 +885,7 @@ export default function DrilldownV2({ initialSelection }) {
 
   const [globalScale, setGlobalScale] = useState(null)
   useEffect(() => {
-    fetch('/wafer_scale.json').then(r => r.json()).then(s => setGlobalScale({
+    fetch(dataUrl('/wafer_scale.json')).then(r => r.json()).then(s => setGlobalScale({
       predMin: s.pred_min,
       predMax: s.pred_max,
       threshold: s.threshold,
@@ -900,7 +901,7 @@ export default function DrilldownV2({ initialSelection }) {
   const [selectedUnit, setSelectedUnit] = useState(null)
   const [shapUnitMap, setShapUnitMap] = useState(null)
   useEffect(() => {
-    fetch('/shap_unit.json')
+    fetch(dataUrl('/shap_unit.json'))
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
       .then(d => setShapUnitMap(d))
       .catch(e => console.warn('[ShapUnit] 로드 실패:', e))
