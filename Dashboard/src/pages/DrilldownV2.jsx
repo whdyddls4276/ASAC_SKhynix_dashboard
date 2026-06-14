@@ -16,15 +16,14 @@ import './DrilldownV2.css'
 
 // ── 색상 로직 (1팀 colors.ts 포팅) ───────────────────
 const NORMAL_STOPS = [
-  [0.0,  [226, 232, 240]],   // #e2e8f0 회색
-  [0.5,  [ 96, 165, 250]],   // #60a5fa 파랑
-  [1.0,  [ 30,  64, 175]],   // #1e40af 진파랑
+  [0.0,  [241, 245, 249]],   // #f1f5f9 연한 회색
+  [0.5,  [125, 211, 252]],   // #7dd3fc 하늘색
+  [1.0,  [ 14, 165, 233]],   // #0ea5e9 진한 하늘색
 ]
 const RISK_STOPS = [
-  [0.0,  [234, 179,   8]],   // #eab308 노란색
-  [0.4,  [234,  88,  12]],   // #ea580c 주황
-  [0.7,  [185,  28,  28]],   // #b91c1c 빨강
-  [1.0,  [ 69,  10,  10]],   // #450a0a 다크레드
+  [0.0,  [250, 204,  21]],   // #facc15 노란색
+  [0.5,  [249, 115,  22]],   // #f97316 주황
+  [1.0,  [194,  65,   0]],   // #c24100 진한 주황
 ]
 
 // 드릴다운 웨이퍼맵 색칠 기준 토글:
@@ -61,7 +60,7 @@ function predColor(pred, predMin, predMax, threshold) {
 }
 
 const COLOR_LEGEND_GRADIENT =
-  'linear-gradient(to right, #e2e8f0, #60a5fa, #1e40af, #eab308, #ea580c, #b91c1c, #450a0a)'
+  'linear-gradient(to right, #f1f5f9, #7dd3fc, #0ea5e9, #facc15, #f97316, #c24100)'
 
 // 전체 데이터(oof+val+test)의 die 좌표 글로벌 범위 — 웨이퍼맵 격자 고정용
 const GLOBAL_DIE_X_MIN = 12, GLOBAL_DIE_X_MAX = 66
