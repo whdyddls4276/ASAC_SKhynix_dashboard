@@ -64,7 +64,9 @@ class ChatRequest(BaseModel):
     message: str
     history: list = []
     tool_cache: dict = {}
-    context: str = ""        # "report_edit" 이면 보고서 수정 모드
+    context: str = ""        # "report_edit"=보고서 수정, "free_query"=자유질의
+    mode: str = "chat"       # free_query 하위 모드: "chat"(대화) | "recommended"(추천질문·독립)
+    entity_context: dict = {}  # free_query chat 모드: 선택 UNIT/피처/LOT/웨이퍼 (후속질문 맥락)
     current_html: str = ""   # 현재 보고서 HTML (수정 컨텍스트)
     current_report_data: dict = {}  # 현재 보고서 데이터 (수정 누적용)
 
@@ -107,6 +109,9 @@ async def chat(req: ChatRequest):
                     req.message, req.history, req.tool_cache,
                     req.current_html, req.current_report_data
                 )
+            elif req.context == "free_query":
+                from agent import run_free_query
+                gen = run_free_query(req.message, req.history, req.mode, req.entity_context)
             else:
                 gen = run_agent(req.message, req.history, req.tool_cache)
             async for event in gen:
@@ -261,3 +266,13 @@ async def serve_data(path: str):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/candidate-units")
+def candidate_units(n: int = 5):
+    """챗봇 '고위험 UNIT 원인 보기' 후보 목록. 후보 선정 로직은 백엔드(get_candidate_units)에만 존재."""
+    from tools import get_candidate_units
+    try:
+        return {"units": get_candidate_units(n)}   # [{serial, lot, wafer, ppm}, ...]
+    except Exception as e:
+        return {"units": [], "error": str(e)}

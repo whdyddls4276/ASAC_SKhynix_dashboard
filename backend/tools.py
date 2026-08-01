@@ -8,10 +8,14 @@ import numpy as np
 from scipy import stats
 from datetime import datetime, timedelta
 
-DASHBOARD_DIR  = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "processed"))
+# 실제 가공 CSV 위치는 backend/static/ (data/processed는 옛 배포 경로 — 없으면 fallback)
+_STATIC_DIR    = os.path.normpath(os.path.join(os.path.dirname(__file__), "static"))
+_PROCESSED_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "processed"))
+DASHBOARD_DIR  = _STATIC_DIR if os.path.exists(_STATIC_DIR) else _PROCESSED_DIR
 DATA_DIR       = DASHBOARD_DIR
 # 대용량 원본 데이터 fallback 경로 (sk_하이닉스/0_data/)
 _FALLBACK_DIRS = [
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "static")),  # 실제 가공 CSV 위치 (backend/static/)
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "0_data")),
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data")),
     r"C:\Users\Dell3571\Desktop\기업\0_data",
@@ -1219,8 +1223,16 @@ def get_mean_pred_ppm() -> int:
 
 
 def get_lot_grade_stack(top_n: int = 20) -> dict:
-    """최신 top_n개 LOT별 grade1~4 unit 수 스택 바 데이터."""
+    """LOT별 Grade 분포(차트용, 최신 top_n개) + HIGH+MED 위험군의 LOT 집중도 진단을 반환.
+
+    위험군은 risk 값이 HIGH 또는 MED인 UNIT으로 고정(grade3+grade4).
+    집중도 진단(total_risk_units/risk_lot_count/top_lots/top2_lot_risk_share)은
+    차트의 top_n과 무관하게 **전체 LOT 기준**으로 계산한다.
+    집중/분산 '판정'은 이 함수가 하지 않는다(임계값 정책이 미확정) — 수치만 반환.
+    """
     units = _load("dashboard_units.csv")
+
+    # ── 차트용 grade 스택 (기존 로직 그대로, 대시보드 호환) ──
     grp = (
         units.groupby(["run_id", "grade"])
         .size()
@@ -1231,12 +1243,46 @@ def get_lot_grade_stack(top_n: int = 20) -> dict:
         if g not in grp.columns:
             grp[g] = 0
     grp = grp.sort_values("run_id").tail(top_n)
+
+    # ── 위험군(HIGH+MED) LOT 집중도 진단: 반드시 전체 데이터 기준 ──
+    risk_units = units[units["risk"].isin(["HIGH", "MED"])].copy()
+    lot_risk = (
+        risk_units.dropna(subset=["run_id"])
+        .groupby("run_id")
+        .size()
+        .sort_values(ascending=False)
+    )
+    total_risk_units = int(lot_risk.sum())
+    risk_lot_count   = int(lot_risk.size)
+
+    top_lots = []
+    for lot_id, count in lot_risk.head(5).items():
+        share = (count / total_risk_units) if total_risk_units else 0.0
+        top_lots.append({
+            "lot":        str(lot_id),   # run_id 타입 보존 (숫자→문자 LOT 대비)
+            "risk_count": int(count),
+            "risk_share": round(float(share), 4),
+        })
+    top2_share = (float(lot_risk.head(2).sum() / total_risk_units)
+                  if total_risk_units else 0.0)
+
     return {
+        # 기존 필드 (대시보드 차트 호환) — 그대로
         "labels": [f"L{int(r)}" for r in grp["run_id"]],
         "g1": [int(v) for v in grp["grade1"]],
         "g2": [int(v) for v in grp["grade2"]],
         "g3": [int(v) for v in grp["grade3"]],
         "g4": [int(v) for v in grp["grade4"]],
+        # 추가 진단 필드 (위험군 LOT 집중도, 전체 LOT 기준)
+        "risk_definition": {
+            "labels":       ["MED", "HIGH"],
+            "display_name": "MEDIUM + HIGH",
+            "grades":       ["grade3", "grade4"],
+        },
+        "total_risk_units":     total_risk_units,
+        "risk_lot_count":       risk_lot_count,
+        "top_lots":             top_lots,
+        "top2_lot_risk_share":  round(top2_share, 4),
     }
 
 

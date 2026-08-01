@@ -3,7 +3,7 @@ import './TopBar.css'
 
 const FIXED_DATE = '2026-06-11'
 
-export default function TopBar({ notifOpen, setNotifOpen }) {
+export default function TopBar({ notifOpen, setNotifOpen, setChatOpen }) {
   const [timeStr, setTimeStr] = useState('')
 
   useEffect(() => {
@@ -23,6 +23,14 @@ export default function TopBar({ notifOpen, setNotifOpen }) {
 
       <div className="topbar-right">
         <div className="date-pill">{FIXED_DATE} · {timeStr}</div>
+
+        <button
+          className="icon-btn"
+          onClick={() => setChatOpen?.(v => !v)}
+          title="분석 어시스턴트"
+        >
+          💬
+        </button>
 
         <button
           className="icon-btn"

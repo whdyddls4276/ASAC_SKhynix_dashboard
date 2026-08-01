@@ -62,7 +62,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar notifOpen={notifOpen} setNotifOpen={setNotifOpen} />
+      <TopBar notifOpen={notifOpen} setNotifOpen={setNotifOpen} setChatOpen={setChatOpen} />
 
       <div className="app-body">
         <Sidebar activePage={activePage} setActivePage={(p) => { setPendingSelection(null); setActivePage(p) }} open={sidebarOpen} setOpen={setSidebarOpen} />

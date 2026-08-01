@@ -1720,3 +1720,335 @@ async def run_report_editor(user_message: str, history: list,
 
     yield {"type": "text", "content": response_text or "처리를 완료했습니다."}
     yield {"type": "done"}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 자유 질의(Free Query) 에이전트 — 보고서 생성과 완전 분리된 질의응답 모드
+#   · 유닛/피처/LOT 조회 tool을 Claude가 자율 선택 → 자연어로 답변
+#   · 보고서 생성/버튼/기간(infer_period) 로직 없음 (순수 Q&A)
+#   · 데이터는 최신 모델 예측 결과 1벌(static CSV)만 → "현재 분석 결과 기준" 안내
+# ══════════════════════════════════════════════════════════════════════
+
+# 자유 질의용 tool 정의 (run_agent의 TOOLS와 별개)
+TOOLS_FREE = [
+    {
+        "name": "get_top_unit_data",
+        "description": "특정 유닛(serial)의 상태 정보를 반환. serial 미지정 시 예측 ppm이 가장 높은 유닛. "
+                       "예측 ppm, 위험등급(risk), 포지션(P1~P4)별 예측 health 값 포함. '이 유닛 상태 어때?' 류 질문에 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serial": {"type": "string", "description": "유닛 시리얼 (예: S38369). 생략 시 최고위험 유닛."},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_unit_shap_bar",
+        "description": "특정 유닛(serial)이 위험한 원인 피처를 SHAP 영향도 순으로 반환. "
+                       "각 피처의 부호(+ 위험 방향/- 안전 방향)와 크기 포함. '이 유닛 왜 위험해?' 질문의 핵심 tool.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serial": {"type": "string", "description": "유닛 시리얼 (예: S38369)"},
+                "n": {"type": "integer", "description": "반환할 피처 개수 (기본 5)"},
+            },
+            "required": ["serial"],
+        },
+    },
+    {
+        "name": "get_top_risk_units",
+        "description": "예측 ppm이 가장 높은 위험 유닛 상위 N개를 랭킹으로 반환. '제일 위험한 유닛 알려줘' 류 질문에 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "top_n": {"type": "integer", "description": "반환 개수 (기본 10)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_candidate_units",
+        "description": "보고서 대표로 쓸 만한 위험 유닛 후보 목록(serial, LOT, wafer, 예측 ppm)을 반환. "
+                       "매우위험(grade4) 유닛 우선. '대표 불량 유닛이 뭐야?' 류 질문에 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "n": {"type": "integer", "description": "반환 개수 (기본 5)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_feature_dist_compare",
+        "description": "특정 피처(X숫자)의 정상(grade1+2) vs 위험(grade3+4) 그룹 값 분포를 비교해 반환. "
+                       "feature 미지정 시 SHAP 최상위 피처. '이 피처 분포가 어떻게 다르냐?' 류 질문에 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "feature": {"type": "string", "description": "피처명 (예: X592). 생략 시 SHAP 1위 피처."},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_lot_mean_ppm_top",
+        "description": "LOT(run_id)별 평균 예측 ppm 랭킹 상위 N개를 반환. 어느 LOT을 먼저 점검해야 하는지(위험 우선순위) 파악용. "
+                       "'위험한 LOT 어디야?' 류 질문에 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "top_n": {"type": "integer", "description": "반환 개수 (기본 10)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_wafer_risk_die_ratio_top",
+        "description": "웨이퍼별로 위험 die(예측값 상위 10% 초과) 비율이 높은 상위 N개를 반환. "
+                       "어느 웨이퍼에 위험 die가 몰려있는지 파악용. '위험 웨이퍼 어디야?' 류 질문에 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "top_n": {"type": "integer", "description": "반환 개수 (기본 10)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_lot_grade_stack",
+        "description": "향후 고객사 불량 위험이 특정 LOT에 집중됐는지 분산됐는지 판단할 때 사용. "
+                       "LOT별 Grade 구성과, HIGH+MED 위험군(grade3+grade4)의 전체 위험 UNIT 수·LOT 수·"
+                       "상위 LOT별 위험군 점유율(top_lots)·상위 2개 LOT 점유율(top2_lot_risk_share)을 반환한다. "
+                       "'특정 LOT 때문인가요?' 류의 위험 범위 질문에 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "top_n": {"type": "integer", "description": "차트용 표시 LOT 수 (기본 20, 진단 집계는 항상 전체 LOT 기준)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_importance",
+        "description": "모델 전체 기준 Feature Importance(중요한 WT 피처) 상위 N개를 반환. "
+                       "특정 유닛이 아닌 '모델이 전반적으로 중요하게 본 피처'를 물을 때 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "top_n": {"type": "integer", "description": "반환 개수 (기본 10)"},
+            },
+            "required": [],
+        },
+    },
+]
+
+
+def _run_free_tool(name: str, inputs: dict) -> str:
+    """자유 질의 tool 실행. TOOLS_FREE에 대응하는 실제 함수 호출."""
+    fn_map = {
+        "get_top_unit_data":            get_top_unit_data,
+        "get_unit_shap_bar":            get_unit_shap_bar,
+        "get_top_risk_units":           get_top_risk_units,
+        "get_candidate_units":          get_candidate_units,
+        "get_feature_dist_compare":     get_feature_dist_compare,
+        "get_lot_mean_ppm_top":         get_lot_mean_ppm_top,
+        "get_wafer_risk_die_ratio_top": get_wafer_risk_die_ratio_top,
+        "get_lot_grade_stack":          get_lot_grade_stack,
+        "get_importance":               get_importance,
+    }
+    result = fn_map[name](**inputs)
+    return json.dumps(result, ensure_ascii=False)
+
+
+FREE_QUERY_SYSTEM = """당신은 SK Hynix 반도체 공정 품질 분석 AI 에이전트입니다.
+PI(Process Integration 엔지니어)의 질문에 맞는 tool을 골라 데이터를 조회하고 한국어로 간결하게 답변합니다.
+
+## 데이터 범위 (반드시 숙지)
+이 시스템은 **최신 모델 예측 결과 1벌**만 보유합니다. 기간을 바꿔 재분석하는 기능은 없습니다.
+사용자가 기간/날짜 관련 질문(예: "지난주", "11월", "최근 3일")을 하면
+**"현재 분석 결과 기준으로 답변드립니다"** 라고 먼저 안내한 뒤, 전체 데이터 기준으로 답하세요.
+
+## grade 기준
+- grade4 = 매우위험 (예측값 가장 높음, 빨강)
+- grade3 = 위험 / grade2 = 조심 / grade1 = 정상 (예측값 가장 낮음, 초록)
+- risk 값: HIGH(위험) / MED(중간) / LOW(정상)
+
+## 위험군 정의 (고정 — 임의로 바꾸지 말 것)
+- **위험군 = HIGH + MED (grade3 + grade4)**. grade4는 소수(현재 1건)라 grade4만으로 집중도를 판단하지 마세요.
+- "이번 위험이 특정 LOT에 집중됐나요?" 류 질문 → `get_lot_grade_stack`을 호출하고, 반환된 값만 사용하세요:
+  total_risk_units(전체 위험 UNIT 수), risk_lot_count(위험군이 퍼진 LOT 수), top_lots(상위 LOT별 점유율), top2_lot_risk_share(상위 2개 LOT 점유율).
+- 답변 순서: ① 결론(집중/분산) ② 전체 위험 UNIT 수 ③ 상위 LOT의 점유율(수치) ④ 주의사항.
+- **판정 규칙**: top2_lot_risk_share가 낮고 위험군이 여러 LOT에 퍼져 있으면 "특정 소수 LOT에 집중된 형태가 아니라 여러 LOT에 분산"이라고 답하세요. 근거 없이 "집중됐다"고 단정하지 마세요.
+- 반드시 덧붙일 주의사항: "이는 향후 고객사 불량 위험의 예측 분포이며 현재 WT 불량 분포를 의미하지는 않습니다."
+
+## 답변 원칙
+- 질문에 답하는 데 필요한 tool을 스스로 골라 호출하세요. 여러 개를 순서대로 호출해도 됩니다.
+  (예: "이 유닛 왜 위험해?" → get_top_unit_data + get_unit_shap_bar 조합)
+- 수치는 구체적으로 표기 (예: "예측 4,820 ppm, HIGH 등급", "X592 SHAP +0.031로 최대 원인").
+- tool 결과로 알 수 없는 내용은 추측하지 말고 "해당 정보는 확인되지 않습니다"라고 답하세요.
+- 보고서를 생성하지 않습니다. 질문에 대한 설명/조회 답변만 제공합니다.
+
+## 대화 응답 규칙 (엄격 — 위반 잦음, 반드시 준수)
+- 반드시 **가장 마지막 user 메시지 하나에만** 답한다. 이전 user 메시지는 이미 답변 완료된 요청이다.
+- 이전 질문이나 이전 답변을 다시 요약·반복하지 않는다.
+- 현재 질문을 이해하는 데 필요한 **대상명/UNIT ID/피처명/LOT만** 이전 대화에서 참조한다. (엔티티만 참조, 이전 작업은 재실행 금지)
+  예: "그럼 X594 분포는?" → X594가 무엇인지 맥락만 가져오고, 직전의 SHAP 원인 분석은 **다시 하지 않는다.**
+- 이전 주제를 제목·섹션·목록으로 다시 열지 않는다. "[S22474 위험 원인]" 같은 섹션 재개설 금지.
+- "두 질문을 함께/순서대로 확인하겠습니다" 같은 복수 주제 처리 발언 금지.
+- **현재 질문에 직접 필요한 tool만** 호출한다. 이전 답변에서 쓴 tool이라도 현재 질문에 불필요하면 다시 호출하지 않는다.
+  (예: "X594 분포?" → get_feature_dist_compare만 호출. get_unit_shap_bar 재호출 금지.)
+
+## 형식 (챗봇 말풍선)
+- 짧게. **마크다운 표(| --- |) 금지.** 상위 목록은 최대 3개만 한 줄 나열(예: "LOT 25 9.4% · LOT 8 9.2% (외 N개)").
+- 큰 제목·굵은 구분선 남발 금지. 기본 구조: 결론 한 줄 → 근거 수치 → 상위 3개 → 짧은 해석.
+
+## SHAP 표현 주의 (정확성)
+- SHAP는 기여도이지 인과가 아니다. "직접 원인/핵심 원인"이라 단정하지 말고 **"~예측을 높이는 방향으로 기여한 주요 피처"**로 표현한다.
+- 양수(+)=예측값을 높이는 방향, 음수(-)=낮추는 방향. "안전 방향이나 영향도 1위"처럼 헷갈리게 쓰지 말고
+  **"기여 절댓값은 가장 크지만 예측값을 낮추는 방향으로 작용"**처럼 명확히 쓴다.
+- 피처 분포가 정상군/위험군에서 크게 분리되지 않으면 "이 피처 하나만으로 위험군을 구분하기는 어렵다"고 정직하게 덧붙인다."""
+
+
+FREE_QUERY_RECO_SYSTEM = """당신은 SK Hynix 반도체 품질 분석 에이전트입니다. PI가 선택한 **추천 분석 질문 1개**에 답합니다.
+
+## 이 모드의 규칙 (엄격)
+- **현재 질문 하나에만** 답합니다. 이전 대화는 존재하지 않는 것으로 취급하세요.
+- 이전 질문을 언급하거나 요약하지 마세요. "①", "②", "두 가지를 동시에" 같이 여러 질문을 묶지 마세요.
+- 핵심 결론부터 말하고, 짧게 답합니다. **마크다운 표(| --- |)를 쓰지 마세요.**
+- 상위 목록은 최대 3개만 한 줄로 나열(예: "LOT 25 9.4% · LOT 8 9.2% · LOT 5 8.2% (외 N개)").
+
+## 위험군 정의 (고정)
+- 위험군 = HIGH + MED (grade3 + grade4). grade4는 소수라 그것만으로 집중도를 판단하지 마세요.
+- LOT 집중/분산 질문 → get_lot_grade_stack 호출, 반환값(total_risk_units, risk_lot_count, top_lots, top2_lot_risk_share)만 사용.
+  top2_lot_risk_share가 낮고 여러 LOT에 퍼져 있으면 "분산"으로 답하고, 근거 없이 "집중"으로 단정하지 마세요.
+  반드시 "이는 향후 고객사 불량 위험의 예측 분포이며 현재 WT 불량 분포를 의미하지는 않습니다."를 덧붙이세요.
+- 고위험 UNIT 질문 → get_top_risk_units / get_candidate_units로 후보 목록을 제시(대표성 단정 금지).
+
+## grade 기준
+- grade4=매우위험, grade3=위험, grade2=조심, grade1=정상 / risk: HIGH·MED·LOW
+- 수치는 구체적으로. tool로 알 수 없으면 "확인되지 않습니다"라고 답하세요. 보고서는 생성하지 않습니다."""
+
+
+def _build_entity_context_message(ctx: dict) -> str:
+    """entity_context(선택 UNIT/피처/LOT/웨이퍼)를 system 맥락 문장으로. 빈 값은 제외."""
+    if not ctx:
+        return ""
+    label = {"selected_unit": "선택 UNIT", "selected_feature": "선택 피처",
+             "selected_lot": "선택 LOT", "selected_wafer": "선택 웨이퍼"}
+    lines = [f"- {label[k]}: {ctx[k]}" for k in label if ctx.get(k)]
+    if not lines:
+        return ""
+    return (
+        "현재 분석 컨텍스트 (직전까지 사용자가 다룬 대상 — 해석 보조용):\n"
+        + "\n".join(lines)
+        + "\n\n규칙:\n"
+        "- 현재 질문에 UNIT/피처/LOT이 직접 명시되면 그 값을 우선한다.\n"
+        "- 현재 질문에서 생략된 대상만 위 컨텍스트로 보완한다 (예: '그 피처 분포는?' → 위 선택 피처).\n"
+        "- 위 컨텍스트는 대상을 알아듣기 위한 참고일 뿐, 이전 분석 작업(예: SHAP 원인 분석)을 다시 실행하지 않는다."
+    )
+
+
+async def run_free_query(user_message: str, history: list, mode: str = "chat",
+                         entity_context: dict = None):
+    """
+    자유 질의 에이전트. Claude가 TOOLS_FREE에서 tool을 자율 선택해 답변.
+    mode="recommended": 추천 질문(독립 시나리오) — 맥락 없이 현재 질문만.
+    mode="chat"       : 자유 입력 — 대화 history 대신 entity_context(선택 대상)만 맥락으로 주입.
+                        → 이전 질문/답변 전문을 넘기지 않아 재실행·묶음 답변을 구조적으로 차단.
+    SSE 이벤트를 yield (text / tool_start / tool_result / done).
+    """
+    system_prompt = FREE_QUERY_RECO_SYSTEM if mode == "recommended" else FREE_QUERY_SYSTEM
+
+    # 대화 history는 messages에 넣지 않는다. 후속질문 맥락은 entity_context로만 전달.
+    messages = []
+    if mode != "recommended":
+        ctx_msg = _build_entity_context_message(entity_context or {})
+        if ctx_msg:
+            messages.append({"role": "user", "content": ctx_msg})
+            messages.append({"role": "assistant", "content": "네, 위 대상을 참고해 현재 질문에만 답하겠습니다."})
+    messages.append({"role": "user", "content": user_message})
+
+    while True:
+        # 동기 스트리밍을 스레드에서 실행 → asyncio.Queue로 청크 전달 (run_agent와 동일 패턴)
+        queue: asyncio.Queue = asyncio.Queue()
+        _SENTINEL = object()
+
+        def _stream_to_queue(q: asyncio.Queue, loop: asyncio.AbstractEventLoop):
+            try:
+                with client.messages.stream(
+                    model=MODEL,
+                    max_tokens=2048,
+                    system=system_prompt,
+                    tools=TOOLS_FREE,
+                    messages=messages,
+                ) as stream:
+                    for event in stream:
+                        if type(event).__name__ == "RawContentBlockDeltaEvent":
+                            delta = event.delta
+                            if hasattr(delta, "text") and delta.text:
+                                loop.call_soon_threadsafe(q.put_nowait, ("chunk", delta.text))
+                    msg = stream.get_final_message()
+                    loop.call_soon_threadsafe(q.put_nowait, ("final", msg))
+            except Exception as e:
+                loop.call_soon_threadsafe(q.put_nowait, ("error", e))
+            finally:
+                loop.call_soon_threadsafe(q.put_nowait, (_SENTINEL, None))
+
+        loop = asyncio.get_running_loop()
+        import threading
+        t = threading.Thread(target=_stream_to_queue, args=(queue, loop), daemon=True)
+        t.start()
+
+        final_msg = None
+        stream_error = None
+        while True:
+            kind, payload = await queue.get()
+            if kind is _SENTINEL:
+                break
+            if kind == "chunk":
+                # 텍스트는 실시간으로 그대로 전송 (보고서 태그 파싱 불필요)
+                yield {"type": "text", "content": payload}
+            elif kind == "final":
+                final_msg = payload
+            elif kind == "error":
+                stream_error = payload
+
+        if stream_error:
+            if isinstance(stream_error, anthropic.AuthenticationError):
+                yield {"type": "error", "message": "API 키가 유효하지 않습니다. .env의 ANTHROPIC_API_KEY를 확인해주세요."}
+            else:
+                yield {"type": "error", "message": f"서버 오류: {str(stream_error)}"}
+            return
+
+        if final_msg is None:
+            yield {"type": "error", "message": "스트림에서 최종 메시지를 받지 못했습니다."}
+            return
+
+        # assistant 응답을 messages에 추가 (tool_use 블록 포함 원본 그대로)
+        messages.append({"role": "assistant", "content": final_msg.content})
+
+        # tool_use 처리 → 실행 결과를 다시 넣고 루프 반복
+        if final_msg.stop_reason == "tool_use":
+            tool_results = []
+            for block in final_msg.content:
+                if block.type == "tool_use":
+                    yield {"type": "tool_start", "tool": block.name}
+                    try:
+                        result_str = await asyncio.to_thread(_run_free_tool, block.name, block.input)
+                        result_data = json.loads(result_str)
+                    except Exception as e:
+                        result_str = json.dumps({"error": str(e)}, ensure_ascii=False)
+                        result_data = {"error": str(e)}
+                    yield {"type": "tool_result", "tool": block.name, "result": result_data}
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result_str,
+                    })
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        # end_turn → 종료
+        yield {"type": "done"}
+        break

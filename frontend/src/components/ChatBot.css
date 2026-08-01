@@ -281,3 +281,89 @@
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40% { transform: scale(1); opacity: 1; }
 }
+
+/* ── 추천 질문 패널 (입력창 위 고정, 칩 스타일) ── */
+.cb-reco {
+  border-top: 1px solid #E5E7EB;
+  padding: 7px 12px 3px;
+  background: #EEF1F8;          /* 입력창(흰색)과 구분되는 옅은 배경 */
+}
+.cb-reco-toggle {
+  background: none;
+  border: none;
+  padding: 1px 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #6366F1;
+  cursor: pointer;
+  letter-spacing: -0.2px;
+}
+.cb-reco-list {
+  display: flex;
+  flex-wrap: wrap;              /* 칩처럼 나란히, 좁으면 자동 줄바꿈 */
+  gap: 6px;
+  margin-top: 6px;
+}
+.cb-reco-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 11px;           /* 낮은 높이 = 입력창과 확실히 다름 */
+  font-size: 12px;
+  font-weight: 600;
+  color: #4338CA;
+  background: #FFFFFF;
+  border: 1px solid #C7D0E8;
+  border-radius: 999px;        /* 알약형 칩 */
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+}
+.cb-reco-btn:hover:not(:disabled) {
+  background: #6366F1;
+  border-color: #6366F1;
+  color: #FFFFFF;
+}
+.cb-reco-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.cb-reco-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cb-reco-arrow {
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+/* ── 유닛 선택 후보 버튼 ── */
+.cb-unit-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 12px 8px 46px;   /* AI 아바타 폭만큼 들여쓰기 */
+}
+.cb-unit-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 12px;
+  background: #FFFFFF;
+  border: 1px solid #C7D0E8;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.cb-unit-btn:hover {
+  background: #EEF2FF;
+  border-color: #6366F1;
+}
+.cb-unit-serial {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #1F2937;
+}
+.cb-unit-ppm {
+  font-size: 11px;
+  color: #EF4444;
+  font-weight: 600;
+}
