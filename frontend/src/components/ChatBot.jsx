@@ -26,7 +26,8 @@ const TOOL_LABELS = {
 const RECOMMENDED_QUESTIONS = [
   { id: 'lot_concentration', short: 'LOT 집중·분산 확인',  label: '이번 위험은 특정 LOT에 집중됐나요, 여러 LOT에 분산됐나요?' },
   { id: 'unit_reason',       short: '고위험 UNIT 원인 보기', label: null, needsUnit: true },
-  { id: 'other_risk_units',  short: '고위험 UNIT 더 보기',  label: '추가로 확인할 고위험 UNIT이 있나요?' },
+  // ③ 라벨/문구는 selectedUnit 유무에 따라 handleRecommended에서 동적 결정
+  { id: 'other_risk_units',  short: '고위험 UNIT 더 보기',  label: '추가로 확인할 고위험 UNIT이 있나요?', dynamic: true },
 ]
 
 export default function ChatBot({ open, onClose }) {
@@ -35,9 +36,18 @@ export default function ChatBot({ open, onClose }) {
   const [loading, setLoading] = useState(false)
   const [recoOpen, setRecoOpen] = useState(true)   // 추천 질문 패널 펼침 여부
   const [unitCandidates, setUnitCandidates] = useState([])   // 유닛 선택 대기 시 후보 버튼
+  const [reportBridge, setReportBridge] = useState(null)     // window.__reportBridge 구독 (보고서 상태)
   // 후속질문 맥락: 직전까지 다룬 대상 (대화 history 대신 이것만 백엔드로 전달)
   const entityRef = useRef({ selected_unit: null, selected_feature: null, selected_lot: null, selected_wafer: null })
   const bottomRef = useRef(null)
+
+  // 보고서 브리지 구독 — ReportPage가 window.__reportBridge를 갱신할 때마다 반영
+  useEffect(() => {
+    const sync = () => setReportBridge(window.__reportBridge || null)
+    sync()
+    window.addEventListener('report-bridge-changed', sync)
+    return () => window.removeEventListener('report-bridge-changed', sync)
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -56,14 +66,15 @@ export default function ChatBot({ open, onClose }) {
     })
   }
 
-  // tool 진행 상태 표시 — 상태 말풍선은 항상 1개만 유지(마지막 것 교체)
+  // tool 진행 상태 표시 — 상태 말풍선 1개만 유지. 직전이 상태 OR 스트리밍중(서두 멘트)이면
+  // 그것을 상태로 덮어씀 → LLM이 tool 호출 전 붙인 "조회하겠습니다" 서두 멘트가 화면에 안 남음.
   function addStatus(tool) {
     const label = TOOL_LABELS[tool] || `⚙️ ${tool}...`
     setAssistMsgs(prev => {
       const next = [...prev]
       const last = next[next.length - 1]
-      if (last?.role === 'bot' && last?.status)
-        return next.map((m, i) => i === next.length - 1 ? { ...m, text: label } : m)
+      if (last?.role === 'bot' && (last?.status || last?.streaming))
+        return next.map((m, i) => i === next.length - 1 ? { role: 'bot', text: label, status: true } : m)
       return [...next, { role: 'bot', text: label, status: true }]
     })
   }
@@ -103,9 +114,24 @@ export default function ChatBot({ open, onClose }) {
     entityRef.current = { selected_unit: null, selected_feature: null, selected_lot: null, selected_wafer: null }
   }
 
+  // 마지막 봇 메시지에 [보고서 반영] 버튼 마커를 붙임 (유닛 SHAP 답변에만)
+  function markLastBotForApply(serial) {
+    setAssistMsgs(prev => {
+      const next = [...prev]
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].role === 'bot' && !next[i].status && !next[i].error) {
+          next[i] = { ...next[i], applyUnit: serial }
+          break
+        }
+      }
+      return next
+    })
+  }
+
   // ── 자유 질의 전송 (SSE 스트리밍) ─────────────────────────
   // mode="chat": 자유 입력(entity_context로 후속질문 맥락) / "recommended": 추천 질문(독립)
-  async function sendFreeQuery(msg, mode = 'chat') {
+  // applyUnitSerial: 값이 있으면 이 답변(유닛 SHAP)에 [보고서 반영] 버튼 마커를 붙임
+  async function sendFreeQuery(msg, mode = 'chat', applyUnitSerial = null) {
     setAssistMsgs(prev => [...prev, { role: 'user', text: msg }])
     setLoading(true)
 
@@ -115,6 +141,7 @@ export default function ChatBot({ open, onClose }) {
 
     let botText = ''
     let buffer = ''
+    let sawTool = false
     try {
       const res = await fetch(`${API_URL}/chat`, {
         method: 'POST',
@@ -142,20 +169,27 @@ export default function ChatBot({ open, onClose }) {
           if (!raw || raw === '[DONE]') continue
           let ev; try { ev = JSON.parse(raw) } catch { continue }
           if (ev.type === 'text') { botText += ev.content; updateStreamMsg(botText, false) }
-          if (ev.type === 'tool_start') { botText = ''; addStatus(ev.tool) }
+          if (ev.type === 'tool_start') { botText = ''; sawTool = true; addStatus(ev.tool) }
           if (ev.type === 'tool_result' && mode !== 'recommended') { updateEntityFromResult(ev.tool, ev.result) }
           if (ev.type === 'done') {
-            if (botText) updateStreamMsg(botText, true)
+            if (botText) {
+              updateStreamMsg(botText, true)
+              // 유닛 SHAP 답변이 성공했을 때만 반영 버튼 마커 (단순 후보목록엔 안 붙음)
+              if (applyUnitSerial) markLastBotForApply(applyUnitSerial)
+            } else if (sawTool) {
+              // 빈 응답 방어: tool은 돌았는데 텍스트가 없음 (임의 문장 조립 안 함)
+              updateStreamMsg('분석 결과를 생성하지 못했습니다. 다시 시도해주세요.', true)
+            }
           }
           if (ev.type === 'error') {
             setAssistMsgs(prev => [...prev, { role: 'bot', text: `⚠️ ${ev.message}`, error: true }])
           }
         }
       }
-    } catch (e) {
+    } catch {
       setAssistMsgs(prev => [...prev, {
         role: 'bot',
-        text: `⚠️ ${e.message || '서버 연결 실패. Agent 서버(8000)가 실행 중인지 확인해주세요.'}`,
+        text: '⚠️ 분석 서버에 연결하지 못했습니다. 서버 실행 상태를 확인해주세요.',
         error: true,
       }])
     } finally {
@@ -203,14 +237,45 @@ export default function ChatBot({ open, onClose }) {
       return
     }
 
+    // ③ 고위험 UNIT 더 보기: 현재 다루던 유닛이 있으면 그 유닛을 제외하도록 문구를 동적 생성
+    if (q.dynamic && q.id === 'other_risk_units') {
+      const cur = entityRef.current.selected_unit
+      const label = cur
+        ? `${cur} 외에 추가로 확인할 고위험 UNIT이 있나요?`
+        : q.label
+      sendFreeQuery(label, 'recommended')
+      return
+    }
+
     sendFreeQuery(q.label, 'recommended')
   }
 
-  // 후보 UNIT 버튼 클릭 → 그 유닛으로 SHAP 원인 분석 (자유입력 경로, chat 모드로 엔티티 이어짐)
+  // 후보 UNIT 버튼 클릭 → 그 유닛으로 SHAP 원인 분석. 이 답변엔 [보고서 반영] 버튼 마커를 붙임
   function handleUnitPick(u) {
     if (loading) return
     setUnitCandidates([])
-    sendFreeQuery(`${u.serial}는 왜 위험하게 예측됐나요?`, 'chat')
+    sendFreeQuery(`${u.serial}는 왜 위험하게 예측됐나요?`, 'chat', u.serial)
+  }
+
+  // [이 UNIT을 보고서 대표로 반영] 클릭 → 검증된 change_unit 경로(ReportPage 브리지) 호출
+  async function handleApplyUnit(serial) {
+    const bridge = window.__reportBridge
+    if (!bridge?.generated) {
+      setAssistMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 보고서 반영에 실패했습니다: 생성된 보고서가 없습니다.', error: true }])
+      return
+    }
+    setLoading(true)
+    const r = await bridge.applyUnit(serial)
+    setLoading(false)
+    if (r?.ok) {
+      const feat = entityRef.current.selected_feature
+      const reason = feat
+        ? `\n\n반영 이유: ${serial}는 예측 위험이 가장 높은 유닛 중 하나이며, ${feat}가 예측을 높이는 방향으로 기여해 대표 사례로 적합합니다.`
+        : ''
+      setAssistMsgs(prev => [...prev, { role: 'bot', text: `✅ ${serial} 유닛을 보고서 대표 UNIT으로 반영했습니다.${reason}` }])
+    } else {
+      setAssistMsgs(prev => [...prev, { role: 'bot', text: `⚠️ 보고서 반영에 실패했습니다: ${r?.error || '알 수 없는 오류'}`, error: true }])
+    }
   }
 
   return (
@@ -227,11 +292,22 @@ export default function ChatBot({ open, onClose }) {
         {assistMsgs.map((m, i) => (
           <div key={i} className={`cb-msg ${m.role}`}>
             {m.role === 'bot' && <div className="cb-avatar">AI</div>}
-            <div className={`cb-bubble ${m.error ? 'error' : ''} ${m.status ? 'status' : ''}`}>
-              {m.role === 'bot'
-                ? <ReactMarkdown>{m.text}</ReactMarkdown>
-                : <span>{m.text}</span>
-              }
+            <div className="cb-bubble-wrap">
+              <div className={`cb-bubble ${m.error ? 'error' : ''} ${m.status ? 'status' : ''}`}>
+                {m.role === 'bot'
+                  ? <ReactMarkdown>{m.text}</ReactMarkdown>
+                  : <span>{m.text}</span>
+                }
+              </div>
+              {/* 보고서 반영: 유닛 SHAP 답변 + 보고서 생성됨 + 현재유닛과 다를 때만 버튼 */}
+              {m.applyUnit && reportBridge?.generated && (
+                reportBridge.currentUnit === m.applyUnit
+                  ? <div className="cb-apply-note">현재 보고서에 반영된 UNIT입니다.</div>
+                  : <button className="cb-apply-btn" disabled={loading}
+                      onClick={() => handleApplyUnit(m.applyUnit)}>
+                      📄 이 UNIT을 보고서 대표로 반영
+                    </button>
+              )}
             </div>
           </div>
         ))}
@@ -269,16 +345,21 @@ export default function ChatBot({ open, onClose }) {
         </button>
         {recoOpen && (
           <div className="cb-reco-list">
-            {RECOMMENDED_QUESTIONS.map(q => (
-              <button
-                key={q.id}
-                className="cb-reco-btn"
-                onClick={() => handleRecommended(q)}
-                disabled={loading}
-              >
-                {q.short} <span className="cb-reco-arrow">→</span>
-              </button>
-            ))}
+            {RECOMMENDED_QUESTIONS.map(q => {
+              // ③은 현재 다루던 유닛이 있으면 라벨을 '다른 고위험 UNIT 보기'로
+              const short = (q.id === 'other_risk_units' && entityRef.current.selected_unit)
+                ? '다른 고위험 UNIT 보기' : q.short
+              return (
+                <button
+                  key={q.id}
+                  className="cb-reco-btn"
+                  onClick={() => handleRecommended(q)}
+                  disabled={loading}
+                >
+                  {short} <span className="cb-reco-arrow">→</span>
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

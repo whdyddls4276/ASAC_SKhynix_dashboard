@@ -367,3 +367,31 @@
   color: #EF4444;
   font-weight: 600;
 }
+
+/* ── 보고서 반영 버튼 (유닛 SHAP 답변 아래) ── */
+.cb-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.cb-apply-btn {
+  align-self: flex-start;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: #10B981;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.cb-apply-btn:hover:not(:disabled) { background: #059669; }
+.cb-apply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cb-apply-note {
+  font-size: 11.5px;
+  color: #6B7280;
+  padding: 2px 4px;
+}
