@@ -66,10 +66,20 @@ const INIT_MSG = {
   text: '안녕하세요! SK Hynix 보고서 AI Agent입니다.\n\n"이번 주 보고서 만들어줘" 처럼 요청하면 좌측에 보고서가 생성됩니다.\n생성 후에는 이 채팅창에서 바로 수정 요청도 할 수 있어요.',
 }
 
+// 보고서 편집 추천 명령 (보고서 생성된 상태에서 입력창 위에 칩으로 노출)
+// short=버튼 표시, cmd=실제 전송 명령 (사용자가 명령어를 몰라도 클릭으로 편집)
+const REPORT_EDIT_SUGGESTIONS = [
+  { id: 'common_shap',  short: '고위험 3개 공통 원인',  cmd: '고위험 상위 3개 유닛 공통 SHAP으로 바꿔줘' },
+  { id: 'change_unit',  short: '대표 유닛 바꾸기',      cmd: '대표 유닛 바꿔줘' },
+  { id: 'fi_count',     short: '주요 피처 3개만',        cmd: 'Feature Importance를 3개로 줄여줘' },
+  { id: 'trend_weeks',  short: '트렌드 최근 6주',        cmd: '불량 트렌드를 최근 6주로 바꿔줘' },
+]
+
 export default function ReportPage({ injectedReport = null, onInjectedConsumed }) {
   // ── 단일 채팅 상태 ─────────────────────────────────
   const [messages, setMessages] = useState([INIT_MSG])
   const [buttons, setButtons]   = useState([])
+  const [editSugOpen, setEditSugOpen] = useState(true)   // 편집 추천 명령 패널 펼침
   const historyRef   = useRef([])
   const toolCacheRef = useRef({})
   // 보고서 생성 버튼: 확인 단계들을 자동으로 진행
@@ -591,6 +601,24 @@ export default function ReportPage({ injectedReport = null, onInjectedConsumed }
           )}
           <div ref={bottomRef} />
         </div>
+
+        {/* 편집 추천 명령: 보고서 생성됨 + 로딩 아닐 때 입력창 위에 칩으로 (명령어 몰라도 클릭) */}
+        {currentHtml && !loading && (
+          <div className="rp-editsug">
+            <button className="rp-editsug-toggle" onClick={() => setEditSugOpen(v => !v)}>
+              🪄 이렇게 편집할 수 있어요 {editSugOpen ? '▾' : '▸'}
+            </button>
+            {editSugOpen && (
+              <div className="rp-editsug-list">
+                {REPORT_EDIT_SUGGESTIONS.map(s => (
+                  <button key={s.id} className="rp-editsug-btn" onClick={() => send(s.cmd)}>
+                    {s.short}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="rp-input-row">
           <textarea
