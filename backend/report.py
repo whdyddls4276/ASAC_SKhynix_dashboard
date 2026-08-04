@@ -1591,8 +1591,8 @@ def build_html(report_data: dict) -> str:
     test_rmse  = meta.get("test_rmse", "0.008427")
     model_nm   = meta.get("model",     "Stacking Ensemble")
     title      = meta.get("title",     "품질불량예측보고서")
-    today      = datetime(2026, 6, 11)   # 오늘 고정
-    today_str  = today.strftime("%Y. %m. %d")
+    today      = datetime(2026, 6, 11)   # 트렌드 등 내부 계산용 고정 (더미 라벨 보호 — 건드리지 않음)
+    today_str  = datetime.now().strftime("%Y. %m. %d")   # 발행·생산·예측 일자 = 실제 오늘
     scan_total  = scan.get("total_units",   "-")
     scan_high   = scan.get("grade1_count", scan.get("high_count",  "-"))
     scan_ratio  = scan.get("grade1_ratio", scan.get("high_ratio",  "-"))
@@ -1610,9 +1610,25 @@ def build_html(report_data: dict) -> str:
         _default_alert = ", ".join(ppm_delta.get("top_features", [f.get("feature","") for f in top_features[:2]])) or "-"
     alert_features = meta.get("alert_features", _default_alert)
 
+    # ── 배너에 넣을 대표 유닛 구절: "특히 S22474가 6,599 ppm(평균 2.7배)" (스토리: 늘었다→이 유닛이 크게)
+    _tu_banner   = report_data.get("top_unit", {})
+    _tu_serial   = _tu_banner.get("serial")
+    _tu_ppm      = _tu_banner.get("pred_ppm")
+    _avg_ppm     = ppm_delta.get("curr_ppm", 0)
+    _rep_clause  = ""
+    if _tu_serial and _tu_ppm:
+        try:
+            _mult = (float(_tu_ppm) / float(_avg_ppm)) if _avg_ppm else 0
+            _mult_txt = f" (평균 {_mult:.1f}배)" if _mult >= 1.05 else ""
+        except Exception:
+            _mult_txt = ""
+        _rep_clause = (f"&nbsp;&nbsp;→&nbsp; 대표 위험 유닛 "
+                       f"<span style=\"color:{delta_color};font-weight:800\">{_tu_serial} {float(_tu_ppm):,.0f} ppm</span>"
+                       f"<span style=\"font-size:14px;color:#555\">{_mult_txt}</span>")
+
     # ── 커스텀 텍스트 (에이전트 수정 가능)
     report_title   = meta.get("report_title",  "Field Health 불량 예측 분석 보고서")
-    summary_title  = meta.get("summary_title", f"전 주 대비 품질 불량 &nbsp;<span style=\"color:{delta_color}\">{delta_str} ppm</span>&nbsp; <span style=\"font-size:17px;font-weight:600;color:#555\">{'열화' if delta_val >= 0 else '개선'}</span>")
+    summary_title  = meta.get("summary_title", f"전 주 대비 품질 불량 &nbsp;<span style=\"color:{delta_color}\">{delta_str} ppm</span>&nbsp; <span style=\"font-size:17px;font-weight:600;color:#555\">{'열화' if delta_val >= 0 else '개선'}</span>{_rep_clause}")
     summary_sub    = meta.get("summary_sub",   f"원인 WT Parameter&nbsp;<span style=\"background:#fef3c7;color:#92400e;padding:1px 7px;font-size:15px;font-weight:800\">{alert_features}</span>&nbsp;이상 → inline 참원인 도출 요청")
 
     # ── 섹션 소제목 (에이전트 수정 가능)
@@ -2267,7 +2283,7 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
             <div class="kpi-val dark">{scan_total}개</div>
           </div>
           <div class="kpi-card amber">
-            <div class="kpi-lbl">평균 예측 health</div>
+            <div class="kpi-lbl">이번주 평균 예측 ppm</div>
             <div class="kpi-val amber">{_ppm_str} ppm</div>
           </div>
         </div>

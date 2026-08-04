@@ -451,9 +451,18 @@ async def run_agent(user_message: str, history: list, initial_tool_cache: dict =
         return
 
     # 유닛 후보 버튼 선택(예: 'S22474') → 해당 유닛으로 보고서 생성
+    # 챗봇에서 캐시 없이 바로 생성하는 경우도 지원: 캐시 없으면 스캔/중요도를 먼저 실행(진행표시 포함).
     _sel = _re.match(r'^\s*(S\d{4,})\s*$', user_message.strip())
-    if _sel and _has_min_cache:
+    if _sel:
         _serial = _sel.group(1)
+        if "scan_data" not in tool_cache:
+            yield {"type": "tool_start", "tool": "scan_data"}
+            tool_cache["scan_data"] = await asyncio.to_thread(scan_data)
+            yield {"type": "tool_result", "tool": "scan_data", "result": tool_cache["scan_data"]}
+        if "get_importance" not in tool_cache:
+            yield {"type": "tool_start", "tool": "get_importance"}
+            tool_cache["get_importance"] = await asyncio.to_thread(get_importance, top_n=10)
+            yield {"type": "tool_result", "tool": "get_importance", "result": tool_cache["get_importance"]}
         report_data = _build_report_data(tool_cache)
         _handle_command({"action": "change_unit", "serial": _serial}, report_data)
         html = build_html(report_data)

@@ -66,7 +66,7 @@ const INIT_MSG = {
   text: '안녕하세요! SK Hynix 보고서 AI Agent입니다.\n\n"이번 주 보고서 만들어줘" 처럼 요청하면 좌측에 보고서가 생성됩니다.\n생성 후에는 이 채팅창에서 바로 수정 요청도 할 수 있어요.',
 }
 
-export default function ReportPage() {
+export default function ReportPage({ injectedReport = null, onInjectedConsumed }) {
   // ── 단일 채팅 상태 ─────────────────────────────────
   const [messages, setMessages] = useState([INIT_MSG])
   const [buttons, setButtons]   = useState([])
@@ -454,43 +454,30 @@ export default function ReportPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  // ── 챗봇 ↔ 보고서 브리지 (window 전역, 기존 로직 수정 없이 추가) ──
-  // 챗봇이 (1) 보고서 생성 여부/대표 유닛을 읽고 (2) 유닛 반영을 요청할 수 있게 노출.
+  // ── 챗봇에서 생성한 보고서(injectedReport)를 받아 그대로 표시 (방식2: 생성→열기) ──
+  // 챗봇이 이미 생성을 끝내고 {html, report_data}를 넘겨줌 → 여기선 화면에 띄우기만.
+  const lastInjectedRef = useRef(null)
   useEffect(() => {
-    const generated = !!currentHtml
-    const repSerial = currentReportData?.top_unit?.serial || null
-    window.__reportBridge = {
-      generated,
-      reportId: generated ? (currentReportData?.meta?.title || 'report') : null,
-      currentUnit: repSerial,
-      // 유닛 반영: 검증된 sendDirectAction(change_unit) 경로를 그대로 호출. 성공 시 report_data 반환.
-      applyUnit: async (serial) => {
-        if (!currentHtmlRef.current) return { ok: false, error: '보고서가 생성되지 않았습니다.' }
-        try {
-          const res = await fetch(`${API_URL}/report/interact`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'change_unit', serial,
-              prompt: `__direct__:${JSON.stringify({ action: 'change_unit', serial })}`,
-              history: [], tool_cache: toolCacheRef.current,
-              current_report_data: currentReportRef.current,
-            }),
-          })
-          let okData = null
-          const consume = makeStreamParser({
-            onReportReady: (html, data) => { pushUndo(); setCurrentHtml(html); if (data) { setCurrentReportData(data); okData = data } },
-          })
-          await consume(res.body.getReader())
-          if (okData) return { ok: true, serial, reportData: okData }
-          return { ok: false, error: '보고서가 갱신되지 않았습니다.' }
-        } catch (e) {
-          return { ok: false, error: '분석 서버에 연결하지 못했습니다.' }
-        }
-      },
-    }
-    window.dispatchEvent(new CustomEvent('report-bridge-changed'))
-    return () => { /* 언마운트 시 유지 — 챗봇이 없음으로 인식하도록 generated=false는 다음 렌더에서 갱신 */ }
-  }, [currentHtml, currentReportData])
+    if (!injectedReport?.html) return
+    if (lastInjectedRef.current === injectedReport) return   // 중복 표시 방지
+    lastInjectedRef.current = injectedReport
+    const { html, report_data } = injectedReport
+    const url = URL.createObjectURL(new Blob([_inject(html)], { type: 'text/html;charset=utf-8' }))
+    if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current)
+    prevBlobRef.current = url
+    setBlobUrl(url)
+    initialLoad.current = true
+    setCurrentHtml(html)
+    setCurrentReportData(report_data || {})
+    originalReportRef.current = { html, report_data: report_data || {} }
+    const serial = report_data?.top_unit?.serial
+    setMessages([{ role: 'bot', text: serial
+      ? `${serial} 유닛을 대표로 보고서를 생성했습니다. 이 채팅창에서 수정 요청도 할 수 있어요.`
+      : '보고서를 생성했습니다.' }])
+    setButtons([])
+    onInjectedConsumed?.()   // App의 injectedReport 초기화 (같은 걸 또 안 열게)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [injectedReport])
 
   function handleNewReport() {
     setMessages([INIT_MSG])

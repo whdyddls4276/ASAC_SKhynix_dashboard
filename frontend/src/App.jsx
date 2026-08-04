@@ -18,6 +18,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // 페이지 간 selection 전달용 (Overview에서 클릭한 unit → DrilldownV2로 전달)
   const [pendingSelection, setPendingSelection] = useState(null)  // { lot, wafer, unit }
+  // 챗봇에서 생성한 보고서를 담아 ReportPage로 전달 (방식2: 생성→열기)
+  const [injectedReport, setInjectedReport] = useState(null)  // { html, report_data, serial }
   const { data: units } = useCSV('/dashboard_units.csv')
 
   // Overview에서 호출: DrilldownV2로 이동하면서 unit 선택
@@ -54,7 +56,7 @@ export default function App() {
       case 'drilldown-v2':
         return <DrilldownV2 initialSelection={pendingSelection} />
       case 'report':
-        return <ReportPage />
+        return <ReportPage injectedReport={injectedReport} onInjectedConsumed={() => setInjectedReport(null)} />
       default:
         return <Overview onNavigateDrilldown={navigateToDrilldown} />
     }
@@ -71,7 +73,12 @@ export default function App() {
           {renderPageWithProps(activePage)}
         </main>
 
-        <ChatBot open={chatOpen} onClose={() => setChatOpen(false)} />
+        <ChatBot
+          open={chatOpen}
+          onClose={() => setChatOpen(false)}
+          onReportGenerated={(report) => setInjectedReport(report)}
+          onOpenReport={() => setActivePage('report')}
+        />
       </div>
 
 

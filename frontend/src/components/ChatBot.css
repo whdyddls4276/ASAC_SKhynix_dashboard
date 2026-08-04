@@ -395,3 +395,16 @@
   color: #6B7280;
   padding: 2px 4px;
 }
+.cb-open-btn {
+  align-self: flex-start;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: #6366F1;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.cb-open-btn:hover { background: #4F46E5; }

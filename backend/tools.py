@@ -1392,7 +1392,7 @@ def get_candidate_units(n: int = 5) -> list:
         out = []
         for r in ordered.itertuples():
             out.append({"serial": str(r.ufs_serial), "lot": int(r.run_id),
-                        "wafer": int(r.wafer_no), "ppm": round(float(r.reg_pred) * 1e6, 4)})  # 대시보드와 동일 정밀도(소수1자리 반올림 금지)
+                        "wafer": int(r.wafer_no), "ppm": round(float(r.reg_pred) * 1e6)})  # 정수 ppm — LLM 답변/버튼 표시가 보고서와 일치하도록
         return out
     except Exception:
         return []
@@ -1439,7 +1439,7 @@ def get_top_risk_units(top_n: int = 10) -> dict:
     u = _load("dashboard_units.csv")
     u = u.dropna(subset=["reg_pred"]).sort_values("reg_pred", ascending=False).head(top_n)
     labels = [str(s) for s in u["ufs_serial"]]
-    ppm = [round(float(v) * 1e6, 1) for v in u["reg_pred"]]
+    ppm = [round(float(v) * 1e6) for v in u["reg_pred"]]   # 정수 ppm (보고서와 일치)
     return {"labels": labels, "ppm": ppm}
 
 
@@ -1451,7 +1451,7 @@ def get_lot_mean_ppm_top(top_n: int = 10) -> dict:
     u = _load("dashboard_units.csv").dropna(subset=["reg_pred"])
     g = u.groupby("run_id")["reg_pred"].mean().sort_values(ascending=False).head(top_n)
     labels = [f"LOT_{int(k)}" for k in g.index]
-    ppm = [round(float(v) * 1e6, 1) for v in g.values]
+    ppm = [round(float(v) * 1e6) for v in g.values]   # 정수 ppm (보고서와 일치)
     return {"labels": labels, "ppm": ppm}
 
 

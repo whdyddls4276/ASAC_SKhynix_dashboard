@@ -30,24 +30,15 @@ const RECOMMENDED_QUESTIONS = [
   { id: 'other_risk_units',  short: '고위험 UNIT 더 보기',  label: '추가로 확인할 고위험 UNIT이 있나요?', dynamic: true },
 ]
 
-export default function ChatBot({ open, onClose }) {
+export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport }) {
   const [assistMsgs, setAssistMsgs] = useState([INIT_ASSISTANT])
   const [input, setInput]    = useState('')
   const [loading, setLoading] = useState(false)
   const [recoOpen, setRecoOpen] = useState(true)   // 추천 질문 패널 펼침 여부
   const [unitCandidates, setUnitCandidates] = useState([])   // 유닛 선택 대기 시 후보 버튼
-  const [reportBridge, setReportBridge] = useState(null)     // window.__reportBridge 구독 (보고서 상태)
   // 후속질문 맥락: 직전까지 다룬 대상 (대화 history 대신 이것만 백엔드로 전달)
   const entityRef = useRef({ selected_unit: null, selected_feature: null, selected_lot: null, selected_wafer: null })
   const bottomRef = useRef(null)
-
-  // 보고서 브리지 구독 — ReportPage가 window.__reportBridge를 갱신할 때마다 반영
-  useEffect(() => {
-    const sync = () => setReportBridge(window.__reportBridge || null)
-    sync()
-    window.addEventListener('report-bridge-changed', sync)
-    return () => window.removeEventListener('report-bridge-changed', sync)
-  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -250,31 +241,57 @@ export default function ChatBot({ open, onClose }) {
     sendFreeQuery(q.label, 'recommended')
   }
 
-  // 후보 UNIT 버튼 클릭 → 그 유닛으로 SHAP 원인 분석. 이 답변엔 [보고서 반영] 버튼 마커를 붙임
+  // 후보 UNIT 버튼 클릭 → 그 유닛으로 SHAP 원인 분석. 이 답변엔 [보고서 생성] 버튼 마커를 붙임
   function handleUnitPick(u) {
     if (loading) return
     setUnitCandidates([])
     sendFreeQuery(`${u.serial}는 왜 위험하게 예측됐나요?`, 'chat', u.serial)
   }
 
-  // [이 UNIT을 보고서 대표로 반영] 클릭 → 검증된 change_unit 경로(ReportPage 브리지) 호출
-  async function handleApplyUnit(serial) {
-    const bridge = window.__reportBridge
-    if (!bridge?.generated) {
-      setAssistMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 보고서 반영에 실패했습니다: 생성된 보고서가 없습니다.', error: true }])
-      return
-    }
+  // [이 유닛으로 보고서 생성] 클릭 → 챗봇 안에서 그 유닛 대표 보고서를 생성(run_agent, SSE로 진행표시).
+  // 완료되면 App에 보고서를 넘기고 "생성 완료 [보고서 열기]"를 띄움 (방식2: 생성→열기).
+  async function handleGenerateReport(serial) {
+    if (loading) return
     setLoading(true)
-    const r = await bridge.applyUnit(serial)
-    setLoading(false)
-    if (r?.ok) {
-      const feat = entityRef.current.selected_feature
-      const reason = feat
-        ? `\n\n반영 이유: ${serial}는 예측 위험이 가장 높은 유닛 중 하나이며, ${feat}가 예측을 높이는 방향으로 기여해 대표 사례로 적합합니다.`
-        : ''
-      setAssistMsgs(prev => [...prev, { role: 'bot', text: `✅ ${serial} 유닛을 보고서 대표 UNIT으로 반영했습니다.${reason}` }])
-    } else {
-      setAssistMsgs(prev => [...prev, { role: 'bot', text: `⚠️ 보고서 반영에 실패했습니다: ${r?.error || '알 수 없는 오류'}`, error: true }])
+    setAssistMsgs(prev => [...prev, { role: 'user', text: `${serial} 유닛으로 보고서를 생성해줘` }])
+
+    let buffer = ''
+    let done = false
+    try {
+      const res = await fetch(`${API_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // context 없음 = run_agent(보고서 생성). serial만 보내면 그 유닛 대표로 생성(백엔드에서 스캔 자동)
+        body: JSON.stringify({ message: serial, history: [], tool_cache: {} }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done: rdDone, value } = await reader.read()
+        if (rdDone) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n'); buffer = lines.pop()
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw || raw === '[DONE]') continue
+          let ev; try { ev = JSON.parse(raw) } catch { continue }
+          if (ev.type === 'tool_start') addStatus(ev.tool)               // 🔍 스캔 중 등
+          if (ev.type === 'text' && ev.content?.trim())
+            setAssistMsgs(prev => [...prev, { role: 'bot', text: ev.content }])   // 스캔결과·피처 요약
+          if (ev.type === 'report_ready' && ev.html) {
+            done = true
+            onReportGenerated?.({ html: ev.html, report_data: ev.report_data, serial })
+            setAssistMsgs(prev => [...prev, { role: 'bot', text: `✅ ${serial} 유닛을 대표로 보고서를 생성했습니다.`, openReport: true }])
+          }
+        }
+      }
+      if (!done) setAssistMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 보고서 생성에 실패했습니다. 다시 시도해주세요.', error: true }])
+    } catch {
+      setAssistMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 분석 서버에 연결하지 못했습니다. 서버 실행 상태를 확인해주세요.', error: true }])
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -299,14 +316,18 @@ export default function ChatBot({ open, onClose }) {
                   : <span>{m.text}</span>
                 }
               </div>
-              {/* 보고서 반영: 유닛 SHAP 답변 + 보고서 생성됨 + 현재유닛과 다를 때만 버튼 */}
-              {m.applyUnit && reportBridge?.generated && (
-                reportBridge.currentUnit === m.applyUnit
-                  ? <div className="cb-apply-note">현재 보고서에 반영된 UNIT입니다.</div>
-                  : <button className="cb-apply-btn" disabled={loading}
-                      onClick={() => handleApplyUnit(m.applyUnit)}>
-                      📄 이 UNIT을 보고서 대표로 반영
-                    </button>
+              {/* 유닛 SHAP 답변 아래: [이 유닛으로 보고서 생성] (방식2 — 챗봇 안에서 생성) */}
+              {m.applyUnit && (
+                <button className="cb-apply-btn" disabled={loading}
+                  onClick={() => handleGenerateReport(m.applyUnit)}>
+                  📄 이 유닛으로 보고서 생성
+                </button>
+              )}
+              {/* 생성 완료 답변 아래: [보고서 열기] → 보고서 화면으로 전환 */}
+              {m.openReport && (
+                <button className="cb-open-btn" onClick={() => onOpenReport?.()}>
+                  📑 보고서 열기
+                </button>
               )}
             </div>
           </div>
