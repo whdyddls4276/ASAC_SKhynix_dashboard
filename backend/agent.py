@@ -1291,6 +1291,30 @@ def _handle_command(cmd: dict, d: dict):
             return False, str(e)
         return True, None
 
+    elif action == "set_common_shap":
+        # SHAP 차트를 '상위 N개 유닛 공통 위험 피처'로 교체 (기본은 대표 유닛 SHAP)
+        try:
+            _tnu = max(1, int(cmd.get("top_n_units", 3)))
+        except (TypeError, ValueError):
+            _tnu = 3
+        _lot   = cmd.get("lot")
+        _wafer = cmd.get("wafer")
+        _scope_parts = []
+        if _lot is not None:   _scope_parts.append(f"LOT {int(_lot)}")
+        if _wafer is not None: _scope_parts.append(f"WF {int(_wafer)}")
+        d["common_shap"] = {
+            "top_n_units": _tnu,
+            "lot": int(_lot) if _lot is not None else None,
+            "wafer": int(_wafer) if _wafer is not None else None,
+            "scope_label": " · ".join(_scope_parts),
+        }
+        return True, None
+
+    elif action == "reset_common_shap":
+        # SHAP 차트를 원래(대표 유닛)로 복원
+        d.pop("common_shap", None)
+        return True, None
+
     elif action == "change_section":
         target_sid = cmd.get("target_sid", "")
         chart_type = cmd.get("chart_type", "")
@@ -1413,6 +1437,26 @@ def _try_direct_action(message: str, d: dict):
     # ── 피처명 추출 (X숫자 형식, \b 안 씀 — 한글이 \w라 뒤에 \b 안 먹힘)
     feats = [f.upper() for f in _re.findall(r'[Xx]\d+', msg)]
 
+    # ── SHAP 공통 모드 / 복원 (다른 숫자 감지보다 먼저 — "공통 3개"의 3이 top-N에 안 걸리게) ──
+    # 복원: "원래대로 / 대표 유닛 SHAP으로 / SHAP 원래대로"
+    if _re.search(r'shap|영향도', msg, _re.IGNORECASE) and _re.search(r'원래|복원|되돌|대표\s*유닛', msg):
+        return {"action": "reset_common_shap",
+                "response": "SHAP 영향도를 대표 유닛 기준으로 되돌렸습니다."}, None
+    # 공통 교체: (SHAP/영향도/피처/특징/원인) + '공통'
+    if _re.search(r'공통', msg) and _re.search(r'shap|영향도|피처|특징|원인', msg, _re.IGNORECASE):
+        _cmd = {"action": "set_common_shap"}
+        _m_units = _re.search(r'(\d+)\s*개', msg)
+        _tnu = int(_m_units.group(1)) if _m_units else (n if n else 3)
+        _cmd["top_n_units"] = _tnu
+        _m_lot = _re.search(r'(?:LOT|로트)\s*_?\s*(\d+)', msg, _re.IGNORECASE)
+        _m_wf  = _re.search(r'(?:wafer|웨이퍼|WF)\s*_?\s*#?\s*(\d+)', msg, _re.IGNORECASE)
+        _scope = []
+        if _m_lot: _cmd["lot"] = int(_m_lot.group(1)); _scope.append(f"LOT {_m_lot.group(1)}")
+        if _m_wf:  _cmd["wafer"] = int(_m_wf.group(1)); _scope.append(f"WF {_m_wf.group(1)}")
+        _scope_txt = (" (" + " · ".join(_scope) + ")") if _scope else ""
+        _cmd["response"] = f"SHAP 영향도를 고위험 상위 {_tnu}개 유닛의 공통 위험 피처로 변경했습니다.{_scope_txt}"
+        return _cmd, None
+
     # ── 트렌드 기간 변경 요청 (숫자 없이 기간 언급) → 바로 질문
     if (is_trend_week or is_trend_lot) and is_period_chg and n is None:
         return None, "불량 트렌드 차트를 최근 몇 주로 바꿔드릴까요? (예: 4주, 10주, 12주)"
@@ -1424,8 +1468,8 @@ def _try_direct_action(message: str, d: dict):
         if is_trend_lot and not is_trend_week:
             return {"action": "set_top_n", "section": "trend_lots",  "n": n, "response": f"LOT ppm 트렌드를 최근 {n}개로 변경했습니다."}, None
 
-    # ── SHAP 영향도 차트 Top N 변경 ("SHAP 영향도 top8로")
-    if is_shap and n is not None:
+    # ── SHAP 영향도 차트 Top N 변경 ("SHAP 영향도 top8로"). '공통'이면 아래 공통 모드로 넘김
+    if is_shap and n is not None and not _re.search(r'공통', msg):
         return {"action": "set_top_n", "section": "shap", "n": n,
                 "response": f"SHAP 영향도 차트를 Top {n}로 변경했습니다."}, None
 

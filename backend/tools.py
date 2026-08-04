@@ -1470,3 +1470,70 @@ def get_wafer_risk_die_ratio_top(top_n: int = 10) -> dict:
     labels = [f"LOT{int(lot)}-WF{int(wf)}" for (lot, wf) in g.index]
     ratio = [round(float(v), 1) for v in g.values]
     return {"labels": labels, "ratio": ratio}
+
+
+def get_common_risk_features(top_n_units: int = 3, top_n_feats: int = 5,
+                             lot: int = None, wafer: int = None) -> dict:
+    """예측 ppm 상위 N개 유닛에서 '위험(양수) 방향으로 공통 등장'한 SHAP 피처를 반환.
+    - 공통 기준(min_count)은 유닛 수의 과반으로 자동 (3개→2, 5개→3).
+    - lot/wafer 지정 시 그 범위 내 상위 유닛으로 제한 (미지정 시 전체).
+    - shap_unit.json(유닛별 저장 top10) 기반. 각 유닛에서 shap_value>0(위험↑)인 피처만 카운트.
+    반환: {units:[serial...], min_count:int, scope:str,
+           features:[{feature, unit_count, mean_shap, mag}]}  (mag=평균 |shap|, 차트 정렬용)
+    """
+    import json as _json, os as _os, re as _re
+    from collections import Counter, defaultdict
+
+    units = _load("dashboard_units.csv").copy()
+    units["reg_pred"] = pd.to_numeric(units["reg_pred"], errors="coerce")
+    units = units.dropna(subset=["reg_pred"])
+    scope = "전체"
+    if lot is not None:
+        units = units[pd.to_numeric(units["run_id"], errors="coerce") == int(lot)]
+        scope = f"LOT {int(lot)}"
+    if wafer is not None:
+        units = units[pd.to_numeric(units["wafer_no"], errors="coerce") == int(wafer)]
+        scope = (scope + f" · WF {int(wafer)}") if scope != "전체" else f"WF {int(wafer)}"
+
+    top_units = [str(s) for s in units.sort_values("reg_pred", ascending=False)
+                 .head(max(1, top_n_units))["ufs_serial"]]
+    if not top_units:
+        return {"units": [], "min_count": 0, "scope": scope, "features": []}
+
+    # shap_unit.json 로드 (캐시)
+    _key = "shap_unit_json"
+    if _key not in _cache:
+        p = _os.path.join(DATA_DIR, "shap_unit.json")
+        try:
+            _cache[_key] = _json.load(open(p, encoding="utf-8")) if _os.path.exists(p) else {}
+        except Exception:
+            _cache[_key] = {}
+    sj = _cache[_key]
+
+    cnt = Counter()          # 위험(양수) 방향 등장 유닛 수
+    sums = defaultdict(list)  # 피처별 shap_value 목록(양수만)
+    for s in top_units:
+        for it in (sj.get(s) or []):
+            f = str(it.get("feature", ""))
+            if not _re.match(r"^X\d+$", f):
+                continue
+            v = float(it.get("shap_value", 0) or 0)
+            if v > 0:            # 위험을 높이는 방향만 '공통 위험'으로 카운트
+                cnt[f] += 1
+                sums[f].append(v)
+
+    min_count = max(2, (len(top_units) + 1) // 2)   # 과반 (3→2, 5→3), 최소 2
+    commons = [f for f, c in cnt.items() if c >= min_count]
+    # 정렬: 등장 유닛 수 → 평균 SHAP 크기
+    commons.sort(key=lambda f: (cnt[f], sum(sums[f]) / len(sums[f])), reverse=True)
+
+    feats = []
+    for f in commons[:max(1, top_n_feats)]:
+        vals = sums[f]
+        feats.append({
+            "feature":    f,
+            "unit_count": int(cnt[f]),
+            "mean_shap":  round(sum(vals) / len(vals), 8),
+            "mag":        round(sum(vals) / len(vals), 8),   # 양수만이라 mean=|mean|
+        })
+    return {"units": top_units, "min_count": min_count, "scope": scope, "features": feats}

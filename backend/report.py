@@ -496,7 +496,25 @@ def _unit_red_from_beeswarm(serial, want):
 
 def _shap_red_items(report_data, n):
     """SHAP 영향도 빨강(양수 SHAP=불량↑)만 필터 → mag 내림차순 → 상위 n개.
-    유닛 SHAP(저장 top10)에 빨강이 n개 미만이면 beeswarm에서 빨강을 보충."""
+    유닛 SHAP(저장 top10)에 빨강이 n개 미만이면 beeswarm에서 빨강을 보충.
+    common_shap 설정이 있으면 '상위 N개 유닛 공통 위험 피처'로 대체(기본은 대표 유닛)."""
+    # ── 공통 모드: report_data["common_shap"]가 있으면 여러 유닛 공통 위험 피처 반환 ──
+    _cs = report_data.get("common_shap")
+    if _cs:
+        try:
+            from tools import get_common_risk_features
+            _r = get_common_risk_features(
+                top_n_units=int(_cs.get("top_n_units", 3)),
+                top_n_feats=n,
+                lot=_cs.get("lot"), wafer=_cs.get("wafer"),
+            )
+            items = [{"feature": f["feature"], "mag": f["mag"], "signed": f["mag"],
+                      "unit_count": f.get("unit_count")} for f in _r.get("features", [])]
+            if items:
+                return items[:n]
+        except Exception:
+            pass  # 실패 시 아래 기본 로직으로 fallback
+
     _us = report_data.get("unit_shap")
     if _us:
         reds = [dict(it) for it in _us if it.get("signed", 0) >= 0]
@@ -1694,6 +1712,14 @@ def build_html(report_data: dict) -> str:
     except Exception:
         _shap_items = []
     _shap_n = len(_shap_items)
+    # 공통 모드면 제목을 "고위험 N개 유닛 공통 SHAP"으로 (기본은 "SHAP 영향도 Top N")
+    _cs_cfg = report_data.get("common_shap")
+    if _cs_cfg:
+        _cs_units = int(_cs_cfg.get("top_n_units", 3))
+        _cs_scope = _cs_cfg.get("scope_label", "")
+        _shap_title = f"고위험 {_cs_units}개 유닛 공통 SHAP" + (f" · {_cs_scope}" if _cs_scope else "")
+    else:
+        _shap_title = f"SHAP 영향도 Top {_shap_n}"
     anomaly_rows = ""
     _smax = max((it["mag"] for it in _shap_items), default=1e-9) or 1e-9
     for it in _shap_items:
@@ -2339,7 +2365,7 @@ body.ia-edit-mode .ia-target:hover{{outline:2px solid rgba(59,130,246,.5);outlin
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:stretch;height:260px;flex-shrink:0;overflow:hidden">
         <div class="anom-panel ia-target" data-sid="R2_anomaly" data-section="SHAP 영향도" style="position:relative">
-          <div class="anom-hdr">SHAP 영향도 Top {_shap_n}</div>
+          <div class="anom-hdr">{_shap_title}</div>
           <div class="anom-list">{anomaly_rows}</div>
         </div>
         <div class="fi-panel ia-target" data-sid="R3_scatter" data-section="피처 정상/불량 분포" style="position:relative;display:flex;flex-direction:column">
