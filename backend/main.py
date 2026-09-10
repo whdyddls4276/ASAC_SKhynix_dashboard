@@ -71,6 +71,12 @@ class ChatRequest(BaseModel):
     current_report_data: dict = {}  # 현재 보고서 데이터 (수정 누적용)
 
 
+class AssistantRequest(BaseModel):
+    """RAG 도메인 Q&A 요청. 에이전트와 달리 대화 history를 유지한다(후속질문 맥락)."""
+    message: str
+    history: list[dict] = []
+
+
 class InteractRequest(BaseModel):
     """보고서 인터랙션 이벤트 (통합 차트 편집 모드)."""
     action: str            # "add" | "modify" | "remove" | "explain"
@@ -130,6 +136,27 @@ async def chat(req: ChatRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/chat/assistant")
+def chat_assistant(req: AssistantRequest):
+    """
+    RAG 기반 도메인 Q&A (Gemini + ChromaDB).
+    /chat 의 Claude 에이전트가 '데이터 조회'를 맡고, 이쪽은 '도메인 지식'을 맡는다.
+    chromadb/sentence-transformers 로딩이 무거우므로 임포트를 함수 안에 둔다
+    (최상단에 두면 RAG를 안 쓰는 경우에도 서버 기동이 느려짐).
+    """
+    try:
+        from rag_chat import ask_rag
+        response, updated_history = ask_rag(req.message, history=req.history)
+        return {"response": response, "history": updated_history}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "quota" in err.lower():
+            raise HTTPException(status_code=429, detail="Gemini API quota 소진. 내일 UTC 자정 이후 리셋됩니다.")
+        raise HTTPException(status_code=500, detail=err)
 
 
 @app.post("/report/pptx")

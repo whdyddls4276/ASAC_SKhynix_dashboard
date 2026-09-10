@@ -4,9 +4,15 @@ import './ChatBot.css'
 
 const API_URL = ''
 
-const INIT_ASSISTANT = {
+const INIT_AGENT = {
   role: 'bot',
   text: '안녕하세요! 불량 예측 분석 어시스턴트입니다.\n\n유닛·LOT·피처에 대해 물어보세요.\n예) "S22474는 왜 위험해?", "제일 위험한 LOT 어디야?", "X592 분포 보여줘"',
+}
+
+// RAG 탭: 벡터 DB(사내 교육자료·용어집·논문) 기반 도메인 지식 Q&A
+const INIT_ASSISTANT = {
+  role: 'bot',
+  text: '안녕하세요! SK Hynix Wafer Test 도메인 전문 어시스턴트입니다.\n\n반도체·DRAM 공정, 모델링 개념, 용어를 물어보세요.\n예) "PTE가 뭐야?", "Zero-inflated 모델이 뭐야?", "HBM이랑 DDR 차이는?"',
 }
 
 // tool 진행 표시 라벨
@@ -31,7 +37,16 @@ const RECOMMENDED_QUESTIONS = [
 ]
 
 export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport }) {
+  const [mode, setMode] = useState('agent')   // 'agent'(데이터 분석) | 'assistant'(도메인 RAG)
+
+  // ── 에이전트 탭 상태 ──────────────────────────────────────────
+  const [agentMsgs, setAgentMsgs] = useState([INIT_AGENT])
+
+  // ── 도메인 Q&A(RAG) 탭 상태 ───────────────────────────────────
+  // 에이전트와 달리 history를 서버로 넘긴다 (후속질문 맥락 유지)
   const [assistMsgs, setAssistMsgs] = useState([INIT_ASSISTANT])
+  const assistHistoryRef = useRef([])
+
   const [input, setInput]    = useState('')
   const [loading, setLoading] = useState(false)
   const [recoOpen, setRecoOpen] = useState(true)   // 추천 질문 패널 펼침 여부
@@ -40,14 +55,17 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
   const entityRef = useRef({ selected_unit: null, selected_feature: null, selected_lot: null, selected_wafer: null })
   const bottomRef = useRef(null)
 
+  // 현재 탭의 메시지 목록 (렌더용)
+  const messages = mode === 'agent' ? agentMsgs : assistMsgs
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [assistMsgs])
+  }, [agentMsgs, assistMsgs])
 
   // 스트리밍 중인 bot 메시지를 갱신. 직전이 스트리밍/상태 말풍선이면 그것을 텍스트로 교체
   // (→ "분석 중..." 상태 말풍선이 최종 답변으로 바뀌고, 완료 후 잔재가 안 남음)
   function updateStreamMsg(text, final) {
-    setAssistMsgs(prev => {
+    setAgentMsgs(prev => {
       const next = [...prev]
       const last = next[next.length - 1]
       if (last?.role === 'bot' && (last?.streaming || last?.status))
@@ -61,7 +79,7 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
   // 그것을 상태로 덮어씀 → LLM이 tool 호출 전 붙인 "조회하겠습니다" 서두 멘트가 화면에 안 남음.
   function addStatus(tool) {
     const label = TOOL_LABELS[tool] || `⚙️ ${tool}...`
-    setAssistMsgs(prev => {
+    setAgentMsgs(prev => {
       const next = [...prev]
       const last = next[next.length - 1]
       if (last?.role === 'bot' && (last?.status || last?.streaming))
@@ -107,7 +125,7 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
 
   // 마지막 봇 메시지에 [보고서 반영] 버튼 마커를 붙임 (유닛 SHAP 답변에만)
   function markLastBotForApply(serial) {
-    setAssistMsgs(prev => {
+    setAgentMsgs(prev => {
       const next = [...prev]
       for (let i = next.length - 1; i >= 0; i--) {
         if (next[i].role === 'bot' && !next[i].status && !next[i].error) {
@@ -123,7 +141,7 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
   // mode="chat": 자유 입력(entity_context로 후속질문 맥락) / "recommended": 추천 질문(독립)
   // applyUnitSerial: 값이 있으면 이 답변(유닛 SHAP)에 [보고서 반영] 버튼 마커를 붙임
   async function sendFreeQuery(msg, mode = 'chat', applyUnitSerial = null) {
-    setAssistMsgs(prev => [...prev, { role: 'user', text: msg }])
+    setAgentMsgs(prev => [...prev, { role: 'user', text: msg }])
     setLoading(true)
 
     // 추천 질문은 독립 시나리오 → 맥락 없음. 자유 입력만 엔티티 추출/전달
@@ -173,14 +191,43 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
             }
           }
           if (ev.type === 'error') {
-            setAssistMsgs(prev => [...prev, { role: 'bot', text: `⚠️ ${ev.message}`, error: true }])
+            setAgentMsgs(prev => [...prev, { role: 'bot', text: `⚠️ ${ev.message}`, error: true }])
           }
         }
       }
     } catch {
-      setAssistMsgs(prev => [...prev, {
+      setAgentMsgs(prev => [...prev, {
         role: 'bot',
         text: '⚠️ 분석 서버에 연결하지 못했습니다. 서버 실행 상태를 확인해주세요.',
+        error: true,
+      }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── 도메인 Q&A 전송 (RAG, 단순 JSON 응답 — SSE 아님) ──────────
+  async function sendAssistant(msg) {
+    setAssistMsgs(prev => [...prev, { role: 'user', text: msg }])
+    setLoading(true)
+
+    try {
+      const res = await fetch(`${API_URL}/chat/assistant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, history: assistHistoryRef.current }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }))
+        throw new Error(err.detail || res.statusText)
+      }
+      const data = await res.json()
+      assistHistoryRef.current = data.history || []
+      setAssistMsgs(prev => [...prev, { role: 'bot', text: data.response }])
+    } catch (e) {
+      setAssistMsgs(prev => [...prev, {
+        role: 'bot',
+        text: `⚠️ ${e.message || '서버 연결에 실패했습니다. 분석 서버(8000) 실행 상태를 확인해주세요.'}`,
         error: true,
       }])
     } finally {
@@ -192,16 +239,29 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
     const msg = input.trim()
     if (!msg || loading) return
     setInput('')
-    await sendFreeQuery(msg)
+    if (mode === 'assistant') await sendAssistant(msg)
+    else await sendFreeQuery(msg)
   }
 
   function handleKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
+  function handleTabChange(newMode) {
+    if (loading) return       // 응답 대기 중 탭 전환 시 결과가 엉뚱한 탭에 꽂히는 것 방지
+    setMode(newMode)
+    setInput('')
+  }
+
   function handleReset() {
-    setAssistMsgs([INIT_ASSISTANT])
-    resetEntity()          // 대화 초기화 시 엔티티 맥락도 비움 (다음 분석 오염 방지)
+    if (mode === 'assistant') {
+      setAssistMsgs([INIT_ASSISTANT])
+      assistHistoryRef.current = []
+    } else {
+      setAgentMsgs([INIT_AGENT])
+      resetEntity()        // 대화 초기화 시 엔티티 맥락도 비움 (다음 분석 오염 방지)
+      setUnitCandidates([])
+    }
     setInput('')
   }
 
@@ -218,12 +278,12 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
         const units = data.units || []
         if (units.length) {
           setUnitCandidates(units)
-          setAssistMsgs(prev => [...prev, { role: 'bot', text: '어느 UNIT의 위험 원인을 볼까요? (예측 ppm 높은 순)' }])
+          setAgentMsgs(prev => [...prev, { role: 'bot', text: '어느 UNIT의 위험 원인을 볼까요? (예측 ppm 높은 순)' }])
         } else {
-          setAssistMsgs(prev => [...prev, { role: 'bot', text: '후보 UNIT을 불러오지 못했습니다.', error: true }])
+          setAgentMsgs(prev => [...prev, { role: 'bot', text: '후보 UNIT을 불러오지 못했습니다.', error: true }])
         }
       } catch {
-        setAssistMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 후보 조회 실패. 서버(8000)를 확인해주세요.', error: true }])
+        setAgentMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 후보 조회 실패. 서버(8000)를 확인해주세요.', error: true }])
       }
       return
     }
@@ -253,7 +313,7 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
   async function handleGenerateReport(serial) {
     if (loading) return
     setLoading(true)
-    setAssistMsgs(prev => [...prev, { role: 'user', text: `${serial} 유닛으로 보고서를 생성해줘` }])
+    setAgentMsgs(prev => [...prev, { role: 'user', text: `${serial} 유닛으로 보고서를 생성해줘` }])
 
     let buffer = ''
     let done = false
@@ -279,17 +339,17 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
           let ev; try { ev = JSON.parse(raw) } catch { continue }
           if (ev.type === 'tool_start') addStatus(ev.tool)               // 🔍 스캔 중 등
           if (ev.type === 'text' && ev.content?.trim())
-            setAssistMsgs(prev => [...prev, { role: 'bot', text: ev.content }])   // 스캔결과·피처 요약
+            setAgentMsgs(prev => [...prev, { role: 'bot', text: ev.content }])   // 스캔결과·피처 요약
           if (ev.type === 'report_ready' && ev.html) {
             done = true
             onReportGenerated?.({ html: ev.html, report_data: ev.report_data, serial })
-            setAssistMsgs(prev => [...prev, { role: 'bot', text: `✅ ${serial} 유닛을 대표로 보고서를 생성했습니다.`, openReport: true }])
+            setAgentMsgs(prev => [...prev, { role: 'bot', text: `✅ ${serial} 유닛을 대표로 보고서를 생성했습니다.`, openReport: true }])
           }
         }
       }
-      if (!done) setAssistMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 보고서 생성에 실패했습니다. 다시 시도해주세요.', error: true }])
+      if (!done) setAgentMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 보고서 생성에 실패했습니다. 다시 시도해주세요.', error: true }])
     } catch {
-      setAssistMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 분석 서버에 연결하지 못했습니다. 서버 실행 상태를 확인해주세요.', error: true }])
+      setAgentMsgs(prev => [...prev, { role: 'bot', text: '⚠️ 분석 서버에 연결하지 못했습니다. 서버 실행 상태를 확인해주세요.', error: true }])
     } finally {
       setLoading(false)
     }
@@ -305,8 +365,23 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
         </div>
       </div>
 
+      <div className="cb-tabs">
+        <button
+          className={`cb-tab ${mode === 'agent' ? 'active' : ''}`}
+          onClick={() => handleTabChange('agent')}
+        >
+          🔧 분석
+        </button>
+        <button
+          className={`cb-tab ${mode === 'assistant' ? 'active' : ''}`}
+          onClick={() => handleTabChange('assistant')}
+        >
+          📚 도메인 Q&A
+        </button>
+      </div>
+
       <div className="cb-messages">
-        {assistMsgs.map((m, i) => (
+        {messages.map((m, i) => (
           <div key={i} className={`cb-msg ${m.role}`}>
             {m.role === 'bot' && <div className="cb-avatar">AI</div>}
             <div className="cb-bubble-wrap">
@@ -333,8 +408,8 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
           </div>
         ))}
 
-        {/* 유닛 선택 대기: 후보 버튼 (serial + 예측 ppm) */}
-        {unitCandidates.length > 0 && !loading && (
+        {/* 유닛 선택 대기: 후보 버튼 (serial + 예측 ppm) — 분석 탭 전용 */}
+        {mode === 'agent' && unitCandidates.length > 0 && !loading && (
           <div className="cb-unit-picker">
             {unitCandidates.map(u => (
               <button key={u.serial} className="cb-unit-btn" onClick={() => handleUnitPick(u)}>
@@ -356,7 +431,8 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
         <div ref={bottomRef} />
       </div>
 
-      {/* 추천 질문: 입력창 바로 위 고정 영역 (스크롤에 안 밀림) */}
+      {/* 추천 질문: 입력창 바로 위 고정 영역 (스크롤에 안 밀림) — 분석 탭 전용 */}
+      {mode === 'agent' && (
       <div className="cb-reco">
         <button
           className="cb-reco-toggle"
@@ -384,11 +460,14 @@ export default function ChatBot({ open, onClose, onReportGenerated, onOpenReport
           </div>
         )}
       </div>
+      )}
 
       <div className="cb-input-row">
         <textarea
           className="cb-input"
-          placeholder="유닛·LOT·피처를 물어보세요 (예: S22474 왜 위험해?)"
+          placeholder={mode === 'agent'
+            ? '유닛·LOT·피처를 물어보세요 (예: S22474 왜 위험해?)'
+            : '반도체·공정·모델링 용어를 물어보세요 (예: PTE가 뭐야?)'}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}

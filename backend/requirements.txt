@@ -7,3 +7,8 @@ anthropic
 python-pptx
 python-dotenv
 matplotlib
+# RAG 도메인 Q&A (/chat/assistant)
+# chromadb는 assistant/vectordb_v2를 만든 버전에 고정 — 상위 버전은 스키마 마이그레이션 위험
+chromadb==1.5.8
+sentence-transformers
+google-genai

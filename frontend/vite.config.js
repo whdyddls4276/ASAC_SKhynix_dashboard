@@ -8,7 +8,8 @@ export default defineConfig({
   server: {
     hmr: false,
     proxy: {
-      '/chat/assistant': { target: 'http://localhost:8002', changeOrigin: true },
+      // RAG 도메인 Q&A는 backend(8000)로 흡수됨 — 별도 assistant 서버(8002) 불필요
+      '/chat/assistant': { target: 'http://localhost:8000', changeOrigin: true },
       '/chat':           { target: 'http://localhost:8000', changeOrigin: true },
       '/report':         { target: 'http://localhost:8000', changeOrigin: true },
       '/health':         { target: 'http://localhost:8000', changeOrigin: true },
