@@ -929,6 +929,19 @@ section_label key 예시: `"section_label_L1"` | `"section_label_L2"` | `"sectio
 
 위 목록에 없는 창의적인 요청(커스텀 섹션 추가, 테이블 컬럼 숨기기 등)은 기존 `code` 방식 사용.
 
+## 처리 불가능한 요청 (반드시 준수 — action/code를 억지로 만들지 말 것)
+
+아래 중 하나에 해당하면 `action`이나 `code`를 절대 만들지 말고, 반드시 아래 형식으로만 응답한다:
+`{"unsupported": true, "reason": "<내부 사유 — 로그용, 사용자에게 노출 안 됨>", "response": "<사용자에게 보여줄 한두 문장 설명>"}`
+
+**해당 케이스:**
+1. **명시적으로 금지된 항목** — SHAP 영향도(R2) 피처/개수 변경, 예측 모델 교체 등 위 "수정 가능 항목"에서 이미 불가하다고 명시한 요청
+2. **이 보고서 데이터(d)로 표현할 수 없는 요청** — 존재하지 않는 지표·기간·LOT 범위 재계산 등, 위 "d 완전 명세"에 없는 데이터를 요구하는 요청
+3. **보고서 편집이 아니라 단순 조회/질문인 요청** — 예: "이 LOT에서 제일 위험한 유닛 5개 뭐야?", "X831이 왜 위험 피처야?" 처럼 **무언가를 바꿔달라는 게 아니라 답을 알고 싶어하는 질문**. 이 경우 response는 반드시 "이건 보고서 수정이 아니라 조회 질문이라 이 창에서는 답변드릴 수 없습니다. 대시보드의 질문 챗봇을 이용해 주세요." 로 안내한다.
+4. **안전하게 code로 표현하려면 금지 표현(import/exec/eval/open 등)이 꼭 필요한 요청**
+
+response는 **왜 안 되는지 한 문장으로 명확히** 설명하고, 가능하면 대안(어떤 요청이면 되는지)을 짧게 덧붙인다. **모르겠다고 아무 action이나 짜맞추거나, 실행 안 될 code를 만들어 실패시키지 않는다.**
+
 ## 응답 형식
 
 **중요**: 응답은 반드시 JSON 객체 하나만 출력한다. 코드블록(```) 없이, JSON 앞뒤로 설명 텍스트를 쓰지 않는다.
@@ -1726,13 +1739,19 @@ async def run_report_editor(user_message: str, history: list,
         if first != -1 and last > first:
             cmd = _try_parse_json(clean[first:last + 1])
 
+    # 지원 기능 안내 (파싱 실패·미지원 응답에서 공통으로 사용)
+    SUPPORT_HINT = (
+        "\n\n지원되는 요청: 대표 유닛 변경, 차트/피처 변경(SHAP 제외), "
+        "표시 개수·기간 조정, 제목·텍스트 수정, 섹션 표시/숨김, 커스텀 섹션·표 추가"
+    )
+
     # 모든 시도 실패
     if cmd is None:
         print(f"[editor] JSON 파싱 실패 — raw_text: {raw_text[:300]!r}")
         m = _re_json.search(r'"response"\s*:\s*"(.*?)"(?:,|\})', raw_text, _re_json.DOTALL)
         fallback_text = m.group(1).replace("\\n", "\n") if m else ""
         if not fallback_text:
-            fallback_text = "요청을 처리하지 못했습니다. 다시 시도해 주세요."
+            fallback_text = "요청을 이해하지 못했습니다." + SUPPORT_HINT
         yield {"type": "text", "content": fallback_text}
         yield {"type": "done"}
         return
@@ -1740,16 +1759,24 @@ async def run_report_editor(user_message: str, history: list,
     print(f"[editor] cmd: {cmd}")
     response_text = cmd.get("response", "").strip()
 
+    # 처리 불가 응답 (LLM이 이 요청은 지원 범위 밖이라고 명시적으로 판단한 경우)
+    if cmd.get("unsupported"):
+        print(f"[editor] unsupported — reason: {cmd.get('reason', '')!r}")
+        yield {"type": "text", "content": (response_text or "이 요청은 현재 지원하지 않습니다.") + SUPPORT_HINT}
+        yield {"type": "done"}
+        return
+
     # action 커맨드 처리 (command-based 방식 — exec 없이 핸들러 직접 실행)
     if "action" in cmd:
         success, err_msg = _handle_command(cmd, d)
         if not success:
-            yield {"type": "text", "content": f"⚠️ 처리 실패: {err_msg}"}
+            yield {"type": "text", "content": f"⚠️ 처리 실패: {err_msg}" + SUPPORT_HINT}
         else:
             try:
                 html = build_html(d)
             except Exception as _e:
-                yield {"type": "text", "content": f"⚠️ HTML 생성 오류: {_e}"}
+                print(f"[editor] HTML 생성 오류: {_e}")
+                yield {"type": "text", "content": "⚠️ 보고서를 다시 그리는 중 오류가 발생했습니다. 다른 요청으로 다시 시도해 주세요."}
                 yield {"type": "done"}
                 return
             yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
@@ -1762,12 +1789,14 @@ async def run_report_editor(user_message: str, history: list,
     if code:
         success, err = _execute_editor_code(code, d)
         if not success:
-            response_text = (response_text + f"\n\n⚠️ 코드 실행 오류: {err}").strip()
+            print(f"[editor] 코드 실행 오류: {err}")   # 원본 에러는 서버 로그에만 남김
+            response_text = (response_text or "요청하신 수정을 적용하지 못했습니다.") + SUPPORT_HINT
         else:
             try:
                 html = build_html(d)
             except Exception as _e:
-                response_text = (response_text + f"\n\n⚠️ HTML 생성 오류: {_e}").strip()
+                print(f"[editor] HTML 생성 오류: {_e}")
+                response_text = "⚠️ 보고서를 다시 그리는 중 오류가 발생했습니다. 다른 요청으로 다시 시도해 주세요."
             else:
                 yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
 
