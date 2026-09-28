@@ -927,27 +927,30 @@ section 값: `"importance"` | `"trend_weeks"` | `"trend_lots"`
 sid 값: `"L1_kpi"` | `"L2_fi"` | `"L3_trend"` | `"R1_unit"` | `"R2_anomaly"` | `"R3_scatter"`
 section_label key 예시: `"section_label_L1"` | `"section_label_L2"` | `"section_label_L3"` | `"section_label_R1"`
 
-위 목록에 없는 창의적인 요청(커스텀 섹션 추가, 테이블 컬럼 숨기기 등)은 기존 `code` 방식 사용.
+위 동작은 모두 **tool로 제공**된다. 요청에 맞는 tool을 호출해 처리한다.
+**tool 목록에 없는 요청은 처리하지 않는다** — 코드를 만들어 실행하지 않고, 아래 '처리 불가능한 요청' 형식으로 응답한다.
 
 ## 처리 불가능한 요청 (반드시 준수 — action/code를 억지로 만들지 말 것)
 
-아래 중 하나에 해당하면 `action`이나 `code`를 절대 만들지 말고, 반드시 아래 형식으로만 응답한다:
+아래 중 하나에 해당하면 tool을 호출하지 말고, 반드시 아래 형식의 JSON 텍스트로만 응답한다:
 `{"unsupported": true, "reason": "<내부 사유 — 로그용, 사용자에게 노출 안 됨>", "response": "<사용자에게 보여줄 한두 문장 설명>"}`
 
 **해당 케이스:**
 1. **명시적으로 금지된 항목** — SHAP 영향도(R2) 피처/개수 변경, 예측 모델 교체 등 위 "수정 가능 항목"에서 이미 불가하다고 명시한 요청
 2. **이 보고서 데이터(d)로 표현할 수 없는 요청** — 존재하지 않는 지표·기간·LOT 범위 재계산 등, 위 "d 완전 명세"에 없는 데이터를 요구하는 요청
 3. **보고서 편집이 아니라 단순 조회/질문인 요청** — 예: "이 LOT에서 제일 위험한 유닛 5개 뭐야?", "X831이 왜 위험 피처야?" 처럼 **무언가를 바꿔달라는 게 아니라 답을 알고 싶어하는 질문**. 이 경우 response는 반드시 "이건 보고서 수정이 아니라 조회 질문이라 이 창에서는 답변드릴 수 없습니다. 대시보드의 질문 챗봇을 이용해 주세요." 로 안내한다.
-4. **안전하게 code로 표현하려면 금지 표현(import/exec/eval/open 등)이 꼭 필요한 요청**
+4. **제공된 tool 목록으로 표현할 수 없는 요청** — 커스텀 섹션 추가, 표 컬럼 숨기기 등
 
-response는 **왜 안 되는지 한 문장으로 명확히** 설명하고, 가능하면 대안(어떤 요청이면 되는지)을 짧게 덧붙인다. **모르겠다고 아무 action이나 짜맞추거나, 실행 안 될 code를 만들어 실패시키지 않는다.**
+response는 **왜 안 되는지 한 문장으로 명확히** 설명하고, 가능하면 대안(어떤 요청이면 되는지)을 짧게 덧붙인다. **모르겠다고 아무 tool이나 골라 호출하지 않는다.**
+
+요청이 모호해 정보가 더 필요한 경우에도 **평문으로 되묻지 않는다.** 같은 JSON 형식으로 답하되 `response`에 무엇을 알려주면 되는지 적는다. 예: `{"unsupported": true, "reason": "대상 불명확", "response": "어떤 섹션을 말씀하시는지 알려주세요. (예: 이상 피처 표, 웨이퍼맵)"}`
 
 ## 응답 형식
 
 **중요**: 응답은 반드시 JSON 객체 하나만 출력한다. 코드블록(```) 없이, JSON 앞뒤로 설명 텍스트를 쓰지 않는다.
 
-커맨드 방식: `{"action": "...", ...필드들..., "response": "사용자에게 전달할 한국어 답변"}`
-코드 방식:   `{"response": "사용자에게 전달할 한국어 답변", "code": "Python 코드 (없으면 빈 문자열)"}`
+수정 요청이면 → **해당 tool을 호출**한다 (JSON 텍스트를 따로 쓰지 않는다).
+처리 불가면 → `{"unsupported": true, "reason": "...", "response": "..."}` JSON만 출력한다.
 
 잘못된 예시 (절대 금지):
 - "네, 처리하겠습니다. {\"action\": ...}" ← JSON 앞에 텍스트 금지
@@ -1174,6 +1177,136 @@ def _get_chart_section_data(chart_type: str, d: dict, position: str) -> dict | N
     return None
 
 
+# ══════════════════════════════════════════════════════════════════════
+# 보고서 편집 tool 정의 — Claude tool_use로 편집 동작을 고르게 한다.
+#   · 정규식(_try_direct_action)으로 처리되지 않은 요청만 여기로 온다.
+#   · 목록에 없는 요청은 tool을 호출하지 않고 unsupported로 응답하게 한다.
+#     (이전의 code 생성 + exec 경로를 대체)
+# ══════════════════════════════════════════════════════════════════════
+
+_SID_ENUM = ["L1_kpi", "L2_fi", "L3_trend", "R1_unit", "R2_anomaly", "R3_scatter"]
+_CHART_ENUM = ["importance", "shap", "feat_dist", "defect_trend", "anomaly",
+               "lot_trend", "weekly_trend", "ppm_trend", "pos_defect", "pred_actual"]
+
+REPORT_TOOLS = [
+    {
+        "name": "change_unit",
+        "description": "보고서의 대표 유닛을 교체한다. 웨이퍼맵·SHAP·피처 분포가 모두 해당 유닛 기준으로 다시 계산된다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serial": {"type": "string", "description": "유닛 시리얼 (예: S38369)"},
+            },
+            "required": ["serial"],
+        },
+    },
+    {
+        "name": "set_top_n",
+        "description": "차트에 표시할 개수나 기간을 조정한다. importance=피처 중요도 개수, trend_weeks=주간 트렌드 주 수, trend_lots=LOT 트렌드 개수.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "section": {"type": "string", "enum": ["importance", "trend_weeks", "trend_lots"]},
+                "n": {"type": "integer", "description": "표시 개수 (1 이상)"},
+            },
+            "required": ["section", "n"],
+        },
+    },
+    {
+        "name": "set_dist_feature",
+        "description": "피처 정상/불량 분포(R3)에 표시할 피처를 변경한다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "feature": {"type": "string", "description": "피처명 (X숫자 형식, 예: X831)"},
+            },
+            "required": ["feature"],
+        },
+    },
+    {
+        "name": "change_scatter",
+        "description": "산점도에 표시할 피처를 변경한다. 두 축 중 바꿀 쪽만 지정해도 된다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "feat1": {"type": "string", "description": "X축 피처 (X숫자 형식)"},
+                "feat2": {"type": "string", "description": "Y축 피처 (X숫자 형식)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "filter_anomaly",
+        "description": "이상 피처 표(R2)에 남길 피처를 지정한다. 지정한 피처만 남고 나머지는 제외된다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "features": {"type": "array", "items": {"type": "string"},
+                             "description": "남길 피처명 목록 (예: [\"X831\", \"X1064\"])"},
+            },
+            "required": ["features"],
+        },
+    },
+    {
+        "name": "toggle_section",
+        "description": "보고서 섹션을 숨기거나 다시 표시한다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sid": {"type": "string", "enum": _SID_ENUM},
+                "hide": {"type": "boolean", "description": "true=숨김, false=복원"},
+            },
+            "required": ["sid", "hide"],
+        },
+    },
+    {
+        "name": "change_section",
+        "description": "특정 섹션 자리의 차트 종류를 다른 차트로 교체한다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target_sid": {"type": "string", "enum": _SID_ENUM,
+                               "description": "교체할 자리의 섹션 id"},
+                "chart_type": {"type": "string", "enum": _CHART_ENUM,
+                               "description": "새로 넣을 차트 종류"},
+            },
+            "required": ["target_sid", "chart_type"],
+        },
+    },
+    {
+        "name": "set_text",
+        "description": "보고서의 제목·배너·섹션 소제목 같은 텍스트를 수정한다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string",
+                        "description": "report_title | alert_features | summary_title | summary_sub | section_label_L1~R3"},
+                "value": {"type": "string", "description": "바꿀 내용"},
+            },
+            "required": ["key", "value"],
+        },
+    },
+    {
+        "name": "set_common_shap",
+        "description": "R2 영역을 고위험 유닛들의 공통 위험 피처로 교체한다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "top_n_units": {"type": "integer", "description": "집계에 쓸 고위험 유닛 수 (기본 3)"},
+                "lot": {"type": "string", "description": "특정 LOT으로 한정할 때"},
+                "wafer": {"type": "string", "description": "특정 웨이퍼로 한정할 때"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "reset_common_shap",
+        "description": "공통 위험 피처로 바꿔둔 R2 영역을 원래 이상 피처 표로 되돌린다.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+]
+
+
 def _handle_command(cmd: dict, d: dict):
     """
     Claude가 action JSON을 반환했을 때 처리. (success: bool, err_msg: str | None) 반환.
@@ -1349,45 +1482,6 @@ def _handle_command(cmd: dict, d: dict):
         return False, f"알 수 없는 action: {action}"
 
 
-def _execute_editor_code(code: str, d: dict):
-    """Claude가 생성한 코드를 안전하게 실행. (success, error_msg) 반환."""
-    if not code.strip():
-        return True, ""
-
-    import ast as _ast
-    try:
-        tree = _ast.parse(code)
-    except SyntaxError as e:
-        return False, f"문법 오류: {e}"
-    forbidden_names = {"__import__", "exec", "eval", "compile", "globals", "getattr", "open"}
-    for node in _ast.walk(tree):
-        if isinstance(node, _ast.Import):
-            return False, "금지된 표현: import"
-        if isinstance(node, _ast.ImportFrom):
-            return False, "금지된 표현: import"
-        if isinstance(node, (_ast.Name, _ast.Attribute)):
-            name = node.id if isinstance(node, _ast.Name) else node.attr
-            if name in forbidden_names:
-                return False, f"금지된 표현: {name}"
-        if isinstance(node, _ast.Constant) and isinstance(node.value, str):
-            if "subprocess" in node.value:
-                return False, "금지된 표현: subprocess"
-
-    safe_builtins = {
-        "sorted": sorted, "len": len, "max": max, "min": min, "sum": sum,
-        "int": int, "float": float, "str": str, "list": list, "dict": dict,
-        "filter": filter, "map": map, "any": any, "all": all, "zip": zip,
-        "enumerate": enumerate, "range": range, "round": round,
-        "True": True, "False": False, "None": None,
-        "print": lambda *a, **k: None,
-    }
-    try:
-        exec(code, {"__builtins__": safe_builtins, "d": d})
-        return True, ""
-    except Exception as e:
-        return False, str(e)
-
-
 def _try_direct_action(message: str, d: dict):
     """
     사용자 메시지에서 known action을 직접 추출 시도. Claude 호출 없이 처리.
@@ -1537,7 +1631,7 @@ async def run_report_editor(user_message: str, history: list,
                             tool_cache: dict = None, current_html: str = "",
                             current_report_data: dict = None):
     """
-    보고서 수정 전용 Agent. Claude가 Python 코드를 생성하면 exec()으로 실행.
+    보고서 수정 전용 Agent. 정규식으로 먼저 처리하고, 걸리지 않으면 Claude가 편집 tool을 골라 호출한다.
     current_report_data: 이전 수정이 누적된 보고서 데이터 (custom_sections, commentary 포함)
     """
     import copy
@@ -1690,10 +1784,40 @@ async def run_report_editor(user_message: str, history: list,
             max_tokens=2048,
             system=_build_editor_system(d),
             messages=messages,
+            tools=REPORT_TOOLS,
         )
     except Exception as e:
         yield {"type": "error", "message": str(e)}
         return
+
+    # ── tool_use 우선 처리 ────────────────────────────────────────────
+    # Claude가 편집 tool을 고른 경우 → 그대로 _handle_command로 넘긴다.
+    # tool을 고르지 않았다면 지원 범위 밖 요청이므로 아래 텍스트 경로에서 안내한다.
+    tool_block = None
+    for block in response.content:
+        if getattr(block, "type", "") == "tool_use":
+            tool_block = block
+            break
+
+    if tool_block is not None:
+        cmd = {"action": tool_block.name, **(tool_block.input or {})}
+        print(f"[editor] tool_use: {cmd}")
+        success, err_msg = _handle_command(cmd, d)
+        if not success:
+            yield {"type": "text", "content": f"⚠️ 처리 실패: {err_msg}"}
+            yield {"type": "done"}
+            return
+        try:
+            html = build_html(d)
+        except Exception as _e:
+            yield {"type": "text", "content": f"⚠️ HTML 생성 오류: {_e}"}
+            yield {"type": "done"}
+            return
+        yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
+        yield {"type": "text", "content": "보고서를 수정했습니다."}
+        yield {"type": "done"}
+        return
+    # ─────────────────────────────────────────────────────────────────
 
     # 응답 파싱
     raw_text = ""
@@ -1742,7 +1866,7 @@ async def run_report_editor(user_message: str, history: list,
     # 지원 기능 안내 (파싱 실패·미지원 응답에서 공통으로 사용)
     SUPPORT_HINT = (
         "\n\n지원되는 요청: 대표 유닛 변경, 차트/피처 변경(SHAP 제외), "
-        "표시 개수·기간 조정, 제목·텍스트 수정, 섹션 표시/숨김, 커스텀 섹션·표 추가"
+        "표시 개수·기간 조정, 제목·텍스트 수정, 섹션 표시/숨김, 차트 종류 교체"
     )
 
     # 모든 시도 실패
@@ -1784,21 +1908,12 @@ async def run_report_editor(user_message: str, history: list,
         yield {"type": "done"}
         return
 
-    # 기존 exec() 방식 (action 없는 커스텀 요청 fallback)
-    code = cmd.get("code", "").strip()
-    if code:
-        success, err = _execute_editor_code(code, d)
-        if not success:
-            print(f"[editor] 코드 실행 오류: {err}")   # 원본 에러는 서버 로그에만 남김
-            response_text = (response_text or "요청하신 수정을 적용하지 못했습니다.") + SUPPORT_HINT
-        else:
-            try:
-                html = build_html(d)
-            except Exception as _e:
-                print(f"[editor] HTML 생성 오류: {_e}")
-                response_text = "⚠️ 보고서를 다시 그리는 중 오류가 발생했습니다. 다른 요청으로 다시 시도해 주세요."
-            else:
-                yield {"type": "report_ready", "html": html, "report_data": copy.deepcopy(d)}
+    # 편집 tool을 고르지 않았고 action도 없는 경우 → 지원 범위 밖으로 안내한다.
+    # (이전에는 Claude가 만든 Python 코드를 exec()으로 실행했으나,
+    #  실행 가능한 동작을 tool로 못 박는 편이 안전하다고 보고 경로를 제거했다.)
+    if cmd.get("code"):
+        print(f"[editor] code 경로 요청 — 미지원으로 안내: {cmd.get('code', '')[:120]!r}")
+        response_text = "이 요청은 지원하지 않는 수정입니다." + SUPPORT_HINT
 
     yield {"type": "text", "content": response_text or "처리를 완료했습니다."}
     yield {"type": "done"}
