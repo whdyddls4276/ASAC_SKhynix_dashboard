@@ -1,7 +1,7 @@
 """
 rag_client.py
 ChromaDB 1.5.8 HttpClient 기반 벡터 검색
-서버: chroma run --path vectordb_v2 --port 8003 (start.bat이 자동 실행)
+서버: chroma run --path vectordb_v3 --port 8003 (start.bat이 자동 실행)
 
 검색 전략:
 1. 약어(대문자 토큰) → glossary 딕셔너리 직접 매칭 (정확도 보장)

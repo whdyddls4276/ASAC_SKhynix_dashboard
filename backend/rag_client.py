@@ -2,7 +2,7 @@
 rag_client.py
 ChromaDB PersistentClient 기반 벡터 검색 (별도 chroma 서버 불필요)
 
-DB: ../assistant/vectordb_v2 (청크 7,935개, 384차원)
+DB: ../assistant/vectordb_v3 (청크 7,935개, 384차원)
 
 검색 전략:
 1. 약어(대문자 토큰) → glossary 딕셔너리 직접 매칭 (정확도 보장)
@@ -19,7 +19,7 @@ EMBED_MODEL     = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # 벡터 DB는 assistant 폴더에 그대로 둔다 (독립 실행 페이지와 공용)
 VECTORDB_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "assistant", "vectordb_v2")
+    os.path.join(os.path.dirname(__file__), "..", "assistant", "vectordb_v3")
 )
 
 _client     = None

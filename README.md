@@ -142,7 +142,8 @@ start.bat        # Windows — 백엔드(8000) + 프론트엔드(5173) 동시 �
 │
 ├── assistant/                독립 실행형 RAG 페이지 (:8002, 선택)
 │   ├── main.py               단독 서버 — 대시보드 없이 챗봇만 쓸 때
-│   └── vectordb_v2/          ChromaDB 벡터 DB (47MB)
+│   ├── vectordb_v3/          ChromaDB 벡터 DB (61MB, 사용 중)
+│   └── vectordb_v2/          이전 버전 — 벡터 인덱스 일부 누락, 비교용 보관
 │
 └── start.bat                 백엔드 + 프론트엔드 동시 실행
 ```
@@ -171,7 +172,7 @@ start.bat        # Windows — 백엔드(8000) + 프론트엔드(5173) 동시 �
 
 ## RAG 지식베이스
 
-`assistant/vectordb_v2/` — ChromaDB, **청크 7,935개**, 384차원
+`assistant/vectordb_v3/` — ChromaDB, **청크 7,935개**, 384차원 (2026-10-20 v2의 문서로 인덱스를 다시 만든 버전)
 임베딩 모델: `paraphrase-multilingual-MiniLM-L12-v2` (한국어·영어 동시 지원)
 
 | 카테고리 | 청크 | 내용 |
