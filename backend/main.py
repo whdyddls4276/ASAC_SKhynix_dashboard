@@ -5,11 +5,15 @@ FastAPI 앱 진입점.
 """
 import json
 import asyncio
+import base64
+import binascii
 import os
+import secrets
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from agent import run_agent
@@ -58,6 +62,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── 배포용 접속 비밀번호 (DASHBOARD_PASSWORD가 있을 때만 켜짐, 로컬 실행은 영향 없음) ──
+_DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
+
+@app.middleware("http")
+async def basic_auth(request, call_next):
+    if not _DASHBOARD_PASSWORD or request.url.path == "/health":
+        return await call_next(request)
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("basic "):
+        try:
+            _, _, pw = base64.b64decode(auth[6:]).decode("utf-8").partition(":")
+        except (binascii.Error, UnicodeDecodeError):
+            pw = ""
+        if secrets.compare_digest(pw, _DASHBOARD_PASSWORD):
+            return await call_next(request)
+    return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="dashboard"'})
 
 
 class ChatRequest(BaseModel):
@@ -303,3 +324,10 @@ def candidate_units(n: int = 5):
         return {"units": get_candidate_units(n)}   # [{serial, lot, wafer, ppm}, ...]
     except Exception as e:
         return {"units": [], "error": str(e)}
+
+
+# ── 배포용: 빌드한 React 화면을 같은 서버에서 서빙 (FRONTEND_DIST가 있을 때만, 로컬은 Vite 개발 서버 그대로) ──
+# 모든 API 라우트 뒤에 마운트해야 API 경로가 먼저 매칭된다
+_FRONTEND_DIST = os.environ.get("FRONTEND_DIST", "")
+if _FRONTEND_DIST and os.path.isdir(_FRONTEND_DIST):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")

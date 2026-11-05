@@ -1,0 +1,17 @@
+# 비밀 값은 이미지에 넣지 않는다 — 실행할 때 환경변수로만 전달
+.env
+**/.env
+
+.git
+**/__pycache__
+**/*.pyc
+frontend/node_modules
+frontend/dist
+
+# 비교용으로 보관 중인 옛 벡터DB (실행에는 v3만 사용)
+assistant/vectordb_v2
+
+*.pptx
+*.log
+*.tmp
+_live_cache.json

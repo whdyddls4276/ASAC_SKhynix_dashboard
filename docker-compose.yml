@@ -1,0 +1,11 @@
+# 로컬에서 배포판과 같은 컨테이너로 실행: docker compose up --build → http://localhost:7860
+services:
+  dashboard:
+    build: .
+    image: sk-dashboard
+    ports:
+      - "7860:7860"
+    # ANTHROPIC_API_KEY · GEMINI_API_KEY는 backend/.env에서 읽어 컨테이너 환경변수로만 넘긴다 (이미지에는 없음)
+    # DASHBOARD_PASSWORD를 .env에 넣으면 접속할 때 비밀번호를 묻는다
+    env_file:
+      - backend/.env

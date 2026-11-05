@@ -1,14 +1,18 @@
-fastapi
-uvicorn[standard]
-pandas
-numpy
-scipy
-anthropic
-python-pptx
-python-dotenv
-matplotlib
+# 버전은 로컬에서 동작 확인한 환경(Python 3.11)에 고정 — Docker 빌드와 로컬이 같은 버전을 쓰도록
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pandas==3.0.5
+numpy==2.4.6
+scipy==1.17.1
+anthropic==1.4.0
+python-pptx==1.0.2
+python-dotenv==1.2.3
+matplotlib==3.11.0
 # RAG 도메인 Q&A (/chat/assistant)
 # chromadb는 assistant/vectordb_v3를 만든 버전에 고정 — 상위 버전은 스키마 마이그레이션 위험
 chromadb==1.5.8
-sentence-transformers
-google-genai
+sentence-transformers==6.0.1
+transformers==5.16.1
+huggingface-hub==1.30.0
+google-genai==2.22.0
+# torch는 여기 넣지 않는다 — Docker에서는 CPU 전용 빌드를 먼저 설치(Dockerfile), 로컬은 기존 설치 사용
